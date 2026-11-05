@@ -8,3 +8,7 @@ lego/*.mp4
 lego/*.wav
 lego/stills/
 lego/build.log
+zanzibar/*.mp4
+zanzibar/*.wav
+zanzibar/stills/
+zanzibar/rec.log
