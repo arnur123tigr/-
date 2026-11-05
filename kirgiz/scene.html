@@ -1,0 +1,575 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Kirgiz flat vector</title>
+<style>
+@font-face{font-family:Rubik;src:url(fonts/Rubik-Medium.ttf);font-weight:500}
+@font-face{font-family:Rubik;src:url(fonts/Rubik-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:Hand;src:url(fonts/Caveat-Bold.ttf);font-weight:700}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------
+// Flat Vector reel: "Почему казахов называли киргизами?"
+// Deterministic: window.render(t) draws the frame for time t (sec).
+// Scene timing comes from timeline.json (fitted to the voiceover).
+// ---------------------------------------------------------------
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const main = document.getElementById('c');
+const M = main.getContext('2d');
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const A = mk(), AC = A.getContext('2d');
+const B = mk(), BC = B.getContext('2d');
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const easeIn = t => { t = clamp(t); return t * t * t; };
+const back = t => { t = clamp(t); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const font = (px, w = 800, fam = 'Rubik') => `${w} ${px}px ${fam}`;
+
+// ---------- palette ----------
+const C = {
+  navy: '#1F3B57', ink: '#2B2B3A', cream: '#FBF1DF', paper: '#F1E2BE', paperD: '#D9C394',
+  red: '#E04E39', orange: '#F08A4B', yellow: '#F6C453', teal: '#1FA3B5', sky: '#A9DCE3',
+  skin: '#EDBB8D', skinD: '#D9A273', cheek: 'rgba(240,120,110,.45)', white: '#FAF8F2',
+  blue: '#2D5FA8', blueD: '#244C88', gold: '#F2C14E', green: '#3E7A4F', greenD: '#2F5F3D',
+  brown: '#8A5A36', brownD: '#6C4428', kaftan: '#C8372D', black: '#25232A', shadow: 'rgba(30,30,50,.16)'
+};
+
+function rr(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function circle(c, x, y, r, col) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = col; c.fill(); }
+function ell(c, x, y, rx, ry, col) { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); c.fillStyle = col; c.fill(); }
+function poly(c, pts, col) { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); c.fillStyle = col; c.fill(); }
+function limb(c, x1, y1, x2, y2, w, col) { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineWidth = w; c.lineCap = 'round'; c.strokeStyle = col; c.stroke(); }
+function fitText(c, txt, maxW, px, w = 800, fam = 'Rubik') {
+  c.font = font(px, w, fam); const m = c.measureText(txt).width;
+  if (m > maxW) { px = px * maxW / m; c.font = font(px, w, fam); }
+  return px;
+}
+
+// ---------- characters ----------
+// Person, local units: feet at (0,0), head centre at (0,-370). o.hand(side) may override hands.
+function person(c, o) {
+  c.save(); c.translate(o.x, o.y); c.scale((o.flip ? -1 : 1) * o.s, o.s);
+  const bob = o.bob || 0; c.translate(0, bob);
+  ell(c, 0, 4, 120, 18, C.shadow);
+  // boots
+  rr(c, -58, -40, 46, 42, 14); c.fillStyle = C.black; c.fill();
+  rr(c, 12, -40, 46, 42, 14); c.fill();
+  // arms behind robe (sleeves)
+  const hl = o.handL || [-100, -150], hr = o.handR || [100, -150];
+  limb(c, -66, -282, hl[0], hl[1], 46, o.robeD);
+  // robe
+  c.beginPath(); c.moveTo(-70, -300); c.lineTo(70, -300); c.quadraticCurveTo(92, -170, 112, -34);
+  c.lineTo(-112, -34); c.quadraticCurveTo(-92, -170, -70, -300); c.closePath(); c.fillStyle = o.robe; c.fill();
+  // trim
+  if (o.trim) {
+    c.fillStyle = o.trim;
+    c.beginPath(); c.moveTo(-10, -300); c.lineTo(10, -300); c.lineTo(22, -34); c.lineTo(2, -34); c.closePath(); c.fill();
+    c.fillRect(-112, -52, 224, 18);
+  }
+  if (o.belt) { c.fillStyle = o.belt; c.fillRect(-86, -168, 172, 22); }
+  if (o.buttons) { for (let i = 0; i < 5; i++) circle(c, 0, -280 + i * 42, 8, C.gold); }
+  if (o.epaulet) { rr(c, -92, -310, 50, 20, 8); c.fillStyle = C.gold; c.fill(); rr(c, 42, -310, 50, 20, 8); c.fill(); }
+  // neck + collar
+  rr(c, -24, -318, 48, 30, 10); c.fillStyle = C.skinD; c.fill();
+  // front arm
+  limb(c, 66, -282, hr[0], hr[1], 46, o.robe);
+  circle(c, hl[0], hl[1], 22, C.skin); circle(c, hr[0], hr[1], 22, C.skin);
+  if (o.item) o.item(c, hr[0], hr[1]);
+  // head
+  circle(c, -68, -366, 16, C.skinD); circle(c, 68, -366, 16, C.skinD);
+  circle(c, 0, -370, 70, C.skin);
+  const lx = (o.look || [0, 0])[0], ly = (o.look || [0, 0])[1];
+  const bl = o.blink ? 0.15 : 1;
+  c.fillStyle = C.ink;
+  c.beginPath(); c.ellipse(-25 + lx, -372 + ly, 7.5, 9 * bl, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(25 + lx, -372 + ly, 7.5, 9 * bl, 0, 0, Math.PI * 2); c.fill();
+  const br = (o.brows || 0) * 16;
+  limb(c, -38, -394 - br, -14, -398 - br * 1.2, 7, C.ink);
+  limb(c, 14, -398 - br * 1.2, 38, -394 - br, 7, C.ink);
+  circle(c, -42, -346, 12, C.cheek); circle(c, 42, -346, 12, C.cheek);
+  // mouth
+  const sm = o.smile == null ? 0.4 : o.smile;
+  if (o.mouthO) { ell(c, 0, -334, 9, 12 * o.mouthO, C.ink); }
+  else {
+    c.beginPath(); c.moveTo(-18, -338); c.quadraticCurveTo(0, -338 + 24 * sm, 18, -338);
+    c.lineWidth = 6; c.lineCap = 'round'; c.strokeStyle = C.ink; c.stroke();
+  }
+  if (o.mustache) { c.beginPath(); c.moveTo(-30, -342); c.quadraticCurveTo(0, -362, 30, -342); c.quadraticCurveTo(0, -350, -30, -342); c.fillStyle = C.black; c.fill(); }
+  hat(c, o.hat);
+  c.restore();
+}
+function hat(c, kind) {
+  if (kind === 'kalpak') {           // Kazakh white kalpak
+    c.beginPath(); c.moveTo(-64, -404); c.quadraticCurveTo(-46, -520, 0, -536); c.quadraticCurveTo(46, -520, 64, -404); c.closePath();
+    c.fillStyle = C.white; c.fill();
+    rr(c, -82, -420, 164, 30, 14); c.fillStyle = '#ECE6D8'; c.fill();
+    c.fillStyle = C.gold; for (let i = -3; i <= 3; i++) circle(c, i * 21, -405, 4, C.gold);
+    limb(c, -30, -470, 0, -520, 5, '#E2DACA');
+  } else if (kind === 'akkalpak') {  // Kyrgyz ak-kalpak: tall white, black brim
+    c.beginPath(); c.moveTo(-60, -410); c.lineTo(-30, -560); c.quadraticCurveTo(0, -580, 30, -560); c.lineTo(60, -410); c.closePath();
+    c.fillStyle = C.white; c.fill();
+    limb(c, -40, -470, -18, -548, 4, '#2A2A2A'); limb(c, 40, -470, 18, -548, 4, '#2A2A2A');
+    c.fillStyle = C.black;
+    c.beginPath(); c.moveTo(-86, -398); c.lineTo(-4, -410); c.lineTo(-10, -446); c.lineTo(-74, -436); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(86, -398); c.lineTo(4, -410); c.lineTo(10, -446); c.lineTo(74, -436); c.closePath(); c.fill();
+    circle(c, 0, -578, 9, C.black);
+  } else if (kind === 'cap') {       // Imperial official peaked cap
+    c.beginPath(); c.ellipse(0, -438, 92, 32, 0, 0, Math.PI * 2); c.fillStyle = C.green; c.fill();
+    rr(c, -70, -436, 140, 36, 6); c.fillStyle = C.green; c.fill();
+    rr(c, -70, -418, 140, 18, 4); c.fillStyle = C.red; c.fill();
+    c.beginPath(); c.ellipse(0, -398, 74, 16, 0, 0, Math.PI); c.fillStyle = C.black; c.fill();
+    circle(c, 0, -428, 9, C.gold);
+  }
+}
+const nomad = o => Object.assign({ robe: C.blue, robeD: C.blueD, trim: C.gold, belt: '#7B4A2A', hat: 'kalpak' }, o);
+const kyrgyz = o => Object.assign({ robe: '#8B5E3C', robeD: '#6E482C', trim: '#5A3A22', belt: '#3E2A1A', hat: 'akkalpak' }, o);
+const official = o => Object.assign({ robe: C.green, robeD: C.greenD, buttons: true, epaulet: true, hat: 'cap', mustache: true, smile: 0.1 }, o);
+
+function quill(c, x, y) {
+  c.save(); c.translate(x, y); c.rotate(-0.6);
+  c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(14, -70, 4, -130); c.quadraticCurveTo(-16, -70, 0, 0); c.fillStyle = '#FFFFFF'; c.fill();
+  limb(c, 0, 10, 4, -110, 3, '#9A9A9A');
+  c.restore();
+}
+function stampTool(c, x, y) {
+  rr(c, x - 34, y + 10, 68, 22, 6); c.fillStyle = C.red; c.fill();
+  rr(c, x - 26, y - 6, 52, 20, 4); c.fillStyle = '#5A3A22'; c.fill();
+  rr(c, x - 10, y - 60, 20, 58, 8); c.fillStyle = '#8A5A36'; c.fill();
+  circle(c, x, y - 64, 20, '#6C4428');
+}
+function seal(c, x, y, r, a, rot = -0.2, txt = 'ПЕРЕПИСЬ') {
+  if (a <= 0) return;
+  c.save(); c.globalAlpha = clamp(a); c.translate(x, y); c.rotate(rot);
+  c.strokeStyle = 'rgba(205,40,40,.88)'; c.fillStyle = 'rgba(205,40,40,.88)';
+  c.lineWidth = r * 0.09; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke();
+  c.lineWidth = r * 0.04; c.beginPath(); c.arc(0, 0, r * 0.78, 0, Math.PI * 2); c.stroke();
+  for (let i = 0; i < 5; i++) { const an = -Math.PI / 2 + i * Math.PI * 2 / 5; circle(c, Math.cos(an) * r * 0.89, Math.sin(an) * r * 0.89, r * 0.035, 'rgba(205,40,40,.88)'); }
+  c.font = font(r * 0.26); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, 0);
+  c.restore();
+}
+
+// Horse + Cossack rider, local units: ground at 0, faces +x.
+function cossack(c, x, y, s, t, flip) {
+  c.save(); c.translate(x, y); c.scale(flip ? -s : s, s);
+  const bob = Math.sin(t * 5) * 3;
+  ell(c, 0, 6, 260, 22, C.shadow);
+  const legs = [[-150, 0], [-112, 1], [112, 2], [150, 3]];
+  for (const [lx, k] of legs) { rr(c, lx - 14, -210, 28, 210, 12); c.fillStyle = k % 2 ? C.brownD : C.brown; c.fill(); rr(c, lx - 17, -22, 34, 24, 6); c.fillStyle = C.black; c.fill(); }
+  c.translate(0, bob);
+  // tail
+  c.beginPath(); c.moveTo(-195, -280); c.quadraticCurveTo(-270 + Math.sin(t * 3) * 14, -220, -240, -120);
+  c.lineWidth = 34; c.lineCap = 'round'; c.strokeStyle = '#3A2516'; c.stroke();
+  ell(c, 0, -255, 205, 82, C.brown);
+  // neck + head
+  poly(c, [[110, -300], [200, -440], [262, -420], [200, -250]], C.brown);
+  c.save(); c.translate(258, -420); c.rotate(0.55); rr(c, -40, -36, 132, 72, 34); c.fillStyle = C.brown; c.fill(); c.restore();
+  poly(c, [[196, -452], [212, -500], [228, -446]], C.brownD);
+  circle(c, 252, -432, 8, C.ink);
+  poly(c, [[110, -300], [196, -452], [176, -430], [96, -300]], '#3A2516');
+  // saddle blanket
+  rr(c, -78, -340, 156, 70, 14); c.fillStyle = C.navy; c.fill();
+  rr(c, -78, -290, 156, 14, 6); c.fillStyle = C.gold; c.fill();
+  // rider
+  rr(c, -6, -330, 40, 150, 16); c.fillStyle = '#2E2A2A'; c.fill();     // leg + boot
+  rr(c, -12, -200, 58, 30, 12); c.fillStyle = C.black; c.fill();
+  c.beginPath(); c.moveTo(-58, -320); c.lineTo(58, -320); c.lineTo(46, -510); c.lineTo(-46, -510); c.closePath(); c.fillStyle = C.kaftan; c.fill();
+  for (let i = 0; i < 4; i++) { rr(c, -40, -480 + i * 22, 22, 10, 3); c.fillStyle = '#F3E6CF'; c.fill(); rr(c, 18, -480 + i * 22, 22, 10, 3); c.fill(); }
+  rr(c, -50, -360, 100, 16, 5); c.fillStyle = C.black; c.fill();
+  limb(c, 40, -490, 110, -380, 40, '#A82C24'); circle(c, 114, -376, 20, C.skin);
+  limb(c, 114, -376, 210, -420, 4, '#3A2516');   // reins
+  circle(c, 0, -566, 58, C.skin);
+  circle(c, 20, -572, 7, C.ink);
+  limb(c, 6, -594, 30, -598, 6, C.ink);
+  c.beginPath(); c.moveTo(-6, -540); c.quadraticCurveTo(22, -556, 50, -536); c.quadraticCurveTo(22, -544, -6, -540); c.fillStyle = C.black; c.fill();
+  circle(c, 34, -548, 10, C.cheek);
+  rr(c, -62, -760, 124, 160, 26); c.fillStyle = C.black; c.fill();
+  for (let i = 0; i < 6; i++) limb(c, -44 + i * 18, -740, -44 + i * 18, -620, 5, '#3A363E');
+  rr(c, -24, -770, 48, 26, 10); c.fillStyle = C.red; c.fill();
+  c.restore();
+}
+
+// ---------- UI caption card ----------
+function card(c, txt, lt, t0 = 0.12, y = 250, px = 74) {
+  const p = back(seg(lt, t0, t0 + 0.35)); if (p <= 0) return;
+  c.save(); c.translate(CX, y); c.scale(p, p);
+  px = fitText(c, txt, W - 200, px);
+  const w = c.measureText(txt).width + 90, h = px * 1.55;
+  rr(c, -w / 2 + 10, -h / 2 + 12, w, h, h / 2); c.fillStyle = C.navy; c.fill();
+  rr(c, -w / 2, -h / 2, w, h, h / 2); c.fillStyle = '#FFFFFF'; c.fill();
+  c.fillStyle = C.navy; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, 4);
+  c.restore();
+}
+
+// ---------- backgrounds ----------
+function office(c, w) {
+  c.fillStyle = '#F2DDB6'; c.fillRect(-200, 0, w + 400, H);
+  c.fillStyle = 'rgba(255,255,255,.18)';
+  for (let x = -200; x < w + 200; x += 120) c.fillRect(x, 0, 50, 1250);
+  c.fillStyle = '#D6AE7E'; c.fillRect(-200, 1250, w + 400, 400);
+  c.fillStyle = '#C49A69'; c.fillRect(-200, 1250, w + 400, 18);
+  c.fillStyle = '#8F5F3E'; c.fillRect(-200, 1640, w + 400, H);
+  c.fillStyle = '#7E5236'; for (let x = -200; x < w + 200; x += 160) c.fillRect(x, 1640, 8, 300);
+  // window
+  for (const wx of [600, 1330]) {
+    rr(c, wx - 10, 480, 320, 420, 18); c.fillStyle = '#7E5236'; c.fill();
+    rr(c, wx + 6, 496, 288, 388, 10); c.fillStyle = C.sky; c.fill();
+    ell(c, wx + 90, 640, 70, 26, '#FFFFFF'); ell(c, wx + 140, 624, 50, 26, '#FFFFFF');
+    c.fillStyle = '#7E5236'; c.fillRect(wx + 144, 496, 12, 388); c.fillRect(wx + 6, 684, 288, 12);
+  }
+  // framed portrait-ish emblem
+  rr(c, 130, 520, 230, 280, 14); c.fillStyle = C.gold; c.fill();
+  rr(c, 148, 538, 194, 244, 8); c.fillStyle = '#E8D3A6'; c.fill();
+  poly(c, [[245, 590], [300, 640], [280, 720], [245, 700], [210, 720], [190, 640]], '#B98A3A');
+  circle(c, 245, 600, 18, '#B98A3A');
+}
+function desk(c, x1, x2) {
+  ell(c, (x1 + x2) / 2, 1645, (x2 - x1) / 2 + 30, 20, C.shadow);
+  rr(c, x1, 1340, x2 - x1, 300, 10); c.fillStyle = '#7A4A2C'; c.fill();
+  rr(c, x1 - 20, 1318, x2 - x1 + 40, 34, 10); c.fillStyle = '#9C6440'; c.fill();
+  c.fillStyle = '#6A3F25';
+  rr(c, x1 + 40, 1400, (x2 - x1) / 2 - 70, 90, 8); c.fill();
+  rr(c, (x1 + x2) / 2 + 30, 1400, (x2 - x1) / 2 - 70, 90, 8); c.fill();
+  circle(c, x1 + (x2 - x1) / 4, 1445, 9, C.gold); circle(c, x1 + (x2 - x1) * 0.75, 1445, 9, C.gold);
+}
+function sheet(c, cx, by, w, h, rot, txt, reveal, sealA, sealTxt) {
+  c.save(); c.translate(cx, by); c.rotate(rot);
+  rr(c, -w / 2 + 8, -h + 8, w, h, 8); c.fillStyle = 'rgba(0,0,0,.12)'; c.fill();
+  rr(c, -w / 2, -h, w, h, 8); c.fillStyle = C.paper; c.fill();
+  c.fillStyle = C.paperD; for (let i = 0; i < 3; i++) c.fillRect(-w / 2 + 26, -h + 34 + i * 20, w * (i ? 0.5 : 0.7), 8);
+  c.fillRect(-w / 2 + 26, -38, w - 52, 4);
+  if (txt) {
+    const px = fitText(c, txt, w - 50, 64, 700, 'Hand');
+    const tw = c.measureText(txt).width, x0 = -tw / 2, base = -58;
+    c.save(); c.beginPath(); c.rect(x0 - 10, -h, (tw + 20) * reveal, h); c.clip();
+    c.fillStyle = '#26324A'; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(txt, x0, base); c.restore();
+    sheet.pen = [x0 + tw * reveal, base - px * 0.25];
+  }
+  seal(c, w * 0.3, -h * 0.66, 50, sealA, -0.25, sealTxt);
+  c.restore();
+}
+function steppe(c, t) {
+  c.fillStyle = C.sky; c.fillRect(0, 0, W, H);
+  circle(c, 860, 560, 92, '#FBD56A');
+  for (let i = 0; i < 3; i++) {
+    const x = ((i * 430 + t * 25) % 1500) - 250, y = 470 + i * 170;
+    ell(c, x, y, 110, 34, '#FFFFFF'); ell(c, x + 60, y - 22, 64, 34, '#FFFFFF'); ell(c, x - 50, y - 10, 50, 26, '#FFFFFF');
+  }
+  c.fillStyle = '#9CC7A0'; c.beginPath(); c.moveTo(0, 1320);
+  for (let x = 0; x <= W; x += 60) c.lineTo(x, 1290 - Math.sin(x / 170) * 40 - Math.sin(x / 70) * 10);
+  c.lineTo(W, H); c.lineTo(0, H); c.fill();
+  c.fillStyle = '#D9CF73'; c.beginPath(); c.moveTo(0, 1420);
+  for (let x = 0; x <= W; x += 60) c.lineTo(x, 1420 - Math.sin(x / 260 + 1) * 26);
+  c.lineTo(W, H); c.lineTo(0, H); c.fill();
+  c.fillStyle = '#C9BE5F'; for (let i = 0; i < 26; i++) { const x = (i * 197) % W, y = 1480 + (i * 89) % 380; rr(c, x, y, 34, 8, 4); c.fill(); }
+}
+
+// ---------- map ----------
+const KZ = [[46.5,48.4],[48.7,50.6],[50.8,51.6],[52.6,51.5],[54.5,51.0],[55.7,50.6],[57.5,51.1],[59.0,50.6],[60.2,50.9],[61.5,51.0],[61.6,51.8],[60.4,52.2],[61.0,52.9],[62.2,53.0],[61.3,53.6],[62.5,54.0],[65.2,54.6],[68.2,55.4],[70.0,55.2],[71.2,54.2],[73.4,54.0],[73.7,53.6],[76.3,54.2],[76.6,53.6],[78.2,52.6],[80.0,50.8],[81.5,50.8],[83.4,51.0],[85.0,50.0],[86.2,49.5],[87.3,49.2],[86.6,48.6],[85.6,47.2],[83.2,47.2],[82.3,45.6],[79.9,44.9],[80.3,42.9],[79.2,42.8],[77.5,42.9],[75.6,42.8],[74.2,43.3],[73.4,42.5],[71.8,42.8],[70.9,42.2],[70.2,41.5],[69.1,41.4],[68.6,40.6],[68.0,41.0],[66.6,41.2],[66.0,42.0],[66.0,43.0],[64.9,43.7],[62.0,43.5],[61.0,44.4],[58.5,45.6],[56.0,45.0],[56.0,41.3],[55.4,41.3],[54.8,42.0],[53.0,42.1],[52.5,41.8],[52.7,42.6],[51.3,43.6],[50.3,44.6],[51.3,45.3],[53.1,45.3],[53.1,46.6],[51.2,47.1],[49.2,46.4],[48.6,47.4],[47.2,47.8]];
+const proj = (lon, lat) => [(lon - 67) * 21.8 + 540, (48 - lat) * 33 + 1000];
+function mapBoard(c, fillCol, unroll = 1) {
+  c.save(); c.translate(540, 1000); c.scale(lerp(0.04, 1, unroll), 1); c.translate(-540, -1000);
+  rr(c, 50 + 12, 620 + 14, 980, 760, 30); c.fillStyle = 'rgba(0,0,0,.12)'; c.fill();
+  rr(c, 50, 620, 980, 760, 30); c.fillStyle = '#FFF6E4'; c.fill();
+  c.strokeStyle = 'rgba(31,59,87,.08)'; c.lineWidth = 3;
+  for (let x = 110; x < 1030; x += 80) { c.beginPath(); c.moveTo(x, 640); c.lineTo(x, 1360); c.stroke(); }
+  for (let y = 680; y < 1380; y += 80) { c.beginPath(); c.moveTo(70, y); c.lineTo(1010, y); c.stroke(); }
+  c.beginPath(); KZ.forEach((p, i) => { const q = proj(p[0], p[1]); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.closePath();
+  c.save(); c.translate(10, 12); c.fillStyle = 'rgba(31,59,87,.18)'; c.fill(); c.restore();
+  c.fillStyle = fillCol; c.fill();
+  c.lineJoin = 'round'; c.lineWidth = 7; c.strokeStyle = 'rgba(255,255,255,.9)'; c.stroke();
+  c.restore();
+}
+function cityDot(c, lon, lat, name, a, t, below) {
+  if (a <= 0) return;
+  const [x, y] = proj(lon, lat);
+  c.save(); c.globalAlpha = clamp(a);
+  const pr = (t * 1.2) % 1;
+  c.beginPath(); c.arc(x, y, 18 + pr * 40, 0, Math.PI * 2); c.strokeStyle = `rgba(224,78,57,${0.6 * (1 - pr)})`; c.lineWidth = 6; c.stroke();
+  circle(c, x, y, 18, C.red); circle(c, x, y, 7, '#FFFFFF');
+  c.font = font(40, 800); const tw = c.measureText(name).width;
+  const ly = below ? y + 58 : y - 58;
+  rr(c, x - tw / 2 - 18, ly - 30, tw + 36, 60, 30); c.fillStyle = C.navy; c.fill();
+  c.fillStyle = '#FFFFFF'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name, x, ly + 2);
+  c.restore();
+}
+function banner(c, txt, sy, pop) {
+  if (pop <= 0) return;
+  c.save(); c.translate(600, 990); c.scale(pop, pop * sy);
+  const px = fitText(c, txt, 640, 54);
+  const w = c.measureText(txt).width + 70, h = 96;
+  rr(c, -w / 2 + 8, -h / 2 + 10, w, h, 20); c.fillStyle = 'rgba(31,59,87,.35)'; c.fill();
+  rr(c, -w / 2, -h / 2, w, h, 20); c.fillStyle = '#FFFFFF'; c.fill();
+  c.fillStyle = C.navy; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, 4);
+  c.restore();
+}
+
+// ---------- scenes ----------
+let TL, SC = {};
+const blinkAt = (t, off = 0) => ((t + off) % 2.7) < 0.12;
+const SCN = {
+  s1(c, t, d, sc) {
+    c.fillStyle = '#3B5A78'; c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 12; i++) c.fillRect(0, i * 170, W, 70);
+    const z = lerp(1, 1.1, ease(t / d));
+    c.save(); c.translate(540, 1000); c.scale(z, z); c.translate(-540, -1000);
+    c.save(); c.translate(540, 1000); c.rotate(-0.025);
+    rr(c, -430 + 16, -640 + 18, 860, 1300, 18); c.fillStyle = 'rgba(0,0,0,.25)'; c.fill();
+    rr(c, -430, -640, 860, 1300, 18); c.fillStyle = C.paper; c.fill();
+    rr(c, -400, -610, 800, 1240, 10); c.lineWidth = 6; c.strokeStyle = '#C9AE7A'; c.stroke();
+    c.fillStyle = '#5B4A33'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = '700 56px "DejaVu Serif"'; c.fillText('ПЕРЕПИСНОЙ ЛИСТЪ', 0, -500);
+    c.font = '400 34px "DejaVu Serif"'; c.fillText('Россійская Имперія', 0, -430);
+    c.textAlign = 'left'; c.font = '400 40px "DejaVu Serif"';
+    const rows = [['Имя:', -320], ['Сословіе:', -200], ['Народность:', -40], ['Занятіе:', 260]];
+    for (const [r, y] of rows) { c.fillStyle = '#5B4A33'; c.fillText(r, -350, y); c.fillStyle = '#C9AE7A'; c.fillRect(-350 + c.measureText(r).width + 20, y + 22, 680 - c.measureText(r).width, 4); }
+    c.fillStyle = 'rgba(38,50,74,.55)'; c.font = '700 64px Hand'; c.fillText('кочевникъ', -60, 250); c.fillText('—', -120, -330); c.fillText('—', -60, -210);
+    c.fillStyle = '#26324A'; c.font = '700 190px Hand'; c.textAlign = 'center'; c.fillText('Киргизъ', 0, 90);
+    // stamp slam
+    const st = sc.stamp, k = seg(t, st - 0.18, st);
+    if (t < st) {
+      const s = lerp(2.4, 1, easeIn(k)); c.save(); c.globalAlpha = k; c.translate(190, 300); c.scale(s, s); seal(c, 0, 0, 150, 1, -0.2); c.restore();
+    } else seal(c, 190, 300, 150, 1, -0.2);
+    c.restore();
+    c.restore();
+    // shake after slam
+    // nomad peeking
+    const raise = ease(seg(t, 1.3, 1.6));
+    person(c, nomad({ x: 190, y: 2580, s: 2.0, brows: raise, look: [10, -6 - raise * 4], smile: 0.1, mouthO: raise * 0.8, blink: blinkAt(t, 1) }));
+    card(c, 'Казах — значит киргиз?', t, 0.5);
+  },
+  office(c, t, d, sc, camX, two) {
+    c.save(); c.translate(-camX, 0);
+    office(c, 1700);
+    // nomad
+    person(c, nomad({ x: 230, y: 1640, s: 1.25, look: [8, 4], blink: blinkAt(t), smile: 0.3, brows: 0.2 }));
+    // official hand
+    let hand = [-60, -170], item = null;
+    const ox = 790, oy = 1500, os = 1.25;
+    const toLocal = (wx, wy) => [(wx - ox) / os, (wy - oy) / os];
+    if (!two) {
+      SC._rev = ease(seg(t, sc.write[0], sc.write[1]));
+      item = quill;
+    } else item = stampTool;
+    // draw official
+    let o = official({ x: ox, y: oy, s: os, look: two ? [10, 6] : [-8, 8], blink: blinkAt(t, 0.7) });
+    // paper 1 pen position (world)
+    const p1 = { cx: 620, by: 1335, w: 330, h: 220, rot: -0.03 };
+    if (!two) {
+      const rv = SC._rev;
+      // pen tip world position along the text baseline
+      const tmp = AC; tmp.save(); tmp.setTransform(1, 0, 0, 1, 0, 0);
+      fitText(tmp, 'Киргиз-кайсак', p1.w - 50, 64, 700, 'Hand'); const tw = tmp.measureText('Киргиз-кайсак').width; tmp.restore();
+      const wob = Math.sin(t * 40) * 6 * (rv > 0 && rv < 1 ? 1 : 0);
+      const px = p1.cx - tw / 2 + tw * rv, py = p1.by - 72 + wob;
+      hand = toLocal(px + 10, py + 6);
+      o.handR = hand; o.item = item;
+    } else {
+      const st = sc.stamp, p2x = 1010;
+      let hx = 1010, hy = 1120;
+      if (t < 0.9) { hx = 880; hy = 1260; }
+      else if (t < st - 0.25) { const k = ease(seg(t, 0.9, st - 0.35)); hx = lerp(880, p2x, k); hy = lerp(1260, 1060, k); }
+      else if (t < st) { hy = lerp(1060, 1200, easeIn(seg(t, st - 0.25, st))); }
+      else { const k = ease(seg(t, st + 0.15, st + 0.6)); hy = lerp(1200, 1050, k); hx = lerp(p2x, p2x + 40, k); }
+      o.handR = toLocal(hx, hy); o.item = stampTool; o.brows = 0.1;
+    }
+    o.handL = [-40, -160];
+    person(c, o);
+    desk(c, 470, 1190);
+    sheet(c, p1.cx, p1.by, p1.w, p1.h, p1.rot, 'Киргиз-кайсак', two ? 1 : SC._rev, two ? 1 : 0, 'ИМПЕРІЯ');
+    if (two) {
+      const st = sc.stamp, ap = back(seg(t, 0.7, 1.0));
+      if (ap > 0) {
+        c.save(); c.translate(1010, 1335); c.scale(ap, ap); c.translate(-1010, -1335);
+        sheet(c, 1010, 1335, 300, 220, 0.03, 'Кара-киргиз', ease(seg(t, 0.95, 1.45)), t >= st ? 1 : 0, 'ИМПЕРІЯ');
+        c.restore();
+      }
+      // redraw stamp hand on top of paper so it reads
+      if (t < st + 0.6 && t > 0.9) { const h = o.handR; c.save(); c.translate(ox, oy); c.scale(os, os); limb(c, 66, -282, h[0], h[1], 46, C.green); circle(c, h[0], h[1], 22, C.skin); stampTool(c, h[0], h[1]); c.restore(); }
+      // kyrgyz walks in
+      const wk = ease(seg(t, 0.0, 1.3)), kx = lerp(1780, 1300, wk);
+      const bob = wk < 1 ? -Math.abs(Math.sin(t * 9)) * 14 : 0;
+      person(c, kyrgyz({ x: kx, y: 1640, s: 1.25, flip: true, bob, look: [8, 4], blink: blinkAt(t, 1.3), smile: 0.35, brows: t > sc.stamp ? 0.6 : 0.1 }));
+    } else {
+      // quill on top of paper
+      const h = o.handR; c.save(); c.translate(ox, oy); c.scale(os, os); limb(c, 66, -282, h[0], h[1], 46, C.green); circle(c, h[0], h[1], 22, C.skin); quill(c, h[0], h[1]); c.restore();
+    }
+    c.restore();
+  },
+  s2(c, t, d, sc) { SCN.office(c, t, d, sc, 0, false); card(c, '«Киргиз-кайсаки»', t, 0.25); },
+  s3(c, t, d, sc) {
+    const camX = lerp(0, 440, ease(seg(t, 0.05, 1.6)));
+    let sh = 0; if (t > sc.stamp && t < sc.stamp + 0.25) sh = Math.sin((t - sc.stamp) * 90) * 10 * (1 - (t - sc.stamp) / 0.25);
+    c.save(); c.translate(0, sh); SCN.office(c, t, d, sc, camX, true); c.restore();
+    card(c, 'Киргизы — «кара-киргизы»', t, 0.3);
+  },
+  s4(c, t, d, sc) {
+    const qc = [530, 700], dot = [530, 830];
+    const fly = sc.fly, fk = easeIn(seg(t, d - fly, d));
+    const z = Math.exp(Math.log(70) * fk);
+    c.save();
+    c.translate(lerp(dot[0], CX, fk), lerp(dot[1], CY, fk)); c.scale(z, z); c.translate(-dot[0], -dot[1]);
+    steppe(c, t);
+    person(c, nomad({ x: 270, y: 1660, s: 1.2, look: [10, -6], blink: blinkAt(t, .4), brows: ease(seg(t, sc.q, sc.q + 0.2)), mouthO: t > sc.q ? 0.6 : 0, smile: 0.3 }));
+    cossack(c, 790, 1660, 1.0, t, true);
+    const lab = (txt, x, t0) => {
+      const p = back(seg(t, t0, t0 + 0.35)); if (p <= 0) return;
+      c.save(); c.translate(x, 700); c.scale(p, p);
+      c.font = font(76); const w = c.measureText(txt).width + 60;
+      rr(c, -w / 2 + 8, -56 + 10, w, 112, 30); c.fillStyle = C.navy; c.fill();
+      rr(c, -w / 2, -56, w, 112, 30); c.fillStyle = '#FFFFFF'; c.fill();
+      c.fillStyle = C.navy; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, 4);
+      // pointer
+      poly(c, [[-18, 56], [18, 56], [0, 84]], '#FFFFFF');
+      c.restore();
+    };
+    lab('қазақ', 245, 0.55); lab('казак', 820, 1.05);
+    // question mark
+    const qp = back(seg(t, sc.q, sc.q + 0.4));
+    if (qp > 0) {
+      const wob = Math.sin((t - sc.q) * 14) * 0.25 * Math.exp(-(t - sc.q) * 3);
+      c.save(); c.translate(qc[0], qc[1] + 60); c.rotate(wob); c.scale(qp, qp); c.translate(-qc[0], -qc[1] - 60);
+      c.beginPath(); c.arc(qc[0], qc[1] - 30, 62, Math.PI, Math.PI * 2.5); c.lineTo(qc[0], qc[1] + 70);
+      c.lineWidth = 40; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = C.orange; c.stroke();
+      circle(c, dot[0], dot[1], 25, C.orange);
+      c.restore();
+    }
+    c.restore();
+    if (fk > 0.85) { c.fillStyle = `rgba(240,138,75,${seg(fk, 0.85, 1)})`; c.fillRect(0, 0, W, H); }
+    if (fk < 0.2) card(c, 'Казах = казак?', t, 0.2);
+  },
+  map(c, t, d, sc, phase) {
+    c.fillStyle = C.sky; c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(255,255,255,.25)'; for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(540, 1000, 300 + i * 160, 0, Math.PI * 2); c.lineWidth = 30; c.strokeStyle = 'rgba(255,255,255,.12)'; c.stroke(); }
+  },
+  s5(c, t, d, sc) {
+    SCN.map(c, t, d, sc);
+    const z = lerp(1.22, 1.0, ease(t / d));
+    c.save(); c.translate(540, 1000); c.scale(z, z); c.translate(-540, -1000);
+    mapBoard(c, C.orange, easeOut(seg(t, 0.1, 0.7)));
+    cityDot(c, 55.1, 51.77, 'Оренбург ★', seg(t, 0.8, 1.1), t);
+    banner(c, 'Киргизская АССР, 1920', 1, back(seg(t, sc.banner, sc.banner + 0.35)));
+    c.restore();
+    card(c, '1920 — Киргизская АССР', t, 0.25);
+    const of = 1 - seg(t, 0, 0.35); if (of > 0) { c.fillStyle = `rgba(240,138,75,${of})`; c.fillRect(0, 0, W, H); }
+  },
+  s6(c, t, d, sc) {
+    SCN.map(c, t, d, sc);
+    const f = seg(t, sc.flip, sc.flip + 0.55), flipped = f >= 0.5;
+    const col = flipped ? C.teal : C.orange;
+    mapBoard(c, col, 1);
+    cityDot(c, 55.1, 51.77, 'Оренбург ★', 1 - seg(t, sc.flip + 0.3, sc.flip + 0.6), t);
+    cityDot(c, 65.5, 44.85, 'Кызылорда ★', seg(t, sc.flip + 0.5, sc.flip + 0.8), t, true);
+    const sy = Math.abs(Math.cos(Math.PI * f));
+    banner(c, flipped ? 'Казакская АССР, 1925' : 'Киргизская АССР, 1920', Math.max(sy, 0.02), 1);
+    const sm = ease(seg(t, sc.flip + 0.4, sc.flip + 0.8));
+    person(c, nomad({ x: 210, y: 2120, s: 1.75, look: [10, -8], smile: lerp(0.2, 1, sm), brows: sm * 0.5, blink: blinkAt(t, 2) }));
+    card(c, flipped ? '1925 — Казакская АССР' : '1920 — Киргизская АССР', t, -1);
+  },
+  s7(c, t, d, sc) {
+    c.fillStyle = C.cream; c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(31,59,87,.05)'; for (let x = 0; x < W; x += 60) for (let y = 0; y < H; y += 60) { c.beginPath(); c.arc(x + 30, y + 30, 5, 0, Math.PI * 2); c.fill(); }
+    c.font = font(205); c.textBaseline = 'middle'; c.textAlign = 'left';
+    const letters = ['К', 'А', 'З', 'А', 'К'], ws = letters.map(l => c.measureText(l).width), gap = 10;
+    const total = ws.reduce((a, b) => a + b, 0) + gap * 4; let x = CX - total / 2;
+    const pos = ws.map(w => { const p = x; x += w + gap; return p; });
+    const lastC = pos[4] + ws[4] / 2;
+    const zk = ease(t / d), z = lerp(1, 1.15, zk), fx = lerp(CX, lastC, zk * 0.3), fy = 1000;
+    const pi = seg(t, 0.15, 0.6);
+    c.save(); c.translate(CX, fy); c.scale(z, z); c.translate(-fx, -fy);
+    for (let i = 0; i < 4; i++) {
+      const p = back(seg(t, 0.1 + i * 0.07, 0.4 + i * 0.07)); if (p <= 0) continue;
+      c.save(); c.translate(pos[i] + ws[i] / 2, 1000); c.scale(p, p);
+      c.fillStyle = 'rgba(31,59,87,.18)'; c.textAlign = 'center'; c.fillText(letters[i], 10, 14);
+      c.fillStyle = C.navy; c.fillText(letters[i], 0, 0); c.restore();
+    }
+    // morphing letter
+    const m = seg(t, sc.morph, sc.morph + 0.55), p0 = back(seg(t, 0.38, 0.68));
+    const sx = Math.abs(Math.cos(Math.PI * m)), isX = m >= 0.5;
+    const pop = isX ? lerp(1.25, 1, ease(seg(t, sc.morph + 0.3, sc.morph + 0.7))) : 1;
+    c.save(); c.translate(lastC, 1000); c.scale(Math.max(sx, 0.03) * p0 * pop, p0 * pop); c.textAlign = 'center';
+    c.fillStyle = 'rgba(31,59,87,.18)'; c.fillText(isX ? 'Х' : 'К', 10, 14);
+    c.fillStyle = isX ? C.red : C.navy; c.fillText(isX ? 'Х' : 'К', 0, 0); c.restore();
+    // highlight ring around the changing letter
+    const hr = seg(t, sc.morph - 0.6, sc.morph - 0.3);
+    if (hr > 0 && !isX) { c.beginPath(); c.arc(lastC, 1000, 140, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hr); c.lineWidth = 12; c.strokeStyle = C.yellow; c.lineCap = 'round'; c.stroke(); }
+    if (isX) {
+      const sp = seg(t, sc.morph + 0.28, sc.morph + 0.9);
+      for (let i = 0; i < 10; i++) {
+        const an = i * Math.PI / 5 + 0.3, r1 = 140 + sp * 60, r2 = r1 + 50 * (1 - sp);
+        c.globalAlpha = 1 - sp; limb(c, lastC + Math.cos(an) * r1, 1000 + Math.sin(an) * r1, lastC + Math.cos(an) * r2, 1000 + Math.sin(an) * r2, 12, i % 2 ? C.yellow : C.orange); c.globalAlpha = 1;
+      }
+    }
+    // 1936 chip
+    const cp = back(seg(t, 3.2, 3.55));
+    if (cp > 0) { c.save(); c.translate(CX, 1260); c.scale(cp, cp); rr(c, -150, -55, 300, 110, 55); c.fillStyle = C.red; c.fill(); c.fillStyle = '#FFFFFF'; c.font = font(70); c.textAlign = 'center'; c.fillText('1936', 0, 4); c.restore(); }
+    c.restore();
+    card(c, '1936: «к» → «х»', t, 0.25);
+  },
+  end(c, t, d, sc) {
+    SCN.map(c, t, d, sc);
+    c.save(); c.translate(540, 860); c.scale(0.8, 0.8); c.translate(-540, -1000); mapBoard(c, C.teal, 1); c.restore();
+    c.fillStyle = '#E9D79A'; c.beginPath(); c.ellipse(540, 1790, 620, 160, 0, 0, Math.PI * 2); c.fill();
+    const wv = (ph) => { const a = Math.sin((t + ph) * 9) * 0.5; return [100 + Math.sin(a) * 40, -470 + Math.cos(a) * 20]; };
+    const w1 = t > 0.3 ? wv(0) : [100, -150], w2 = t > 0.5 ? wv(0.4) : [100, -150];
+    person(c, nomad({ x: 320, y: 1760, s: 1.45, handR: w1, smile: 1, look: [0, 0], blink: blinkAt(t, .2) }));
+    person(c, kyrgyz({ x: 770, y: 1760, s: 1.45, flip: true, handR: w2, smile: 1, look: [0, 0], blink: blinkAt(t, 1.1) }));
+    card(c, 'Знал? Ставь +', t, 0.3, 250, 92);
+    const bp = back(seg(t, sc.plus, sc.plus + 0.35));
+    if (bp > 0) {
+      const pul = 1 + Math.sin((t - sc.plus) * 6) * 0.04;
+      c.save(); c.translate(540, 470); c.scale(bp * pul, bp * pul);
+      rr(c, -110 + 10, -80 + 12, 220, 160, 40); c.fillStyle = C.navy; c.fill();
+      poly(c, [[-30 + 10, 70 + 12], [30 + 10, 70 + 12], [-40 + 10, 130 + 12]], C.navy);
+      rr(c, -110, -80, 220, 160, 40); c.fillStyle = C.orange; c.fill();
+      poly(c, [[-30, 70], [30, 70], [-40, 130]], C.orange);
+      c.fillStyle = '#FFFFFF'; c.font = font(150); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('+', 0, 6);
+      c.restore();
+    }
+  }
+};
+
+// ---------- timeline ----------
+async function loadTL() { TL = await (await fetch('timeline.json')).json(); }
+function drawScene(ctx, sc, t) {
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  SCN[sc.id](ctx, t, sc.end - sc.start, sc);
+  ctx.restore();
+}
+window.render = function (T) {
+  const S = TL.scenes; let i = S.findIndex(s => T >= s.start && T < s.end); if (i < 0) i = S.length - 1;
+  const sc = S[i], t = T - sc.start, d = sc.end - sc.start;
+  M.setTransform(1, 0, 0, 1, 0, 0);
+  if (sc.trIn === 'swipe' && t < 0.35 && i > 0) {
+    // swipe: a slanted navy band sweeps right-to-left; old scene left of it, new scene right of it
+    const pv = S[i - 1], p = ease(t / 0.35), bw = W * 1.25, sl = 300;
+    const bx = lerp(W + sl, -bw - sl, p);
+    drawScene(AC, pv, T - pv.start); drawScene(BC, sc, t);
+    const side = (img, x0, x1) => { M.save(); M.beginPath(); M.moveTo(x0 + sl, 0); M.lineTo(x1 + sl, 0); M.lineTo(x1, H); M.lineTo(x0, H); M.closePath(); M.clip(); M.drawImage(img, 0, 0); M.restore(); };
+    side(A, -W * 3, bx); side(B, bx + bw, W * 3);
+    M.save(); M.beginPath(); M.moveTo(bx + sl, 0); M.lineTo(bx + bw + sl, 0); M.lineTo(bx + bw, H); M.lineTo(bx, H); M.closePath();
+    M.fillStyle = C.navy; M.fill(); M.restore();
+    M.save(); M.beginPath(); M.moveTo(bx + sl + 60, 0); M.lineTo(bx + sl + 120, 0); M.lineTo(bx + 120, H); M.lineTo(bx + 60, H); M.closePath(); M.fillStyle = C.orange; M.fill(); M.restore();
+  } else drawScene(M, sc, t);
+  let blk = 0;
+  if (sc.fadeOut) blk = Math.max(blk, seg(t, d - 0.35, d));
+  if (sc.fadeIn) blk = Math.max(blk, 1 - seg(t, 0, 0.35));
+  if (blk > 0) { M.fillStyle = `rgba(0,0,0,${blk})`; M.fillRect(0, 0, W, H); }
+};
+window.ready = (async () => {
+  await loadTL();
+  await Promise.all([document.fonts.load(font(80, 800)), document.fonts.load(font(80, 500)), document.fonts.load(font(80, 700, 'Hand'))]);
+  await document.fonts.ready; window.render(0); return true;
+})();
+</script>
+</body></html>
