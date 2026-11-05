@@ -1,0 +1,10 @@
+{"voiceover":"vo_ru.mp3","vo_offset":0.2,"scenes":[
+{"id":"s1","start":0,"end":3.8},
+{"id":"s2","start":3.8,"end":7.25},
+{"id":"s3","start":7.25,"end":11.75,"drop":1.0,"click":2.5},
+{"id":"s4","start":11.75,"end":14.9},
+{"id":"s5","start":14.9,"end":19.3,"beat0":0.3,"period":0.8},
+{"id":"s6","start":19.3,"end":23.4},
+{"id":"s7","start":23.4,"end":26.65,"ding":1.95},
+{"id":"end","start":26.65,"end":33.0,"plus":1.3}
+]}
