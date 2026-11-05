@@ -1,0 +1,14 @@
+sfx.wav + music.wav 27.0 s
+frame 0/810
+frame 150/810
+frame 300/810
+frame 450/810
+frame 600/810
+frame 750/810
+done video_silent.mp4 27s
+done cleopatra_ru.mp4
+done cleopatra_ru_no_music.mp4
+
+real	31m38.356s
+user	1m49.048s
+sys	0m8.254s

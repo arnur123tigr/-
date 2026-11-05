@@ -1,0 +1,9 @@
+{"voiceover":"vo_ru.mp3","voOffset":0.25,"scenes":[
+{"id":"s1","start":0,"end":3.15,"click":0.85},
+{"id":"s2","start":3.15,"end":7.0,"place":2.05},
+{"id":"s3","start":7.0,"end":10.45,"travel":1.7},
+{"id":"s4","start":10.45,"end":14.05,"travel":1.5,"raise":1.75},
+{"id":"s5","start":14.05,"end":17.25,"barA":[0.75,1.55],"barB":[1.55,2.2]},
+{"id":"s6","start":17.25,"end":20.8,"roar":1.25},
+{"id":"end","start":20.8,"end":27.0,"click":1.1,"plus":3.35}
+]}
