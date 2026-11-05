@@ -547,7 +547,7 @@ const NOTE = prep((() => {
 SCN.end = {
   cam: () => ({ s: 1, x: 0, y: 0 }),
   draw(t, d) {
-    LC.save(); LC.translate(400, 1050); LC.rotate(-0.05);
+    LC.save(); LC.translate(400, 830); LC.rotate(-0.05); LC.scale(0.8, 0.8);
     drawStrokes(LC, NOTE, seg(t, 0, 0.8));
     chalkText(LC, 'Ахмет', 30, -110, 110, seg(t, 0.7, 1.2), { color: CHALK });
     chalkText(LC, 'Байтурсынов', 20, 20, 76, seg(t, 1.1, 1.8), { color: CHALK });
@@ -558,14 +558,19 @@ SCN.end = {
     LC.save(); LC.translate(840, 1640); LC.scale(0.82, 0.82);
     drawStrokes(LC, AH.book, seg(t, 0, 1.0), { head: c => { c.translate(0, -556); c.rotate(nod); c.translate(0, -556 * -1); c.translate(0, Math.max(0, nod) * 60); } });
     LC.restore();
-    headline('Есть на ЕНТ. Сохрани', t, { t0: 0.2, dur: 0.9 });
-    // save icon + arrow
-    const ip = seg(t, 1.4, 2.0);
+    headline('Напиши «25» в комментариях', t, { t0: 0.2, dur: 1.0 });
+    // comment bubble with a glowing 25
+    const ip = seg(t, 0.9, 1.6);
     if (ip > 0) {
-      const icon = prep([P([[-40, -55], [40, -55], [40, 55], [0, 25], [-40, 55], [-40, -55]], { lw: 8, color: YEL })]);
-      UC.save(); UC.translate(CX, 1700); drawStrokes(UC, icon, ip); UC.restore();
-      chalkText(UC, 'Сохрани и отправь другу', CX, 1800, 64, seg(t, 1.8, 2.6), { color: CHALK });
+      const bub = prep([S([[-170, -110], [170, -110], [190, -90], [190, 90], [170, 110], [-60, 110], [-120, 175], [-110, 110], [-170, 110], [-190, 90], [-190, -90], [-170, -110]], { lw: 9, color: YEL })]);
+      LC.save(); LC.translate(400, 1470); drawStrokes(LC, bub, ip); LC.restore();
+      const np = seg(t, 1.4, 1.9);
+      const pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 1.9) * 6);
+      chalkText(LC, '25', 400, 1470, 190 * pulse, np, { color: CHALK });
+      if (np >= 1) glowText('25', 400, 1470, 190 * pulse, 0.35 + 0.15 * Math.sin(t * 6));
     }
+    chalkText(UC, 'и получи вопросы по истории', CX, 1790, 60, seg(t, 2.0, 2.8), { color: CHALK });
+    chalkText(UC, 'Казахстана про Байтурсынова', CX, 1855, 60, seg(t, 2.5, 3.3), { color: CHALK });
   }
 };
 

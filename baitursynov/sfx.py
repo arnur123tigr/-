@@ -59,6 +59,7 @@ add(sc['s6']['start'] + sc['s6'].get('drum', 3.0), drum(), 0.8)
 d7 = sc['s7']['end'] - sc['s7']['start']
 add(sc['s7']['start'], swell(d7), 0.35)
 for k in range(3): add(sc['end']['start'] + 0.7 + k * 0.45, chalk(0.35), 0.25)
+add(sc['end']['start'] + 1.9, chime(1319), 0.25)
 
 out = out[:int(SR * dur)]
 out = np.clip(out, -1, 1)
