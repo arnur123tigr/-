@@ -1,0 +1,51 @@
+{
+ "voiceover": "vo_full.wav",
+ "scenes": [
+  {
+   "id": "s1",
+   "start": 0,
+   "end": 4.4
+  },
+  {
+   "id": "s2",
+   "start": 4.4,
+   "end": 8.27
+  },
+  {
+   "id": "s3",
+   "start": 8.27,
+   "end": 11.76,
+   "trIn": "swipe"
+  },
+  {
+   "id": "s4",
+   "start": 11.76,
+   "end": 15.21
+  },
+  {
+   "id": "s5",
+   "start": 15.21,
+   "end": 20.58,
+   "fadeOut": true
+  },
+  {
+   "id": "s6",
+   "start": 20.58,
+   "end": 24.74,
+   "fadeIn": true,
+   "fadeOut": true,
+   "drum": 3.35
+  },
+  {
+   "id": "s7",
+   "start": 24.74,
+   "end": 29.46,
+   "fadeIn": true
+  },
+  {
+   "id": "end",
+   "start": 29.46,
+   "end": 37.07
+  }
+ ]
+}

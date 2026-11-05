@@ -1,0 +1,636 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Baitursynov chalkboard</title>
+<style>
+@font-face{font-family:Chalk;src:url(fonts/Caveat.ttf);font-weight:400 700}
+@font-face{font-family:Arab;src:url(fonts/NotoNaskhArabic.ttf);font-weight:400 700}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------
+// Chalkboard reel: "Этот казах создал алфавит, а его расстреляли"
+// Deterministic: window.render(t) draws the frame for time t (sec).
+// Scene timing comes from timeline.json (fitted to the voiceover).
+// ---------------------------------------------------------------
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const main = document.getElementById('c');
+const M = main.getContext('2d');
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// ---------- seeded random ----------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+// ---------- colours ----------
+const BOARD = '#24332d';
+const CHALK = 'rgb(238,236,226)';
+const YEL = 'rgb(255,228,140)';
+const PINK = 'rgb(255,170,160)';
+const BLUE = 'rgb(170,215,255)';
+
+// ---------- board background (baked once) ----------
+const bg = mk();
+(function bakeBoard() {
+  const g = bg.getContext('2d');
+  g.fillStyle = BOARD; g.fillRect(0, 0, W, H);
+  const r = rng(7);
+  // big soft eraser clouds
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W, y = r() * H, rad = 180 + r() * 420;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, `rgba(255,255,255,${0.025 + r() * 0.03})`);
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // eraser swipe arcs
+  g.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.012 + r() * 0.02})`;
+    g.lineWidth = 60 + r() * 90;
+    g.beginPath();
+    const x = r() * W, y = r() * H;
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + (r() - .5) * 600, y + (r() - .5) * 200, x + (r() - .5) * 800, y + (r() - .5) * 300);
+    g.stroke();
+  }
+  // fine dust
+  const id = g.getImageData(0, 0, W, H), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (r() - 0.5) * 14;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    if (r() < 0.0025) { d[i] += 40; d[i + 1] += 40; d[i + 2] += 40; }
+  }
+  g.putImageData(id, 0, 0);
+  // vignette
+  const v = g.createRadialGradient(CX, CY, H * 0.25, CX, CY, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  // wooden frame
+  const fr = 26;
+  const wood = g.createLinearGradient(0, 0, W, 0);
+  wood.addColorStop(0, '#5a3b22'); wood.addColorStop(.5, '#6e4a2c'); wood.addColorStop(1, '#4e3320');
+  g.fillStyle = wood;
+  g.fillRect(0, 0, W, fr); g.fillRect(0, H - fr, W, fr); g.fillRect(0, 0, fr, H); g.fillRect(W - fr, 0, fr, H);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 4; g.strokeRect(fr, fr, W - 2 * fr, H - 2 * fr);
+})();
+
+// ---------- chalk grain mask (holes punched out of chalk) ----------
+const grain = mk();
+(function bakeGrain() {
+  const g = grain.getContext('2d');
+  const id = g.createImageData(W, H), d = id.data, r = rng(99);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = r();
+    d[i] = d[i + 1] = d[i + 2] = 0;
+    d[i + 3] = v < 0.32 ? 255 * (0.35 + r() * 0.65) : (v < 0.5 ? 70 : 0);
+  }
+  g.putImageData(id, 0, 0);
+  // horizontal drag streaks
+  g.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `rgba(0,0,0,${0.3 + r() * 0.5})`;
+    g.fillRect(r() * W, r() * H, 3 + r() * 16, 1.2);
+  }
+})();
+
+// ---------- layers ----------
+const L = mk(), LC = L.getContext('2d');     // chalk (world space)
+const U = mk(), UC = U.getContext('2d');     // ui text
+const T = mk(), TC = T.getContext('2d');     // temp (eraseable figure)
+const A = mk(), AC = A.getContext('2d');     // scene frame A
+const B = mk(), BC = B.getContext('2d');     // scene frame B
+let glows = [];                               // drawn additively after grain
+
+// ---------- geometry helpers ----------
+function catmull(cp, n = 10) {
+  if (cp.length < 3) return cp.slice();
+  const out = [];
+  for (let i = 0; i < cp.length - 1; i++) {
+    const p0 = cp[Math.max(0, i - 1)], p1 = cp[i], p2 = cp[i + 1], p3 = cp[Math.min(cp.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  out.push(cp[cp.length - 1]);
+  return out;
+}
+function ell(cx, cy, rx, ry, a0 = 0, a1 = Math.PI * 2, n = 36) {
+  const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return o;
+}
+const S = (pts, extra = {}) => Object.assign({ pts: catmull(pts) }, extra);      // smooth stroke
+const P = (pts, extra = {}) => Object.assign({ pts }, extra);                       // poly stroke
+const E = (cx, cy, rx, ry, extra = {}, a0, a1) => Object.assign({ pts: ell(cx, cy, rx, ry, a0, a1) }, extra);
+
+function prep(strokes) {
+  let tot = 0;
+  for (const s of strokes) {
+    let l = 0; s.cum = [0];
+    for (let i = 1; i < s.pts.length; i++) { l += Math.hypot(s.pts[i][0] - s.pts[i - 1][0], s.pts[i][1] - s.pts[i - 1][1]); s.cum.push(l); }
+    s.len = l; s.start = tot; tot += l;
+  }
+  strokes.total = tot;
+  return strokes;
+}
+
+// draw a stroke set, progress 0..1 along total length
+function drawStrokes(ctx, strokes, prog = 1, o = {}) {
+  const lw = o.lw || 7, col = o.color || CHALK;
+  const upto = strokes.total * clamp(prog);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const s of strokes) {
+    if (s.start >= upto) break;
+    const avail = upto - s.start;
+    ctx.save();
+    if (s.g === 'head' && o.head) o.head(ctx);
+    ctx.strokeStyle = s.color || col;
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (pass ? 0.45 : 1);
+      ctx.lineWidth = (s.lw || lw) * (pass ? 0.55 : 1);
+      ctx.beginPath();
+      const ox = pass ? 1.6 : 0, oy = pass ? -1.2 : 0;
+      ctx.moveTo(s.pts[0][0] + ox, s.pts[0][1] + oy);
+      for (let i = 1; i < s.pts.length; i++) {
+        if (s.cum[i] <= avail) ctx.lineTo(s.pts[i][0] + ox, s.pts[i][1] + oy);
+        else {
+          const f = (avail - s.cum[i - 1]) / (s.cum[i] - s.cum[i - 1]);
+          ctx.lineTo(lerp(s.pts[i - 1][0], s.pts[i][0], f) + ox, lerp(s.pts[i - 1][1], s.pts[i][1], f) + oy);
+          break;
+        }
+      }
+      ctx.stroke();
+    }
+    if (s.fill && avail >= s.len) { ctx.globalAlpha = 0.9; ctx.fillStyle = s.color || col; ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- characters ----------
+// Akhmet: round glasses, neat moustache, high-collar coat, small book. Origin at feet, height ~720.
+function ahmet(pose = 'book') {
+  const st = [
+    // head
+    E(0, -612, 50, 60, { g: 'head' }),
+    S([[-50, -628], [-44, -662], [-14, -680], [18, -679], [44, -662], [52, -630]], { g: 'head' }),
+    S([[-30, -668], [-8, -650], [22, -660]], { g: 'head', lw: 5 }),
+    // glasses
+    E(-21, -614, 16, 15, { g: 'head', lw: 5 }), E(21, -614, 16, 15, { g: 'head', lw: 5 }),
+    P([[-5, -616], [5, -616]], { g: 'head', lw: 5 }),
+    P([[-37, -617], [-50, -622]], { g: 'head', lw: 4 }), P([[37, -617], [50, -622]], { g: 'head', lw: 4 }),
+    // nose + moustache
+    S([[0, -606], [-4, -592], [2, -588]], { g: 'head', lw: 4 }),
+    S([[-2, -582], [-14, -585], [-26, -578], [-32, -570]], { g: 'head', lw: 6 }),
+    S([[2, -582], [14, -585], [26, -578], [32, -570]], { g: 'head', lw: 6 }),
+    // ears
+    E(-52, -610, 7, 13, { g: 'head', lw: 4 }, Math.PI * 0.5, Math.PI * 1.5),
+    E(52, -610, 7, 13, { g: 'head', lw: 4 }, -Math.PI * 0.5, Math.PI * 0.5),
+    // high collar
+    P([[-26, -556], [-64, -540], [-48, -470], [0, -440], [48, -470], [64, -540], [26, -556]]),
+    // coat outline
+    S([[-64, -536], [-100, -510], [-112, -420], [-118, -280], [-124, -150]]),
+    S([[64, -536], [100, -510], [112, -420], [118, -280], [124, -150]]),
+    P([[-124, -150], [124, -150]]),
+    P([[0, -440], [0, -150]], { lw: 5 }),
+    E(-12, -400, 5, 5, { lw: 4 }), E(-12, -330, 5, 5, { lw: 4 }), E(-12, -260, 5, 5, { lw: 4 }),
+    // legs + shoes
+    P([[-70, -150], [-72, -12]]), P([[-14, -150], [-24, -12]]),
+    P([[70, -150], [72, -12]]), P([[14, -150], [24, -12]]),
+    S([[-24, -12], [-60, -16], [-92, -6], [-86, 2], [-24, 2]]),
+    S([[24, -12], [60, -16], [92, -6], [86, 2], [24, 2]]),
+  ];
+  // left arm hanging
+  st.push(S([[-104, -500], [-128, -420], [-132, -320], [-122, -270]]));
+  st.push(S([[-84, -470], [-98, -400], [-100, -320], [-108, -272]]));
+  st.push(E(-115, -258, 13, 16, { lw: 5 }));
+  if (pose === 'book') {
+    st.push(S([[104, -500], [132, -420], [118, -350], [60, -330]]));
+    st.push(S([[86, -460], [96, -400], [60, -370]]));
+    // book
+    st.push(P([[-6, -395], [62, -405], [70, -320], [2, -310], [-6, -395]], { color: YEL }));
+    st.push(P([[4, -382], [56, -390]], { lw: 4, color: YEL }));
+    st.push(E(66, -340, 14, 12, { lw: 5 }));
+  } else if (pose === 'point') {   // right arm raised to the side (pointing at board on the right of him)
+    st.push(S([[100, -505], [170, -545], [240, -590]]));
+    st.push(S([[92, -470], [160, -510], [232, -560]]));
+    st.push(E(250, -584, 16, 13, { lw: 5 }));
+    st.push(P([[262, -592], [300, -612]], { lw: 5 }));
+  } else if (pose === 'draw') {    // right arm up holding chalk
+    st.push(S([[100, -505], [160, -560], [200, -640]]));
+    st.push(S([[92, -470], [150, -520], [184, -620]]));
+    st.push(E(200, -656, 14, 16, { lw: 5 }));
+    st.push(P([[206, -670], [226, -700]], { lw: 8, color: YEL }));
+  }
+  return prep(st);
+}
+const AH = { book: ahmet('book'), point: ahmet('point'), draw: ahmet('draw') };
+
+// kid at a desk, front view. origin = centre of desk top edge
+function kid(v) {
+  const st = [];
+  st.push(E(0, -132, 40, 44));
+  if (v === 0) st.push(S([[-40, -140], [-30, -172], [0, -180], [30, -172], [40, -140]], { lw: 6 }));
+  if (v === 1) { st.push(S([[-38, -150], [-20, -176], [20, -176], [38, -150]])); st.push(E(-50, -110, 12, 22, { lw: 5 })); st.push(E(50, -110, 12, 22, { lw: 5 })); }
+  if (v === 2) { st.push(P([[-42, -150], [-36, -182], [36, -182], [42, -150], [-42, -150]], { color: PINK })); }
+  st.push(E(-14, -134, 3.5, 3.5, { lw: 5, fill: true }), E(14, -134, 3.5, 3.5, { lw: 5, fill: true }));
+  st.push(E(0, -118, 12, 8, { lw: 4 }, 0.2, Math.PI - 0.2));
+  st.push(S([[-52, -54], [-30, -76], [30, -76], [52, -54]]));
+  st.push(P([[-52, -54], [-58, 0]]), P([[52, -54], [58, 0]]));
+  st.push(S([[-46, -40], [-30, -10], [12, -6]], { lw: 6 }));
+  st.push(S([[46, -40], [30, -10], [-12, -6]], { lw: 6 }));
+  // desk
+  st.push(P([[-150, 0], [150, 0], [170, 28], [-170, 28], [-150, 0]]));
+  st.push(P([[-160, 28], [-160, 150]]), P([[160, 28], [160, 150]]), P([[-160, 110], [160, 110]], { lw: 5 }));
+  return prep(st);
+}
+const KIDS = [kid(0), kid(1), kid(2)];
+
+// ---------- text helpers ----------
+function font(px, w = 700, fam = 'Chalk') { return `${w} ${px}px ${fam}`; }
+// write-on text revealed left->right (or right->left for rtl)
+function chalkText(ctx, txt, x, y, px, prog = 1, o = {}) {
+  if (prog <= 0) return;
+  ctx.save();
+  ctx.font = font(px, o.w || 700, o.fam || 'Chalk');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (o.rtl) ctx.direction = 'rtl';
+  const w = ctx.measureText(txt).width;
+  ctx.beginPath();
+  const pw = (w + px) * clamp(prog);
+  if (o.rtl) ctx.rect(x + w / 2 + px / 2 - pw, y - px * 1.2, pw, px * 2.4);
+  else ctx.rect(x - w / 2 - px / 2, y - px * 1.2, pw, px * 2.4);
+  ctx.clip();
+  ctx.fillStyle = o.color || CHALK;
+  ctx.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  ctx.fillText(txt, x, y);
+  ctx.globalAlpha *= 0.4; ctx.fillText(txt, x + 1.5, y - 1.5);
+  ctx.restore();
+  return w;
+}
+function wrap(ctx, txt, px, maxW) {
+  ctx.font = font(px); const words = txt.split(' '); const lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  if (lines.length === 2) {           // balance two lines
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const l1 = words.slice(0, k).join(' '), l2 = words.slice(k).join(' ');
+      const m = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
+      if (m <= maxW && (!best || m < best[0])) best = [m, [l1, l2]];
+    }
+    if (best) return best[1];
+  }
+  return lines;
+}
+// headline at top (screen space), written on over `dur` seconds
+function headline(txt, t, o = {}) {
+  const px = o.px || 92, y0 = o.y || 210;
+  const lines = wrap(UC, txt, px, 940);
+  const tot = lines.reduce((a, l) => a + l.length, 0);
+  let acc = 0; const dur = o.dur || 0.9;
+  lines.forEach((ln, i) => {
+    const a = acc / tot, b = (acc + ln.length) / tot; acc += ln.length;
+    const p = seg(t, (o.t0 || 0) + a * dur, (o.t0 || 0) + b * dur);
+    chalkText(UC, ln, CX, y0 + i * px * 1.05, px, p, { color: o.color || YEL });
+  });
+  // underline
+  const ul = seg(t, (o.t0 || 0) + dur, (o.t0 || 0) + dur + 0.3);
+  if (ul > 0 && !o.noLine) {
+    const y = y0 + (lines.length - 1) * px * 1.05 + px * 0.62;
+    UC.save(); UC.strokeStyle = o.color || YEL; UC.lineWidth = 6; UC.lineCap = 'round'; UC.globalAlpha = .8;
+    UC.beginPath(); UC.moveTo(CX - 200, y); UC.quadraticCurveTo(CX, y + 10, CX - 200 + 400 * ul, y - 2); UC.stroke(); UC.restore();
+  }
+}
+function glowText(txt, x, y, px, alpha, color = YEL, fam = 'Chalk', rtl = false) {
+  glows.push({ txt, x, y, px, alpha, color, fam, rtl });
+}
+
+// ---------- scenes ----------
+// each: draw(t, d) with local time t and scene duration d. Draws into LC (world, camera applied) & UC (screen).
+const KZ = ['ә', 'ғ', 'қ', 'ң', 'ө', 'ұ', 'ү'];
+const ARAB = ['ا', 'ب', 'ت', 'ج', 'ح', 'د', 'ر', 'س', 'ع', 'ق', 'ك', 'ل', 'م', 'ن', 'و', 'ي'];
+const QMARKS = [3, 8, 11, 14];   // which arabic letters get a "?"
+const TOTE = ['ٵ', 'ە', 'ڭ', 'ۇ', 'ۆ', 'ى'];
+const ALPHA42 = 'АӘБВГҒДЕЁЖЗИЙКҚЛМНҢОӨПРСТУҰҮФХҺЦЧШЩЪЫІЬЭЮЯ'.split('');
+
+const SCN = {};
+
+SCN.s1 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.14, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    // Akhmet silhouette slowly appears behind letters
+    LC.save(); LC.translate(CX, 1760); LC.scale(1.3, 1.3);
+    drawStrokes(LC, AH.book, seg(t, 0.2, d * 0.95), { alpha: lerp(0.15, 0.5, seg(t, 0.5, d)), lw: 7 });
+    LC.restore();
+    // Kazakh letters one by one
+    KZ.forEach((ch, i) => {
+      const t0 = 0.15 + i * 0.36;
+      const p = seg(t, t0, t0 + 0.3);
+      const ang = Math.PI * (1.12 + i / (KZ.length - 1) * 0.76);
+      const x = CX + Math.cos(ang) * 400, y = 760 + Math.sin(ang) * 260;
+      chalkText(LC, ch, x, y, 190, p, { color: CHALK });
+      if (p >= 1) glowText(ch, x, y, 190, 0.18 * seg(t, t0 + 0.3, t0 + 0.8));
+    });
+    headline('Создал алфавит — и был расстрелян', t, { t0: 0.1, dur: 1.2 });
+  }
+};
+
+SCN.s2 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    // small board on the wall (right), Akhmet at left pointing
+    const bx = 610, by = 520, bw = 360, bh = 250;
+    const frame = prep([P([[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh], [bx, by]], { lw: 8 }), P([[bx + 40, by + bh], [bx + 20, by + bh + 120]], { lw: 6 }), P([[bx + bw - 40, by + bh], [bx + bw - 20, by + bh + 120]], { lw: 6 })]);
+    drawStrokes(LC, frame, seg(t, 0, 0.5));
+    chalkText(LC, 'Аа  Бб', bx + bw / 2, by + 95, 92, seg(t, 0.5, 1.1));
+    chalkText(LC, 'Вв  Гг', bx + bw / 2, by + 180, 92, seg(t, 0.9, 1.5));
+    LC.save(); LC.translate(330, 1010); LC.scale(0.95, 0.95);
+    drawStrokes(LC, AH.point, seg(t, 0, 1.3));
+    LC.restore();
+    // three kids at desks
+    [[205, 1400, 0.78], [540, 1440, 0.82], [875, 1400, 0.78]].forEach(([x, y, s], i) => {
+      LC.save(); LC.translate(x, y); LC.scale(s, s);
+      drawStrokes(LC, KIDS[i], seg(t, 0.3 + i * 0.25, 1.4 + i * 0.25));
+      LC.restore();
+    });
+    headline('Ахмет Байтурсынов', t, { t0: 0.1, dur: 0.8 });
+    chalkText(UC, '1873 — 1937', CX, 345, 56, seg(t, 0.9, 1.4), { color: CHALK, alpha: 0.8 });
+  }
+};
+
+SCN.s3 = {
+  cam: (t, d) => ({ s: 1, x: lerp(260, -260, ease(t / d)), y: 0 }),
+  draw(t, d) {
+    // wide row of old Arabic letters (board wider than screen), camera pans right
+    ARAB.forEach((ch, i) => {
+      const col = i % 8, row = Math.floor(i / 8);
+      const x = -40 + col * 165 + (row ? 70 : 0), y = 820 + row * 330;
+      const p = seg(t, 0.05 + i * 0.05, 0.3 + i * 0.05);
+      chalkText(LC, ch, x, y, 170, p, { fam: 'Arab', rtl: true });
+    });
+    QMARKS.forEach((i, k) => {
+      const col = i % 8, row = Math.floor(i / 8);
+      const x = -40 + col * 165 + (row ? 70 : 0), y = 820 + row * 330 - 175;
+      const t0 = 1.1 + k * 0.45;
+      const p = seg(t, t0, t0 + 0.3);
+      const bob = Math.sin((t - t0) * 5) * 6 * (p >= 1 ? 1 : 0);
+      chalkText(LC, '?', x, y + bob, 130, p, { color: YEL });
+      if (p >= 1) glowText('?', x, y + bob, 130, 0.25);
+    });
+    // Kazakh sounds with no letter, written underneath
+    chalkText(LC, 'ә?  ө?  ұ?  ү?  ң?', 540, 1560, 96, seg(t, 1.8, 2.8), { color: PINK });
+    headline('Для казахских звуков нет букв', t, { t0: 0.1, dur: 1.0 });
+  }
+};
+
+SCN.s4 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.16, ease(t / d)), x: 0, y: lerp(0, 60, ease(t / d)) }),
+  draw(t, d) {
+    chalkText(LC, 'Төте жазу', CX, 520, 120, seg(t, 0.1, 0.8), { color: YEL });
+    if (t > 0.8) glowText('Төте жазу', CX, 520, 120, 0.2 * seg(t, 0.8, 1.3));
+    TOTE.forEach((ch, i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      const x = 300 + col * 240, y = 800 + row * 280;
+      const t0 = 0.5 + i * 0.42;
+      const p = seg(t, t0, t0 + 0.35);
+      chalkText(LC, ch, x, y, 200, p, { fam: 'Arab', rtl: true });
+      if (p >= 1) {
+        const pulse = 0.35 + 0.25 * Math.sin((t - t0) * 4);
+        glowText(ch, x, y, 200, pulse * seg(t, t0 + 0.35, t0 + 0.6), YEL, 'Arab', true);
+      }
+    });
+    // Akhmet drawing, bottom right
+    LC.save(); LC.translate(780, 1700); LC.scale(0.6, 0.6);
+    drawStrokes(LC, AH.draw, seg(t, 0, 0.8));
+    LC.restore();
+    headline('«Төте жазу» — новое письмо', t, { t0: 0.1, dur: 1.0 });
+  }
+};
+
+// book + flying letters
+const BOOK_CLOSED = prep([P([[-150, -100], [150, -100], [150, 100], [-150, 100], [-150, -100]], { lw: 8 }), P([[-130, -100], [-130, 100]], { lw: 5 })]);
+SCN.s5 = {
+  cam: (t, d) => ({ s: 1, x: 0, y: lerp(90, -50, ease(seg(t, 1.2, d - 0.3))) }),
+  draw(t, d) {
+    const bx = CX, by = 640;
+    const open = ease(seg(t, 0.7, 1.4));
+    LC.save(); LC.translate(bx, by); LC.scale(1.3, 1.3);
+    if (open < 0.02) {
+      drawStrokes(LC, BOOK_CLOSED, seg(t, 0, 0.4));
+      chalkText(LC, 'Тіл — құрал', 10, -20, 72, seg(t, 0.25, 0.65), { color: YEL });
+      chalkText(LC, 'А. Байтұрсынұлы', 10, 50, 40, seg(t, 0.4, 0.7));
+    } else {
+      // open spread: cover rotates out to the left
+      const cw = 300 * Math.cos(open * Math.PI);
+      LC.lineWidth = 8; LC.strokeStyle = CHALK; LC.lineJoin = 'round';
+      // right page
+      LC.beginPath(); LC.moveTo(0, -100); LC.quadraticCurveTo(150, -125, 300, -100); LC.lineTo(300, 100); LC.quadraticCurveTo(150, 75, 0, 100); LC.closePath(); LC.stroke();
+      // turning cover/left page
+      LC.beginPath(); LC.moveTo(0, -100); LC.quadraticCurveTo(cw / 2, -125, cw, -100); LC.lineTo(cw, 100); LC.quadraticCurveTo(cw / 2, 75, 0, 100); LC.stroke();
+      if (open > 0.5) {
+        LC.globalAlpha = seg(open, .5, 1);
+        for (let k = 0; k < 4; k++) { LC.lineWidth = 4; LC.beginPath(); LC.moveTo(-260, -50 + k * 35); LC.lineTo(-40, -50 + k * 35); LC.stroke(); LC.beginPath(); LC.moveTo(40, -50 + k * 35); LC.lineTo(260, -50 + k * 35); LC.stroke(); }
+        LC.globalAlpha = 1;
+      }
+    }
+    LC.restore();
+    if (open >= 0.02) chalkText(LC, 'Тіл — құрал', CX, by - 210, 84, 1, { color: YEL });
+    // kids at desks below
+    const desks = [[205, 1560], [540, 1600], [875, 1560]];
+    desks.forEach(([x, y], i) => { LC.save(); LC.translate(x, y); LC.scale(0.78, 0.78); drawStrokes(LC, KIDS[i], 1); LC.restore(); });
+    // letters fly from the book to desks
+    const fly = ['Ә', 'Ғ', 'Қ', 'Ң', 'Ө', 'Ұ', 'Ү', 'І', 'Һ'];
+    fly.forEach((ch, i) => {
+      const t0 = 1.3 + i * 0.16, p = easeOut(seg(t, t0, t0 + 1.4));
+      if (p <= 0) return;
+      const [dx, dy] = desks[i % 3];
+      const tx = dx + ((Math.floor(i / 3)) - 1) * 70, ty = dy - 20;
+      const sx = bx + (i % 2 ? 60 : -60), sy = by - 20;
+      const mx = lerp(sx, tx, 0.5) + (i % 2 ? 260 : -260), my = lerp(sy, ty, 0.35);
+      const x = (1 - p) * (1 - p) * sx + 2 * (1 - p) * p * mx + p * p * tx;
+      const y = (1 - p) * (1 - p) * sy + 2 * (1 - p) * p * my + p * p * ty;
+      const sz = lerp(50, 74, Math.sin(p * Math.PI)) ;
+      chalkText(LC, ch, x, y, sz, 1, { color: i % 2 ? YEL : CHALK });
+      glowText(ch, x, y, sz, 0.3 * (1 - p * 0.6), YEL);
+    });
+    headline('Учитель нации', t, { t0: 0.2, dur: 0.7, px: 110 });
+  }
+};
+
+// Akhmet erased by a sponge
+function spongePath(p) {   // zigzag over the figure, returns list of points up to p
+  const pts = [];
+  const rows = 9, top = 800, bot = 1740;
+  for (let r = 0; r <= rows; r++) { const y = lerp(top, bot, r / rows); pts.push([r % 2 ? 760 : 320, y]); }
+  const all = catmull(pts, 16);
+  const n = Math.max(1, Math.floor(all.length * clamp(p)));
+  return all.slice(0, n);
+}
+function smudge(ctx, alpha) {
+  ctx.save();
+  const gr = ctx.createRadialGradient(CX, 1220, 40, CX, 1220, 480);
+  gr.addColorStop(0, `rgba(240,240,230,${alpha * 1.4})`); gr.addColorStop(1, 'rgba(240,240,230,0)');
+  ctx.fillStyle = gr; ctx.fillRect(0, 600, W, 1200);
+  const pts = spongePath(1);
+  ctx.strokeStyle = `rgba(240,240,230,${alpha * 0.45})`; ctx.lineWidth = 190; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+  ctx.restore();
+}
+SCN.s6 = {
+  dark: (t, d) => 0.15 + 0.4 * seg(t, 0, 0.8),
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    const ep = ease(seg(t, 1.5, d - 0.6));
+    // figure on temp layer, then erase
+    TC.setTransform(1, 0, 0, 1, 0, 0); TC.clearRect(0, 0, W, H);
+    TC.save(); TC.translate(CX, 1690); TC.scale(1.25, 1.25); drawStrokes(TC, AH.book, 1); TC.restore();
+    if (ep > 0) {
+      const pts = spongePath(ep);
+      TC.save(); TC.globalCompositeOperation = 'destination-out'; TC.lineWidth = 210; TC.lineCap = 'round'; TC.lineJoin = 'round';
+      TC.beginPath(); pts.forEach((q, i) => i ? TC.lineTo(q[0], q[1]) : TC.moveTo(q[0], q[1])); TC.stroke(); TC.restore();
+      smudge(LC, 0.16 * ep);
+    }
+    LC.drawImage(T, 0, 0);
+    // date
+    chalkText(LC, '1937', CX, 500, 260, seg(t, 0.3, 1.2), { color: PINK });
+    // sponge
+    if (ep > 0 && ep < 1) {
+      const pts = spongePath(ep), q = pts[pts.length - 1];
+      LC.save(); LC.translate(q[0], q[1]); LC.rotate(-0.15);
+      LC.fillStyle = 'rgb(214,178,92)'; LC.strokeStyle = 'rgb(120,90,40)'; LC.lineWidth = 6;
+      LC.beginPath(); LC.roundRect(-110, -55, 220, 110, 22); LC.fill(); LC.stroke();
+      LC.fillStyle = 'rgb(90,70,50)'; LC.beginPath(); LC.roundRect(-110, 20, 220, 35, 14); LC.fill();
+      LC.restore();
+    }
+  }
+};
+
+SCN.s7 = {
+  cam: (t, d) => ({ s: lerp(1.22, 1.0, ease(t / d)), x: 0, y: lerp(-80, 0, ease(t / d)) }),
+  draw(t, d) {
+    smudge(LC, 0.16 * (1 - 0.5 * seg(t, 0, d)));
+    LC.save(); LC.translate(CX, 1640); LC.scale(1.15, 1.15);
+    drawStrokes(LC, AH.book, seg(t, 0.1, 2.4));
+    LC.restore();
+    chalkText(LC, '1988', CX, 520, 220, seg(t, 0.6, 1.4), { color: YEL });
+    if (t > 1.4) glowText('1988', CX, 520, 220, 0.25 * seg(t, 1.4, 2));
+    // glowing Kazakh alphabet around him
+    const n = ALPHA42.length;
+    ALPHA42.forEach((ch, i) => {
+      const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const x = CX + Math.cos(a) * 420, y = 1220 + Math.sin(a) * 560;
+      const t0 = 0.8 + i * 0.07, p = seg(t, t0, t0 + 0.25);
+      chalkText(LC, ch, x, y, 70, p, { color: i % 3 ? CHALK : YEL });
+      if (p > 0) glowText(ch, x, y, 70, 0.45 * p * (0.7 + 0.3 * Math.sin(t * 3 + i)));
+    });
+    headline('1988 — реабилитирован', t, { t0: 0.2, dur: 1.0 });
+  }
+};
+
+const NOTE = prep((() => {
+  const st = [P([[-230, -300], [230, -300], [230, 300], [-230, 300], [-230, -300]], { lw: 8 })];
+  for (let i = 0; i < 9; i++) st.push(E(-230, -260 + i * 65, 22, 14, { lw: 5 }, -Math.PI * 0.9, Math.PI * 0.9));
+  for (let i = 0; i < 8; i++) st.push(P([[-180, -200 + i * 62], [200, -200 + i * 62]], { lw: 3, color: BLUE }));
+  st.push(P([[-150, -300], [-150, 300]], { lw: 3, color: PINK }));
+  return st;
+})());
+SCN.end = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    LC.save(); LC.translate(400, 830); LC.rotate(-0.05); LC.scale(0.8, 0.8);
+    drawStrokes(LC, NOTE, seg(t, 0, 0.8));
+    chalkText(LC, 'Ахмет', 30, -110, 110, seg(t, 0.7, 1.2), { color: CHALK });
+    chalkText(LC, 'Байтурсынов', 20, 20, 76, seg(t, 1.1, 1.8), { color: CHALK });
+    chalkText(LC, '1873 — 1937', 30, 150, 58, seg(t, 1.7, 2.1), { color: YEL });
+    LC.restore();
+    // Akhmet beside, nodding
+    const nod = t > 1.6 ? Math.sin((t - 1.6) * 6) * 0.07 * (t < 3.4 ? 1 : 0) : 0;
+    LC.save(); LC.translate(840, 1640); LC.scale(0.82, 0.82);
+    drawStrokes(LC, AH.book, seg(t, 0, 1.0), { head: c => { c.translate(0, -556); c.rotate(nod); c.translate(0, -556 * -1); c.translate(0, Math.max(0, nod) * 60); } });
+    LC.restore();
+    headline('Напиши «25» в комментариях', t, { t0: 0.2, dur: 1.0 });
+    // comment bubble with a glowing 25
+    const ip = seg(t, 0.9, 1.6);
+    if (ip > 0) {
+      const bub = prep([S([[-170, -110], [170, -110], [190, -90], [190, 90], [170, 110], [-60, 110], [-120, 175], [-110, 110], [-170, 110], [-190, 90], [-190, -90], [-170, -110]], { lw: 9, color: YEL })]);
+      LC.save(); LC.translate(400, 1470); drawStrokes(LC, bub, ip); LC.restore();
+      const np = seg(t, 1.4, 1.9);
+      const pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 1.9) * 6);
+      chalkText(LC, '25', 400, 1470, 190 * pulse, np, { color: CHALK });
+      if (np >= 1) glowText('25', 400, 1470, 190 * pulse, 0.35 + 0.15 * Math.sin(t * 6));
+    }
+    chalkText(UC, 'и получи вопросы по истории', CX, 1790, 60, seg(t, 2.0, 2.8), { color: CHALK });
+    chalkText(UC, 'Казахстана про Байтурсынова', CX, 1855, 60, seg(t, 2.5, 3.3), { color: CHALK });
+  }
+};
+
+// ---------- timeline ----------
+let TL = null;
+async function loadTL() { TL = await (await fetch('timeline.json')).json(); }
+
+function renderScene(ctx, id, t, d) {
+  const sc = SCN[id];
+  glows = [];
+  LC.setTransform(1, 0, 0, 1, 0, 0); LC.clearRect(0, 0, W, H);
+  UC.setTransform(1, 0, 0, 1, 0, 0); UC.clearRect(0, 0, W, H);
+  const cam = sc.cam(t, d);
+  const camT = c => { c.translate(CX, CY); c.scale(cam.s, cam.s); c.translate(-CX + cam.x, -CY + cam.y); };
+  LC.save(); camT(LC); sc.draw(t, d); LC.restore();
+  // grain
+  for (const c of [LC, UC]) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out'; c.drawImage(grain, 0, 0); c.restore(); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(bg, 0, 0);
+  if (sc.dark) { ctx.fillStyle = `rgba(0,0,0,${sc.dark(t, d)})`; ctx.fillRect(0, 0, W, H); }
+  ctx.drawImage(L, 0, 0);
+  // glow pass
+  if (glows.length) {
+    ctx.save(); camT(ctx); ctx.globalCompositeOperation = 'lighter';
+    for (const g of glows) {
+      ctx.font = font(g.px, 700, g.fam); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (g.rtl) ctx.direction = 'rtl'; else ctx.direction = 'ltr';
+      ctx.shadowColor = g.color; ctx.shadowBlur = 40; ctx.fillStyle = g.color; ctx.globalAlpha = clamp(g.alpha);
+      ctx.fillText(g.txt, g.x, g.y);
+    }
+    ctx.restore();
+  }
+  ctx.drawImage(U, 0, 0);
+}
+
+window.render = function (t) {
+  const sc = TL.scenes;
+  let i = sc.findIndex(s => t >= s.start && t < s.end); if (i < 0) i = sc.length - 1;
+  const s = sc[i], lt = t - s.start, d = s.end - s.start;
+  M.setTransform(1, 0, 0, 1, 0, 0); M.globalAlpha = 1;
+  const tr = s.trIn;   // transition INTO this scene
+  const trD = 0.4;
+  if (tr === 'swipe' && lt < trD && i > 0) {
+    const prev = sc[i - 1];
+    renderScene(AC, prev.id, prev.end - prev.start - 0.001 + lt, prev.end - prev.start);
+    renderScene(BC, s.id, lt, d);
+    const p = ease(lt / trD);
+    M.fillStyle = '#000'; M.fillRect(0, 0, W, H);
+    M.drawImage(A, -p * W, 0); M.drawImage(B, (1 - p) * W, 0);
+  } else {
+    renderScene(M, s.id, lt, d);
+  }
+  // fades (to/from black)
+  let fade = 0;
+  if (s.fadeOut) fade = Math.max(fade, seg(lt, d - 0.35, d));
+  if (s.fadeIn) fade = Math.max(fade, 1 - seg(lt, 0, 0.35));
+  if (fade > 0) { M.fillStyle = `rgba(0,0,0,${fade})`; M.fillRect(0, 0, W, H); }
+};
+
+window.ready = (async () => { await loadTL(); await document.fonts.load(font(80)); await document.fonts.load(font(80, 700, 'Arab'), 'ابڭ'); await document.fonts.ready; window.render(0); return true; })();
+</script>
+</body></html>
