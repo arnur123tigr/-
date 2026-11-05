@@ -1,0 +1,776 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Zanzibar PS2 reel</title>
+<style>
+@font-face{font-family:Rubik;src:url(fonts/Rubik-Medium.ttf);font-weight:500}
+@font-face{font-family:Rubik;src:url(fonts/Rubik-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// ---------------------------------------------------------------
+// PS2-style low-poly reel: "Самая короткая война в истории — 38 минут"
+// Deterministic: window.render(t) draws the frame for time t (sec).
+// Look: flat-shaded low-poly, nearest-filtered tiny textures, low internal
+// resolution without antialiasing, fog, blob shadows, soft bloom, game HUD text.
+// World: island centred at (0,0,-8), palace front faces +z (the sea),
+// warships at z≈20..28, throne room set far away at x=300.
+// ---------------------------------------------------------------
+import * as THREE from 'three';
+
+await document.fonts.load('800 80px Rubik'); await document.fonts.load('500 80px Rubik');
+const W = 1080, H = 1920, LW = 486, LH = 864;          // output / internal (PS2-ish) resolution
+const out = document.getElementById('c'), O = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = LW; glc.height = LH;
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: false, preserveDrawingBuffer: true });
+renderer.setSize(LW, LH, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, LW / LH, 0.1, 500);
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const easeIn = t => { t = clamp(t); return t * t * t; };
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = t => { t = clamp(t); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+
+// ---------- materials ----------
+const mats = {};
+function mat(c, o = {}) {
+  const k = c + JSON.stringify(o);
+  if (!mats[k]) mats[k] = new THREE.MeshLambertMaterial(Object.assign({ color: c, flatShading: true }, o));
+  return mats[k];
+}
+function mesh(geo, m) { return new THREE.Mesh(geo, m); }
+function place(m, o) { if (o.position) m.position.copy(o.position); if (o.rotation) m.rotation.copy(o.rotation); return m; }
+function canvasTex(w, h, draw, nearest = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  if (nearest) { t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; }
+  return t;
+}
+const texMat = (tex, o = {}) => new THREE.MeshLambertMaterial(Object.assign({ map: tex }, o));
+const C = {
+  white: '#F2EEE4', wallSh: '#D9D2C2', sand: '#EBCF8E', sandD: '#CFAE6A', grass: '#5DA83C', grassD: '#3F8A2E',
+  trunk: '#8A5E34', leaf: '#3E9B35', leafD: '#2C7A2A', red: '#D3262A', gold: '#E8B33A', navy: '#1B2A55',
+  skin: '#B07850', skinL: '#E8B894', black: '#151515', grey: '#7D858C', greyD: '#565E66', greyL: '#A5ACB2',
+  sea: '#1C8FB8', lagoon: '#47D1C9', smoke: '#5B5B5B', brownD: '#4A2E18', beige: '#E6D7B5', silver: '#C9CED4'
+};
+
+// ---------- sky, fog, light ----------
+const sky = canvasTex(8, 256, (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#2B7FD8'); g.addColorStop(0.5, '#6FB9EE'); g.addColorStop(0.8, '#BFE3F5'); g.addColorStop(1, '#F6E7C8');
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+}, false);
+scene.background = sky;
+scene.fog = new THREE.Fog('#CFE6F2', 70, 230);
+const hemi = new THREE.HemisphereLight('#E6F3FF', '#8C7A55', 1.15); scene.add(hemi);
+const sun = new THREE.DirectionalLight('#FFF1D6', 2.3); sun.position.set(-30, 50, 40); scene.add(sun);
+
+// ---------- sea ----------
+const seaGeo = new THREE.PlaneGeometry(420, 420, 70, 70).rotateX(-Math.PI / 2);
+const sea = mesh(seaGeo, mat(C.sea)); sea.position.y = -0.1; scene.add(sea);
+const seaBase = seaGeo.attributes.position.array.slice();
+function waves(T) {
+  const p = seaGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = seaBase[i * 3], z = seaBase[i * 3 + 2];
+    p.setY(i, 0.16 * Math.sin(x * 0.35 + T * 1.6) + 0.12 * Math.sin(z * 0.42 - T * 1.2 + x * 0.1));
+  }
+  p.needsUpdate = true;
+}
+const lagoon = mesh(new THREE.CircleGeometry(21, 14).rotateX(-Math.PI / 2), mat(C.lagoon)); lagoon.position.set(0, 0.04, -8); scene.add(lagoon);
+
+// ---------- island ----------
+const island = new THREE.Group(); island.position.set(0, 0, -8); scene.add(island);
+{
+  const g = new THREE.CylinderGeometry(15, 16.5, 1.2, 14, 1); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(Math.atan2(p.getZ(i), p.getX(i)) * 5); p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k); }
+  const sand = mesh(g.translate(0, 0.2, 0), mat(C.sand)); island.add(sand);
+  const g2 = new THREE.CylinderGeometry(11, 12, 0.3, 11).translate(0, 0.92, -1.5); island.add(mesh(g2, mat(C.grass)));
+}
+const TOPY = 0.8;
+function palm(x, z, h = 4, lean = 0.2, ry = 0) {
+  const g = new THREE.Group(); g.position.set(x, TOPY, z); g.rotation.y = ry;
+  let y = 0, dx = 0; const n = 5;
+  for (let i = 0; i < n; i++) {
+    const s = mesh(new THREE.CylinderGeometry(0.16 - i * 0.015, 0.2 - i * 0.015, h / n, 5), mat(i % 2 ? C.trunk : '#76502C'));
+    dx = Math.sin(lean) * (i + 0.5) * h / n * (i / n) * 1.6;
+    s.position.set(dx, y + h / n / 2, 0); s.rotation.z = -lean * i / n; g.add(s); y += h / n * 0.98;
+  }
+  const top = new THREE.Group(); top.position.set(dx, y, 0); g.add(top);
+  for (let k = 0; k < 7; k++) {
+    const lf = mesh(new THREE.ConeGeometry(0.55, 2.6, 3).rotateZ(-Math.PI / 2).translate(1.3, 0, 0).scale(1, 0.25, 1), mat(k % 2 ? C.leaf : C.leafD));
+    lf.rotation.set(0, k / 7 * Math.PI * 2, -0.45); top.add(lf);
+  }
+  const nut = mesh(new THREE.IcosahedronGeometry(0.18, 0), mat(C.brownD)); nut.position.set(0.15, -0.2, 0.1); top.add(nut);
+  g.userData.top = top;
+  island.add(g); return g;
+}
+const palms = [[-9, 3, 4.2, 0.3, 0.4], [-11, -2, 3.6, 0.2, 1.4], [-7, 5.5, 3.2, 0.35, -0.5], [8.5, 4, 4.4, 0.3, 2.6], [11, -1, 3.8, 0.2, 3.3],
+  [9.5, 7, 3.0, 0.4, 2.2], [-4, -6, 4.0, 0.15, 0.9], [5, -7, 4.2, 0.2, 2.0], [-12.5, 6, 3.4, 0.4, 0], [12, 3.5, 3.5, 0.35, 3.0]].map(a => palm(...a));
+
+// ---------- palace ----------
+const palace = new THREE.Group(); palace.position.set(0, TOPY, -2); island.add(palace); // world: (0,0.8,-10)
+function wallTex(cols, rows, door = false) {
+  return canvasTex(64, 32, (c, w, h) => {
+    c.fillStyle = C.white; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#E2DCCD'; for (let i = 0; i < 40; i++) c.fillRect((i * 37) % w, (i * 13) % h, 2, 1);
+    for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) {
+      const cx = (k + 0.5) * w / cols, cy = (r + 0.62) * h / rows, aw = w / cols * 0.42, ah = h / rows * 0.55;
+      if (door && r === rows - 1 && k === Math.floor(cols / 2)) { c.fillStyle = '#5A3A1E'; c.fillRect(cx - aw * 0.7, cy - ah * 0.7, aw * 1.4, ah * 1.2); continue; }
+      c.fillStyle = '#2E3A48'; c.fillRect(cx - aw / 2, cy - ah / 2 + aw / 2, aw, ah - aw / 2);
+      c.beginPath(); c.arc(cx, cy - ah / 2 + aw / 2, aw / 2, Math.PI, 0); c.fill();
+    }
+    c.fillStyle = '#C9C0AC'; c.fillRect(0, h - 1, w, 1);
+  });
+}
+function block(w, h, d, tex, x, y, z) {
+  const ms = [mat(C.wallSh), mat(C.wallSh), mat(C.white), mat(C.white), texMat(tex), texMat(tex)];
+  const b = mesh(new THREE.BoxGeometry(w, h, d), ms); b.position.set(x, y + h / 2, z); palace.add(b); return b;
+}
+block(13, 3.4, 5.5, wallTex(7, 2, true), 0, 0, 0);
+block(9.5, 2.8, 4.2, wallTex(5, 1), 0, 3.4, -0.3);
+// balcony band + crenellations
+palace.add(place(mesh(new THREE.BoxGeometry(13.4, 0.25, 5.9), mat(C.wallSh)), { position: V(0, 3.45, 0) }));
+for (let i = -6; i <= 6; i++) { const m = mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), mat(C.white)); m.position.set(i, 3.8, 2.75); palace.add(m); }
+for (let i = -4; i <= 4; i++) { const m = mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), mat(C.white)); m.position.set(i, 6.45, 1.8); palace.add(m); }
+// pillars on the front
+for (let i = -6; i <= 6; i += 2) { const p = mesh(new THREE.CylinderGeometry(0.22, 0.22, 3.4, 6), mat(C.white)); p.position.set(i, 1.7, 3.1); palace.add(p); }
+palace.add(place(mesh(new THREE.BoxGeometry(13.4, 0.3, 1.2), mat(C.white)), { position: V(0, 3.3, 2.9) }));
+// side back door (left wall) for Khalid's escape
+const sideDoor = mesh(new THREE.BoxGeometry(0.1, 1.9, 1.1), mat('#5A3A1E')); sideDoor.position.set(-6.53, 0.95, -1.3); palace.add(sideDoor);
+// clock tower
+const tower = new THREE.Group(); tower.position.set(5.0, 0, -0.6); palace.add(tower);
+tower.add(place(mesh(new THREE.BoxGeometry(2.4, 10.5, 2.4), [mat(C.white), mat(C.white), mat(C.white), mat(C.white), texMat(wallTex(1, 4)), mat(C.white)]), { position: V(0, 5.25, 0) }));
+tower.add(place(mesh(new THREE.BoxGeometry(2.8, 0.35, 2.8), mat(C.wallSh)), { position: V(0, 10.6, 0) }));
+tower.add(place(mesh(new THREE.BoxGeometry(2.1, 1.8, 2.1), mat(C.white)), { position: V(0, 11.65, 0) }));
+tower.add(place(mesh(new THREE.ConeGeometry(1.75, 1.8, 4).rotateY(Math.PI / 4), mat('#3F6E5A')), { position: V(0, 13.45, 0) }));
+const clockTex = canvasTex(64, 64, (c, w, h) => {
+  c.fillStyle = '#FBF6E8'; c.beginPath(); c.arc(32, 32, 31, 0, 7); c.fill();
+  c.strokeStyle = '#1A1A1A'; c.lineWidth = 3; c.stroke();
+  c.fillStyle = '#1A1A1A';
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; c.fillRect(32 + Math.sin(a) * 25 - 2, 32 - Math.cos(a) * 25 - 2, i % 3 ? 3 : 5, i % 3 ? 3 : 5); }
+});
+const clock = new THREE.Group(); clock.position.set(0, 9.0, 1.22); tower.add(clock);
+clock.add(mesh(new THREE.CircleGeometry(0.95, 16), texMat(clockTex)));
+const ring = mesh(new THREE.TorusGeometry(0.97, 0.08, 4, 16), mat(C.gold)); clock.add(ring);
+const hourH = new THREE.Group(), minH = new THREE.Group(); clock.add(hourH, minH);
+hourH.add(place(mesh(new THREE.BoxGeometry(0.11, 0.5, 0.04), mat(C.black)), { position: V(0, 0.22, 0.04) }));
+minH.add(place(mesh(new THREE.BoxGeometry(0.07, 0.8, 0.04), mat(C.black)), { position: V(0, 0.36, 0.07) }));
+function setClock(h, m) { hourH.rotation.z = -((h % 12) + m / 60) / 12 * Math.PI * 2; minH.rotation.z = -(m / 60) * Math.PI * 2; }
+// scorch marks after the shelling
+const scorch = [];
+[[-3.5, 1.6, 2.78, 1.4], [2.2, 4.6, 1.82, 1.1], [-1, 2.4, 2.78, 1.0], [4.6, 7.0, 0.62, 0.9]].forEach(([x, y, z, s], i) => {
+  const m = mesh(new THREE.CircleGeometry(s, 7), new THREE.MeshBasicMaterial({ color: '#2A2420', transparent: true, opacity: 0.85, depthWrite: false }));
+  m.position.set(x, y, z + 0.02 + i * 0.002); palace.add(m); scorch.push(m);
+});
+// flag on the palace roof
+const flagPoleTop = 4.0;
+const flagRoot = new THREE.Group(); flagRoot.position.set(-3, 6.2, -0.3); palace.add(flagRoot);
+flagRoot.add(place(mesh(new THREE.CylinderGeometry(0.06, 0.08, flagPoleTop, 5), mat(C.greyL)), { position: V(0, flagPoleTop / 2, 0) }));
+flagRoot.add(place(mesh(new THREE.IcosahedronGeometry(0.13, 0), mat(C.gold)), { position: V(0, flagPoleTop + 0.08, 0) }));
+function makeFlag(w = 1.7, h = 1.05) {
+  const g = new THREE.PlaneGeometry(w, h, 6, 2).translate(w / 2, -h / 2, 0);
+  const m = mesh(g, new THREE.MeshLambertMaterial({ color: C.red, side: THREE.DoubleSide, flatShading: true }));
+  m.userData.base = g.attributes.position.array.slice(); return m;
+}
+function waveFlag(f, T, amp = 1) {
+  const p = f.geometry.attributes.position, b = f.userData.base;
+  for (let i = 0; i < p.count; i++) { const x = b[i * 3]; p.setZ(i, amp * 0.16 * x * Math.sin(x * 3.2 - T * 7)); }
+  p.needsUpdate = true;
+}
+const flag = makeFlag(); flagRoot.add(flag);
+function setFlag(k, T) { flag.position.y = lerp(0.9, flagPoleTop - 0.05, k); waveFlag(flag, T); }
+
+// ---------- people ----------
+function person(o) {
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const hips = new THREE.Group(); hips.position.y = 0.95; body.add(hips);
+  const legs = [-1, 1].map(s => {
+    const th = new THREE.Group(); th.position.set(s * 0.13, 0, 0); hips.add(th);
+    th.add(place(mesh(new THREE.BoxGeometry(0.2, 0.48, 0.22), mat(o.legs)), { position: V(0, -0.24, 0) }));
+    const sh = new THREE.Group(); sh.position.y = -0.48; th.add(sh);
+    sh.add(place(mesh(new THREE.BoxGeometry(0.18, 0.44, 0.2), mat(o.legs)), { position: V(0, -0.22, 0) }));
+    sh.add(place(mesh(new THREE.BoxGeometry(0.2, 0.09, 0.32), mat(o.shoes)), { position: V(0, -0.44, 0.05) }));
+    return { th, sh };
+  });
+  const torso = new THREE.Group(); hips.add(torso);
+  const tg = new THREE.CylinderGeometry(0.27, o.robe ? 0.36 : 0.25, 0.68, 6).translate(0, 0.34, 0);
+  torso.add(mesh(tg, mat(o.coat)));
+  if (o.robe) { const sk = mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.55, 6).translate(0, -0.27, 0), mat(o.coat)); torso.add(sk); o._skirt = sk; }
+  if (o.buttons) for (let i = 0; i < 4; i++) for (const s of [-1, 1]) torso.add(place(mesh(new THREE.BoxGeometry(0.05, 0.05, 0.03), mat(C.gold, { emissive: '#4A3000' })), { position: V(s * 0.08, 0.15 + i * 0.13, 0.26) }));
+  if (o.epaulets) for (const s of [-1, 1]) torso.add(place(mesh(new THREE.BoxGeometry(0.16, 0.06, 0.2), mat(C.gold)), { position: V(s * 0.3, 0.68, 0) }));
+  if (o.sash) torso.add(place(mesh(new THREE.BoxGeometry(0.56, 0.1, 0.5), mat(o.sash)), { position: V(0, 0.18, 0) }));
+  const arms = [-1, 1].map(s => {
+    const sh = new THREE.Group(); sh.position.set(s * 0.34, 0.62, 0); torso.add(sh);
+    sh.add(place(mesh(new THREE.BoxGeometry(0.15, 0.56, 0.16), mat(o.coat)), { position: V(0, -0.27, 0) }));
+    sh.add(place(mesh(new THREE.IcosahedronGeometry(0.085, 0), mat(o.skin)), { position: V(0, -0.6, 0) }));
+    const hand = new THREE.Object3D(); hand.position.set(0, -0.62, 0.02); sh.add(hand);
+    return { sh, hand };
+  });
+  const head = new THREE.Group(); head.position.y = 0.76; torso.add(head);
+  head.add(place(mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.12, 5), mat(o.skin)), { position: V(0, 0.02, 0) }));
+  head.add(place(mesh(new THREE.SphereGeometry(0.2, 7, 5).scale(0.92, 1.05, 0.95), mat(o.skin)), { position: V(0, 0.24, 0) }));
+  for (const s of [-1, 1]) {
+    head.add(place(mesh(new THREE.BoxGeometry(0.05, 0.06, 0.02), mat(C.black)), { position: V(s * 0.075, 0.28, 0.18) }));
+    head.add(place(mesh(new THREE.BoxGeometry(0.08, 0.02, 0.02), mat(o.brow || C.black)), { position: V(s * 0.075, 0.33, 0.18) }));
+  }
+  head.add(place(mesh(new THREE.ConeGeometry(0.04, 0.09, 4).rotateX(Math.PI / 2), mat(o.skin)), { position: V(0, 0.22, 0.2) }));
+  const mouth = mesh(new THREE.BoxGeometry(0.09, 0.025, 0.02), mat('#5A2020')); mouth.position.set(0, 0.14, 0.18); head.add(mouth);
+  if (o.beard) head.add(place(mesh(new THREE.BoxGeometry(0.3, 0.17, 0.12).translate(0, -0.05, 0), mat(C.black)), { position: V(0, 0.13, 0.12) }));
+  if (o.moustache) head.add(place(mesh(new THREE.BoxGeometry(0.2, 0.05, 0.04), mat(o.moustache)), { position: V(0, 0.18, 0.2) }));
+  if (o.turban) {
+    const tt = canvasTex(16, 8, (c) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#F4F1EA' : C.red; c.fillRect(i * 2, 0, 2, 8); c.fillRect(0, 0, 0, 0); } });
+    tt.wrapS = THREE.RepeatWrapping;
+    const tb = mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.2, 8).rotateZ(0.05), texMat(tt)); tb.position.y = 0.44; tb.rotation.x = -0.12; head.add(tb);
+    const tb2 = mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.14, 8), texMat(tt)); tb2.position.y = 0.58; tb2.rotation.y = 0.6; head.add(tb2);
+    head.add(place(mesh(new THREE.SphereGeometry(0.15, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2), mat(C.red)), { position: V(0, 0.64, 0) }));
+  }
+  if (o.kufi) head.add(place(mesh(new THREE.CylinderGeometry(0.19, 0.2, 0.12, 7), mat(o.kufi)), { position: V(0, 0.43, 0) }));
+  if (o.cap) {
+    head.add(place(mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.14, 8), mat('#F6F6F2')), { position: V(0, 0.47, 0) }));
+    head.add(place(mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 8), mat(C.black)), { position: V(0, 0.38, 0) }));
+    head.add(place(mesh(new THREE.BoxGeometry(0.3, 0.03, 0.16), mat(C.black)), { position: V(0, 0.36, 0.2), rotation: new THREE.Euler(0.25, 0, 0) }));
+    head.add(place(mesh(new THREE.BoxGeometry(0.09, 0.07, 0.02), mat(C.gold, { emissive: '#4A3000' })), { position: V(0, 0.4, 0.21) }));
+  }
+  // blob shadow
+  const sh = mesh(new THREE.CircleGeometry(0.42, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }));
+  sh.position.y = 0.02; root.add(sh);
+  scene.add(root);
+  return { root, body, hips, legs, torso, arms, head, mouth, shadow: sh, o };
+}
+function pose(p, q = {}) {
+  p.root.visible = true;
+  p.root.position.set(q.x || 0, q.y || 0, q.z || 0); p.root.rotation.set(0, q.ry || 0, 0);
+  const sit = q.sit || 0;
+  p.body.position.y = (q.hop || 0) - sit * 0.42;
+  p.hips.rotation.set(0, 0, 0);
+  p.torso.rotation.set(-(q.lean || 0), 0, q.tilt || 0);
+  p.legs[0].th.rotation.set((q.legL || 0) - sit * 1.5, 0, 0); p.legs[1].th.rotation.set((q.legR || 0) - sit * 1.5, 0, 0);
+  p.legs[0].sh.rotation.set(Math.max(0, -(q.legL || 0)) * 1.2 + sit * 1.5, 0, 0); p.legs[1].sh.rotation.set(Math.max(0, -(q.legR || 0)) * 1.2 + sit * 1.5, 0, 0);
+  p.arms[0].sh.rotation.set(-(q.armL || 0), 0, -(q.armLout || 0) - 0.08);
+  p.arms[1].sh.rotation.set(-(q.armR || 0), 0, (q.armRout || 0) + 0.08);
+  p.head.rotation.set(q.headX || 0, q.headY || 0, q.headZ || 0);
+  p.mouth.scale.set(1, 1 + (q.mouthO || 0) * 4, 1);
+  if (p.o._skirt) { p.o._skirt.rotation.x = -sit * 1.2; p.o._skirt.scale.y = 1 - sit * 0.3; }
+  p.shadow.position.y = 0.02 - (q.hop || 0) + sit * 0.42; p.shadow.visible = q.shadow !== false;
+}
+const walk = (t, f = 9, a = 0.6) => Math.sin(t * f) * a;
+const khalid = person({ skin: C.skin, coat: '#F7F5EF', legs: '#F7F5EF', shoes: '#6B4424', robe: true, beard: true, turban: true, sash: C.gold });
+const admiral = person({ skin: C.skinL, coat: C.navy, legs: C.navy, shoes: C.black, buttons: true, epaulets: true, cap: true, moustache: '#E8E4DA', brow: '#D8D4CA' });
+const fans = [
+  person({ skin: '#9C6A45', coat: C.beige, legs: C.beige, shoes: '#6B4424', robe: true, kufi: '#FFFFFF' }),
+  person({ skin: C.skin, coat: '#F1EDE2', legs: '#F1EDE2', shoes: '#6B4424', robe: true, kufi: '#3A6E3A', beard: true }),
+  person({ skin: '#8E5E3E', coat: '#D8C9A4', legs: '#D8C9A4', shoes: '#6B4424', robe: true, kufi: '#B23A2E' })
+];
+
+// ---------- scroll (ultimatum) ----------
+const ultTex = canvasTex(128, 96, (c, w, h) => {
+  c.fillStyle = '#F3E6C4'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#E0CD9E'; for (let i = 0; i < 30; i++) c.fillRect((i * 29) % w, (i * 17) % h, 3, 1);
+  c.fillStyle = '#7A1414'; c.font = '800 19px Rubik'; c.textAlign = 'center'; c.fillText('УЛЬТИМАТУМ', w / 2, 30);
+  c.fillStyle = '#1A1A1A'; c.font = '800 38px Rubik'; c.fillText('9:00', w / 2, 72);
+  c.fillStyle = '#7A1414'; c.beginPath(); c.arc(w - 18, h - 16, 9, 0, 7); c.fill();
+}, false);
+const scroll = new THREE.Group();
+scroll.add(mesh(new THREE.PlaneGeometry(0.95, 0.72), new THREE.MeshLambertMaterial({ map: ultTex, side: THREE.DoubleSide })));
+for (const s of [-1, 1]) scroll.add(place(mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.05, 6).rotateZ(Math.PI / 2), mat('#E8D7A8')), { position: V(0, s * 0.37, 0.02) }));
+scene.add(scroll);
+
+// ---------- bill (end scene) ----------
+const billTex = canvasTex(96, 384, (c, w, h) => {
+  c.fillStyle = '#FBF8EE'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#1A1A1A'; c.font = '800 22px Rubik'; c.textAlign = 'center'; c.fillText('СЧЁТ', w / 2, 28);
+  c.fillRect(10, 36, w - 20, 2);
+  for (let i = 0; i < 9; i++) { // shell + line items
+    const y = 52 + i * 26;
+    c.fillStyle = '#B8860B'; c.fillRect(12, y, 18, 8); c.beginPath(); c.moveTo(30, y); c.lineTo(38, y + 4); c.lineTo(30, y + 8); c.fill();
+    c.fillStyle = '#888'; for (let k = 44; k < w - 26; k += 5) c.fillRect(k, y + 6, 2, 1);
+    c.fillStyle = '#1A1A1A'; c.font = '800 12px Rubik'; c.textAlign = 'right'; c.fillText('££', w - 10, y + 9);
+  }
+  c.fillRect(10, 300, w - 20, 2);
+  c.font = '800 16px Rubik'; c.textAlign = 'center'; c.fillStyle = '#B01818'; c.fillText('ИТОГО:', w / 2, 326); c.font = '800 20px Rubik'; c.fillText('££££££', w / 2, 352);
+}, false);
+const bill = new THREE.Group(); scene.add(bill);
+const billV = mesh(new THREE.PlaneGeometry(0.55, 1).translate(0, -0.5, 0), new THREE.MeshLambertMaterial({ color: '#FBF8EE', side: THREE.DoubleSide }));
+const billG = mesh(new THREE.PlaneGeometry(0.55, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5), new THREE.MeshLambertMaterial({ map: billTex, side: THREE.DoubleSide }));
+const billRoll = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.58, 8).rotateZ(Math.PI / 2), mat('#F3EEDD'));
+bill.add(billV, billG, billRoll);
+
+// ---------- ships ----------
+function warship() {
+  const g = new THREE.Group(), hull = new THREE.Group(); g.add(hull);
+  const sh = new THREE.Shape();
+  sh.moveTo(-4.2, -0.95); sh.lineTo(2.8, -0.95); sh.lineTo(4.8, 0); sh.lineTo(2.8, 0.95); sh.lineTo(-4.2, 0.95); sh.lineTo(-4.5, 0); sh.closePath();
+  const hg = new THREE.ExtrudeGeometry(sh, { depth: 1.5, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, 1.1, 0);
+  hull.add(mesh(hg, mat(C.grey)));
+  const wl = new THREE.ExtrudeGeometry(sh, { depth: 0.25, bevelEnabled: false }).rotateX(Math.PI / 2).scale(1.01, 1, 1.03).translate(0, -0.15, 0);
+  hull.add(mesh(wl, mat('#7A2A22')));
+  hull.add(place(mesh(new THREE.BoxGeometry(3.2, 0.9, 1.3), mat(C.greyL)), { position: V(-0.6, 1.55, 0) }));
+  hull.add(place(mesh(new THREE.BoxGeometry(1.0, 0.7, 1.0), mat(C.greyL)), { position: V(0.6, 2.35, 0) }));
+  hull.add(place(mesh(new THREE.BoxGeometry(1.05, 0.18, 1.05), mat('#2C333A')), { position: V(0.6, 2.25, 0) }));
+  const funnels = [-0.3, -1.4].map(x => {
+    const f = mesh(new THREE.CylinderGeometry(0.33, 0.38, 1.9, 8), mat('#B9B2A2')); f.position.set(x, 2.9, 0); hull.add(f);
+    hull.add(place(mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3, 8), mat(C.black)), { position: V(x, 3.8, 0) }));
+    return V(x, 4.0, 0);
+  });
+  hull.add(place(mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.4, 4), mat(C.greyD)), { position: V(1.4, 3.3, 0) }));
+  hull.add(place(mesh(new THREE.CylinderGeometry(0.04, 0.06, 2.6, 4), mat(C.greyD)), { position: V(-3.1, 2.4, 0) }));
+  const turrets = [[2.6, 1], [-3.2, -1]].map(([x, dir]) => {
+    const t = new THREE.Group(); t.position.set(x, 1.1, 0); hull.add(t);
+    t.add(place(mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.5, 8), mat(C.greyD)), { position: V(0, 0.25, 0) }));
+    for (const s of [-0.16, 0.16]) t.add(place(mesh(new THREE.CylinderGeometry(0.07, 0.08, 1.5, 5).rotateZ(-Math.PI / 2), mat('#3E454C')), { position: V(dir * 0.9, 0.32, s) }));
+    t.userData.muzzle = V(dir * 1.7, 0.32, 0); t.rotation.y = dir > 0 ? 0 : Math.PI;
+    if (dir < 0) t.userData.muzzle = V(1.7, 0.32, 0);
+    return t;
+  });
+  // blob shadow on the water / white wake
+  hull.add(place(mesh(new THREE.PlaneGeometry(10, 2.6).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#E8F6FA', transparent: true, opacity: 0.35, depthWrite: false })), { position: V(-0.3, 0.12, 0) }));
+  scene.add(g);
+  return { g, hull, funnels, turrets };
+}
+const ships = [warship(), warship(), warship()];
+const SHIP_POS = [[-4.2, 30, 1.72], [0.5, 23, 1.6], [5.2, 31, 1.45]];  // x, z, rotY (bow towards palace)
+function placeShips(T) {
+  ships.forEach((s, i) => {
+    const [x, z, ry] = SHIP_POS[i];
+    s.g.visible = true; s.g.position.set(x, 0, z); s.g.rotation.set(0, ry, 0);
+    s.hull.position.y = 0.06 * Math.sin(T * 1.4 + i * 2); s.hull.rotation.x = 0.025 * Math.sin(T * 1.1 + i); s.hull.rotation.z = 0.015 * Math.sin(T * 0.9 + i * 3);
+  });
+}
+// yacht Glasgow
+const nameTex = canvasTex(128, 24, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = C.gold; c.font = '800 18px Rubik'; c.textAlign = 'center'; c.fillText('«ГЛАЗГО»', w / 2, 18); }, false);
+function yachtMake() {
+  const g = new THREE.Group(), hull = new THREE.Group(); g.add(hull);
+  const sh = new THREE.Shape();
+  sh.moveTo(-1.9, -0.6); sh.lineTo(1.2, -0.6); sh.lineTo(2.4, 0); sh.lineTo(1.2, 0.6); sh.lineTo(-1.9, 0.6); sh.closePath();
+  hull.add(mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.85, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, 0.6, 0), mat('#FBFBF7')));
+  hull.add(mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: false }).rotateX(Math.PI / 2).scale(1.02, 1, 1.06).translate(0, 0.5, 0), mat(C.gold, { emissive: '#3A2800' })));
+  hull.add(place(mesh(new THREE.BoxGeometry(1.6, 0.55, 0.85), mat('#FBFBF7')), { position: V(-0.4, 0.87, 0) }));
+  hull.add(place(mesh(new THREE.BoxGeometry(1.7, 0.07, 0.95), mat(C.gold, { emissive: '#3A2800' })), { position: V(-0.4, 1.17, 0) }));
+  for (let i = 0; i < 3; i++) hull.add(place(mesh(new THREE.BoxGeometry(0.22, 0.2, 0.02), mat('#2E3A48')), { position: V(-0.9 + i * 0.45, 0.9, 0.44) }));
+  hull.add(place(mesh(new THREE.CylinderGeometry(0.03, 0.04, 2.2, 4), mat(C.gold)), { position: V(0.2, 2.2, 0) }));
+  const yf = makeFlag(0.6, 0.38); yf.position.set(0.22, 3.25, 0); hull.add(yf);
+  const gun = new THREE.Group(); gun.position.set(1.5, 0.66, 0); hull.add(gun);
+  gun.add(place(mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.14, 6), mat(C.greyD)), { position: V(0, 0.07, 0) }));
+  gun.add(place(mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.45, 5).rotateZ(-Math.PI / 2), mat(C.black)), { position: V(0.25, 0.14, 0) }));
+  const nm = mesh(new THREE.PlaneGeometry(1.7, 0.32), new THREE.MeshBasicMaterial({ map: nameTex, transparent: true })); nm.position.set(-0.1, 0.32, 0.62); hull.add(nm);
+  scene.add(g); return { g, hull, flag: yf, muzzle: V(1.95, 0.8, 0) };
+}
+const yacht = yachtMake();
+
+// ---------- stopwatch ----------
+const swTexCache = {};
+function swTex(txt, red) {
+  const k = txt + red; if (swTexCache[k]) return swTexCache[k];
+  return swTexCache[k] = canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#FFFDF5'; c.beginPath(); c.arc(64, 64, 63, 0, 7); c.fill();
+    c.fillStyle = '#222';
+    for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, r0 = i % 5 ? 56 : 50; c.save(); c.translate(64 + Math.sin(a) * 57, 64 - Math.cos(a) * 57); c.rotate(a); c.fillRect(-1, 0, i % 5 ? 2 : 3, 64 - r0 - 50 + 7); c.restore(); }
+    c.fillStyle = '#1D2B22'; c.fillRect(22, 44, 84, 42);
+    c.fillStyle = red ? '#FF4A3A' : '#7CFF6A'; c.font = '800 34px Rubik'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 64, 67);
+  });
+}
+const sw = new THREE.Group(); scene.add(sw);
+{
+  sw.add(mesh(new THREE.CylinderGeometry(1, 1, 0.42, 16).rotateX(Math.PI / 2), mat(C.silver)));
+  sw.add(place(mesh(new THREE.TorusGeometry(1, 0.11, 5, 16), mat(C.gold)), { position: V(0, 0, 0.21) }));
+  sw.add(place(mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.25, 6), mat(C.silver)), { position: V(0, 1.12, 0) }));
+  sw.add(place(mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.16, 8), mat(C.gold)), { position: V(0, 1.3, 0) }));
+  sw.add(place(mesh(new THREE.TorusGeometry(0.22, 0.05, 4, 10), mat(C.silver)), { position: V(0, 1.55, 0) }));
+  for (const s of [-1, 1]) sw.add(place(mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 6), mat(C.silver)), { position: V(s * 0.72, 0.8, 0), rotation: new THREE.Euler(0, 0, -s * 0.7) }));
+}
+const swFace = mesh(new THREE.CircleGeometry(0.93, 24), new THREE.MeshBasicMaterial({ map: swTex('0:00') })); swFace.position.z = 0.215; sw.add(swFace);
+const swHand = mesh(new THREE.BoxGeometry(0.04, 0.8, 0.02).translate(0, 0.32, 0), new THREE.MeshBasicMaterial({ color: '#D3262A' })); swHand.position.z = 0.23; sw.add(swHand);
+function setSW(sec, red = false) { const s = Math.floor(sec); swFace.material.map = swTex(`0:${String(s).padStart(2, '0')}`, red); swHand.rotation.z = -(sec % 60) / 60 * Math.PI * 2; }
+
+// ---------- throne room (separate set at x=300) ----------
+const room = new THREE.Group(); room.position.set(300, 0, 0); scene.add(room);
+{
+  const tile = canvasTex(32, 32, (c) => { for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { c.fillStyle = (i + j) % 2 ? '#C9A66B' : '#8C3B2A'; c.fillRect(i * 8, j * 8, 8, 8); } });
+  tile.wrapS = tile.wrapT = THREE.RepeatWrapping; tile.repeat.set(6, 6);
+  room.add(mesh(new THREE.PlaneGeometry(14, 14).rotateX(-Math.PI / 2), texMat(tile)));
+  const wt = canvasTex(32, 32, (c) => { c.fillStyle = '#EFE6D2'; c.fillRect(0, 0, 32, 32); c.fillStyle = '#D9C9A8'; c.fillRect(0, 26, 32, 6); c.fillStyle = '#2C6E8A'; for (let i = 0; i < 4; i++) c.fillRect(i * 8 + 2, 27, 4, 4); });
+  wt.wrapS = THREE.RepeatWrapping; wt.repeat.set(4, 1);
+  // back wall with a big window opening (built from 4 boxes)
+  const wm = texMat(wt);
+  [[-4.6, 3, 4.8, 6], [4.6, 3, 4.8, 6], [0, 0.6, 4.4, 1.2], [0, 5.3, 4.4, 1.4]].forEach(([x, y, w, h]) => room.add(place(mesh(new THREE.BoxGeometry(w, h, 0.4), wm), { position: V(x, y, -4) })));
+  room.add(place(mesh(new THREE.BoxGeometry(0.4, 6, 10), wm), { position: V(-7, 3, 1) }));
+  room.add(place(mesh(new THREE.BoxGeometry(0.4, 6, 10), wm), { position: V(7, 3, 1) }));
+  // window arch decoration
+  room.add(place(mesh(new THREE.TorusGeometry(2.2, 0.15, 4, 10, Math.PI), mat(C.gold)), { position: V(0, 4.55, -3.78) }));
+  // outside view through the window: sky card, sea strip, palm, flagpole
+  room.add(place(mesh(new THREE.PlaneGeometry(30, 14), new THREE.MeshBasicMaterial({ map: sky, fog: false })), { position: V(0, 4, -16) }));
+  room.add(place(mesh(new THREE.PlaneGeometry(30, 1.5), mat(C.sea)), { position: V(0, 1.0, -15.5) }));
+  room.add(place(mesh(new THREE.PlaneGeometry(30, 6).rotateX(-Math.PI / 2), mat(C.sand)), { position: V(0, 0.6, -12) }));
+  // carpet + dais + throne
+  room.add(place(mesh(new THREE.BoxGeometry(2.2, 0.03, 9), mat('#A31E22')), { position: V(-2.2, 0.02, 1) }));
+  room.add(place(mesh(new THREE.BoxGeometry(3.2, 0.35, 2.4), mat(C.gold)), { position: V(-2.2, 0.17, -2.4) }));
+  const th = new THREE.Group(); th.position.set(-2.2, 0.35, -2.6); room.add(th);
+  const gm = mat(C.gold, { emissive: '#5A3A00' });
+  th.add(place(mesh(new THREE.BoxGeometry(1.2, 0.5, 1.0), gm), { position: V(0, 0.25, 0) }));
+  th.add(place(mesh(new THREE.BoxGeometry(1.2, 0.12, 1.0), mat('#A31E22')), { position: V(0, 0.56, 0.02) }));
+  th.add(place(mesh(new THREE.BoxGeometry(1.3, 2.0, 0.22), gm), { position: V(0, 1.2, -0.45) }));
+  th.add(place(mesh(new THREE.ConeGeometry(0.4, 0.6, 4), gm), { position: V(0, 2.5, -0.45) }));
+  for (const s of [-1, 1]) {
+    th.add(place(mesh(new THREE.BoxGeometry(0.15, 0.45, 1.0), gm), { position: V(s * 0.63, 0.75, 0) }));
+    th.add(place(mesh(new THREE.IcosahedronGeometry(0.13, 0), gm), { position: V(s * 0.63, 1.03, 0.45) }));
+    th.add(place(mesh(new THREE.IcosahedronGeometry(0.12, 0), mat('#2E8BDB', { emissive: '#103060' })), { position: V(s * 0.45, 2.0, -0.32) }));
+  }
+  // columns
+  for (const x of [-5.5, 5.5]) for (const z of [-2.5, 2]) room.add(place(mesh(new THREE.CylinderGeometry(0.35, 0.4, 6, 8), mat('#F4EEDF')), { position: V(x, 3, z) }));
+  // hanging lamp
+  room.add(place(mesh(new THREE.OctahedronGeometry(0.35, 0), mat(C.gold, { emissive: '#B07000' })), { position: V(0.5, 4.8, 0) }));
+}
+const roomFlag = new THREE.Group(); roomFlag.position.set(2.2, 0.6, -10); room.add(roomFlag);
+roomFlag.add(place(mesh(new THREE.CylinderGeometry(0.07, 0.09, 6.5, 5), mat(C.greyL)), { position: V(0, 3.25, 0) }));
+const rFlag = makeFlag(1.6, 1.0); roomFlag.add(rFlag);
+const roomPalm = palm(0, 0, 4.5, 0.3, 2.4); island.remove(roomPalm); room.add(roomPalm); roomPalm.position.set(-3.4, 0.6, -11);
+
+// ---------- fx pool (puffs, flashes, splashes, bubbles) ----------
+const pool = [];
+const icoG = new THREE.IcosahedronGeometry(1, 0);
+for (let i = 0; i < 260; i++) { const m = mesh(icoG, new THREE.MeshLambertMaterial({ color: '#fff', flatShading: true, transparent: true })); m.visible = false; scene.add(m); pool.push(m); }
+let pi = 0;
+function fxReset() { pool.forEach(m => m.visible = false); pi = 0; }
+function puff(p, r, color, op = 1, emissive = null, rot = 0) {
+  if (pi >= pool.length || r <= 0.001 || op <= 0.01) return;
+  const m = pool[pi++]; m.visible = true; m.position.copy(p); m.scale.setScalar(r); m.rotation.set(rot, rot * 1.3, rot * 0.7);
+  m.material.color.set(color); m.material.opacity = op; m.material.emissive.set(emissive || '#000');
+}
+// explosion at p that started `age` seconds ago
+function boom(p, age, size = 1, seed = 0) {
+  if (age < 0 || age > 3.2) return;
+  if (age < 0.25) puff(p, size * (0.4 + age * 6), '#FFE27A', 1 - age * 3, '#FF9A20', seed);
+  for (let k = 0; k < 7; k++) {
+    const a = hash(seed * 13 + k) * Math.PI * 2, e = hash(seed * 7 + k * 3) * 0.9 + 0.2;
+    const d = easeOut(age / 1.2) * size * 1.6;
+    const q = V(p.x + Math.cos(a) * d * e, p.y + d * 0.6 * e + age * 0.7, p.z + Math.sin(a) * d * e * 0.6);
+    const fire = age < 0.35;
+    puff(q, size * (0.45 + 0.5 * easeOut(age / 0.9)) * (0.7 + 0.5 * e), fire ? (k % 2 ? '#FFB43A' : '#FF7A1A') : (k % 3 ? '#6A6A6A' : '#8A8A86'), clamp(1.2 - age / 3), fire ? '#C04000' : null, seed + k);
+  }
+}
+function muzzle(p, age, dir, size = 1) { // flash + smoke cloud
+  if (age < 0 || age > 2.5) return;
+  if (age < 0.12) puff(p, size * 0.55, '#FFF3A0', 1, '#FFC040');
+  for (let k = 0; k < 5; k++) {
+    const d = easeOut(age / 1.5) * size * (0.5 + k * 0.35);
+    puff(V(p.x + dir.x * d, p.y + age * 0.5 + k * 0.05, p.z + dir.z * d), size * (0.3 + 0.45 * easeOut(age / 1.2)) * (1 - k * 0.08), k % 2 ? '#DADAD4' : '#BDBDB6', clamp(1 - age / 2.5) * 0.95, null, k);
+  }
+}
+function smokeColumn(p, T, n = 6, size = 0.7, color = '#3A3A3A') {
+  for (let k = 0; k < n; k++) {
+    const a = ((T * 0.35 + k / n) % 1);
+    puff(V(p.x + a * 2.2 + Math.sin(k * 3 + T) * 0.2, p.y + a * 5, p.z), size * (0.5 + a * 1.4), color, 0.85 * (1 - a), null, k + T * 0.2);
+  }
+}
+function funnelSmoke(T) {
+  ships.forEach((s, i) => s.funnels.forEach((f, j) => {
+    s.g.updateMatrixWorld(true);
+    const p = s.hull.localToWorld(f.clone());
+    for (let k = 0; k < 4; k++) { const a = (T * 0.5 + k / 4 + i * 0.13 + j * 0.3) % 1; puff(V(p.x - a * 2.5, p.y + a * 2.2, p.z + a * 0.8), 0.3 + a * 0.6, '#4A4A4A', 0.8 * (1 - a), null, k); }
+  }));
+}
+function splash(p, age, size = 1) {
+  if (age < 0 || age > 1.4) return;
+  for (let k = 0; k < 6; k++) {
+    const a = k / 6 * Math.PI * 2, d = easeOut(age / 0.8) * size * 0.8;
+    const h = Math.sin(clamp(age / 1.1) * Math.PI) * size * (1.4 - (k % 2) * 0.5);
+    puff(V(p.x + Math.cos(a) * d, p.y + h * 0.6, p.z + Math.sin(a) * d), size * 0.3 * (1 - age / 1.4) + 0.05, '#F2FBFF', 1, '#406070', k);
+  }
+  puff(V(p.x, p.y + Math.sin(clamp(age / 1.0) * Math.PI) * size * 1.6, p.z), size * 0.35 * (1 - age / 1.4), '#FFFFFF', 1, '#406070');
+}
+
+// ---------- overlay (2D) ----------
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function hud(txt, t, y = 300, opt = {}) {           // PS2 game-title style text
+  if (t < 0) return;
+  const k = easeOut(seg(t, 0, 0.28));
+  let px = opt.px || 104; O.font = `800 ${px}px Rubik`;
+  let tw = O.measureText(txt).width; const maxW = W - 110;
+  if (tw > maxW) { px *= maxW / tw; O.font = `800 ${px}px Rubik`; tw = O.measureText(txt).width; }
+  O.save(); O.translate(W / 2 + (1 - k) * (opt.fromRight ? 600 : -600), y); O.transform(1, 0, -0.16, 1, 0, 0);
+  const sc = 1 + 0.12 * Math.max(0, 1 - Math.abs(t - 0.3) / 0.15); O.scale(sc, sc);
+  O.globalAlpha = k;
+  O.textAlign = 'center'; O.textBaseline = 'middle'; O.lineJoin = 'round';
+  O.lineWidth = px * 0.3; O.strokeStyle = 'rgba(0,0,0,.55)'; O.strokeText(txt, 10, 12);
+  O.lineWidth = px * 0.24; O.strokeStyle = '#0B0B14'; O.strokeText(txt, 0, 0);
+  O.lineWidth = px * 0.08; O.strokeStyle = opt.edge || '#FFFFFF'; O.strokeText(txt, 0, 0);
+  const g = O.createLinearGradient(0, -px * 0.5, 0, px * 0.5);
+  (opt.grad || ['#FFFFFF', '#FFE45C', '#FF8A1E']).forEach((c, i, a) => g.addColorStop(i / (a.length - 1), c));
+  O.fillStyle = g; O.fillText(txt, 0, 0);
+  // shine sweep
+  const sw = seg(t, 0.25, 0.85);
+  if (sw > 0 && sw < 1) { O.globalCompositeOperation = 'source-atop'; }
+  O.restore(); O.globalAlpha = 1; O.globalCompositeOperation = 'source-over';
+}
+function flash(a, col = '255,255,255') { if (a <= 0) return; O.fillStyle = `rgba(${col},${Math.min(1, a)})`; O.fillRect(0, 0, W, H); }
+function black(a) { flash(a, '0,0,0'); }
+function locationCard(t, a, b) {                     // game-like location banner
+  if (t < 0) return;
+  const k = easeOut(seg(t, 0, 0.35));
+  O.save(); O.globalAlpha = k;
+  const y = 1520;
+  const g = O.createLinearGradient(0, 0, W, 0); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.2, 'rgba(8,14,30,.78)'); g.addColorStop(0.8, 'rgba(8,14,30,.78)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  O.fillStyle = g; O.fillRect(0, y - 110, W, 220);
+  O.fillStyle = '#FFD54A'; O.fillRect(W / 2 - 330 * k, y - 112, 660 * k, 5); O.fillRect(W / 2 - 330 * k, y + 107, 660 * k, 5);
+  O.restore();
+  hud(a, t - 0.1, y - 28, { px: 112 });
+  if (t > 0.35) { O.save(); O.globalAlpha = seg(t, 0.35, 0.6); O.font = '800 84px Rubik'; O.textAlign = 'center'; O.fillStyle = '#FFFFFF'; O.fillText(b, W / 2, y + 74); O.restore(); }
+}
+function receipt(t) {                               // 2D close-up of the bill
+  if (t < 0) return;
+  const s = back(seg(t, 0, 0.35));
+  O.save(); O.translate(W / 2, 900); O.scale(s, s); O.rotate(-0.05);
+  O.fillStyle = 'rgba(0,0,0,.4)'; O.fillRect(-250 + 16, -330 + 20, 500, 660);
+  O.fillStyle = '#FBF8EE'; O.fillRect(-250, -330, 500, 660);
+  for (let x = -250; x < 250; x += 25) { O.beginPath(); O.moveTo(x, 330); O.lineTo(x + 12.5, 345); O.lineTo(x + 25, 330); O.fill(); }
+  O.fillStyle = '#1A1A1A'; O.textAlign = 'center'; O.font = '800 84px Rubik'; O.fillText('СЧЁТ', 0, -238);
+  O.fillRect(-200, -210, 400, 6);
+  // shell
+  O.save(); O.translate(-70, -80); O.rotate(-0.5);
+  O.fillStyle = '#C9962C'; O.fillRect(-110, -38, 160, 76);
+  O.beginPath(); O.moveTo(50, -38); O.quadraticCurveTo(140, -30, 150, 0); O.quadraticCurveTo(140, 30, 50, 38); O.fill();
+  O.fillStyle = '#8C6418'; O.fillRect(-110, -38, 22, 76); O.fillRect(20, -38, 12, 76);
+  O.restore();
+  O.font = '800 70px Rubik'; O.fillStyle = '#1A1A1A'; O.fillText('× МНОГО', 120, -60);
+  O.fillStyle = '#999'; for (let i = 0; i < 3; i++) for (let x = -200; x < 200; x += 18) O.fillRect(x, 40 + i * 40, 9, 5);
+  O.fillStyle = '#1A1A1A'; O.fillRect(-200, 175, 400, 6);
+  O.fillStyle = '#B01818'; O.font = '800 64px Rubik'; O.fillText('ИТОГО:', 0, 245); O.font = '800 78px Rubik'; O.fillText('£££££££', 0, 318);
+  O.restore();
+}
+function ctaCard(t) {
+  if (t < 0) return;
+  O.save(); O.fillStyle = `rgba(4,8,22,${0.62 * seg(t, 0, 0.3)})`; O.fillRect(0, 0, W, H); O.restore();
+  hud('ПИШИ', t, 640, { px: 150 });
+  // big "25" badge
+  const s = back(seg(t, 0.15, 0.5)) * (1 + 0.04 * Math.sin(t * 7));
+  O.save(); O.translate(W / 2, 960); O.scale(s, s); O.rotate(-0.06);
+  O.fillStyle = 'rgba(0,0,0,.45)'; roundRect(O, -200 + 14, -170 + 18, 400, 340, 50); O.fill();
+  const g = O.createLinearGradient(0, -170, 0, 170); g.addColorStop(0, '#FF5A4A'); g.addColorStop(1, '#B3121C');
+  O.fillStyle = g; roundRect(O, -200, -170, 400, 340, 50); O.fill(); O.lineWidth = 12; O.strokeStyle = '#fff'; O.stroke();
+  O.font = '800 250px Rubik'; O.textAlign = 'center'; O.textBaseline = 'middle'; O.fillStyle = '#fff'; O.fillText('25', 0, 14);
+  O.restore();
+  hud('в комментариях', t - 0.45, 1250, { px: 84, grad: ['#FFFFFF', '#FFFFFF', '#CFE8FF'] });
+  hud('гайд по истории', t - 0.75, 1400, { px: 100, fromRight: true });
+  // PS2 "press start" blinking line
+  if (t > 1.2) { O.save(); O.globalAlpha = 0.5 + 0.5 * Math.sign(Math.sin(t * 6)); O.font = '800 54px Rubik'; O.textAlign = 'center'; O.fillStyle = '#FFE45C'; O.fillText('▶ ПОЛУЧИ В ДИРЕКТ ◀', W / 2, 1560); O.restore(); }
+}
+
+// ---------- camera ----------
+function cam(px, py, pz, tx, ty, tz, fov = 50) { camera.position.set(px, py, pz); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(tx, ty, tz); }
+function camLerp(a, b, k) { cam(...a.slice(0, 6).map((v, i) => lerp(v, b[i], k)), lerp(a[6] || 50, b[6] || 50, k)); }
+let shakeAmt = 0;
+
+// ---------- world reset ----------
+function reset(T) {
+  fxReset(); waves(T);
+  [khalid, admiral, ...fans].forEach(p => p.root.visible = false);
+  ships.forEach(s => s.g.visible = false); yacht.g.visible = false;
+  sw.visible = false; scroll.visible = false; bill.visible = false;
+  scorch.forEach(s => s.visible = false); tower.rotation.set(0, 0, 0); tower.position.x = 5.0;
+  setClock(9, 0); setFlag(1, T); flag.visible = true; sideDoor.rotation.y = 0;
+  palms.forEach((p, i) => { p.userData.top.rotation.set(0.05 * Math.sin(T * 1.3 + i), 0, 0.06 * Math.sin(T * 1.1 + i * 2)); });
+  scene.fog.near = 70; scene.fog.far = 230; shakeAmt = 0;
+}
+const ISL = V(0, 0, -8);
+const PAL = V(0, TOPY, -10);                 // palace origin in world
+const palW = (x, y, z) => V(PAL.x + x, PAL.y + y, PAL.z + z);
+
+// ---------- scenes ----------
+let TL = null; const SC = {};
+SC.s1 = (u, s, T) => { // giant stopwatch rises from the sea showing 0:38; slow push-in, then fly through
+  const d = s.end - s.start;
+  const r = s.rise; const k = back(seg(u, r[0] + 0.1, r[1]));
+  sw.visible = true; sw.scale.setScalar(5.2); sw.position.set(0, lerp(-6.5, 6.6, k) + 0.12 * Math.sin(T * 1.5), 38); sw.rotation.set(0, Math.sin(T * 0.8) * 0.05, 0.03 * Math.sin(T));
+  const c = s.count; const cnt = u < c[0] ? 0 : 38 * easeOut(seg(u, c[0], c[1]));
+  setSW(u > c[1] ? 38 : cnt, u > c[1]);
+  const push = easeIO(u / (d - 0.6)), fly = easeIn(seg(u, d - 0.7, d));
+  cam(0, lerp(3.2, 5.6, push) + fly * 1.0, lerp(78, 60, push) - fly * 21.5, 0, lerp(5.0, 6.4, push), 38, 50);
+  for (let i = 0; i < 3; i++) splash(V((i - 1) * 3.5, 0, 38 + (i % 2) * 2), u - 0.25 - i * 0.12, 3.0);
+  ships.forEach(s => s.g.visible = false);
+  return () => { hud('Война длилась', u - s.text + 0.25, 300, { px: 96 }); hud('38 минут', u - s.text, 440, { px: 150, grad: ['#FFFFFF', '#FF6A5A', '#C8101C'] }); flash(seg(u, d - 0.25, d) * 1.1); };
+};
+SC.s2 = (u, s, T) => { // overhead flyover of the island
+  const d = s.end - s.start, k = easeIO(u / d);
+  cam(lerp(-20, 12, k), lerp(28, 21, k), lerp(26, 22, k), lerp(-2, 2, k), 1, -8, 52);
+  return () => { flash(1 - seg(u, 0, 0.3)); locationCard(u - s.sign, 'ЗАНЗИБАР', '1896'); };
+};
+SC.s3 = (u, s, T) => { // throne room: Khalid sits down; red flag rises outside the window
+  scene.fog.near = 200; scene.fog.far = 400;
+  cam(302.6, 2.2, 6.8, 299.4, 1.7, -3, 50);
+  const a = s.sit[0], b = s.sit[1];
+  const wk = seg(u, 0, a + 0.2), sit = ease(seg(u, a + 0.25, b));
+  const turn = ease(seg(u, a, a + 0.35));
+  const settled = u > b;
+  pose(khalid, { x: lerp(299.4, 297.8, ease(wk)), y: 0.35 * ease(seg(u, a, a + 0.4)) + 0, z: lerp(-0.4, -2.25, ease(wk)), ry: lerp(Math.PI * 0.85, 0, turn),
+    legL: wk < 1 ? walk(u, 10, 0.4) : 0, legR: wk < 1 ? -walk(u, 10, 0.4) : 0, sit, armL: settled ? 0.5 : 0, armR: settled ? 0.5 : 0, armLout: 0.15, armRout: 0.15,
+    headX: settled ? -0.12 : 0, mouthO: settled ? 0.4 + 0.3 * Math.sin(u * 3) : 0, shadow: false });
+  const f = ease(seg(u, s.flag[0], s.flag[1]));
+  rFlag.position.y = lerp(0.6, 6.4, f); waveFlag(rFlag, T);
+  return () => hud('Новый султан', u - s.text, 300, { px: 120 });
+};
+SC.s4 = (u, s, T) => { // admiral with the ultimatum on a ship; pan to the clock tower showing 8:59
+  placeShips(T); funnelSmoke(T);
+  const sh = ships[1]; sh.g.updateMatrixWorld(true);
+  const deck = sh.hull.localToWorld(V(3.4, 1.1, 0));
+  pose(admiral, { x: deck.x, y: deck.y, z: deck.z, ry: 0.35, armL: 1.25, armR: 1.25, armLout: -0.25, armRout: -0.25, headX: 0.05 + 0.04 * Math.sin(u * 2) });
+  admiral.root.updateMatrixWorld(true);
+  scroll.visible = true; scroll.position.copy(admiral.root.localToWorld(V(0, 1.42, 0.55))); scroll.rotation.set(-0.1, 0.35, 0);
+  setClock(8, 59 + Math.min(0.9, u * 0.06));
+  const k = easeIO(seg(u, s.pan[0], s.pan[1]));
+  const A = [deck.x + 1.5, deck.y + 2.3, deck.z + 5.4, deck.x, deck.y + 1.2, deck.z, 48];
+  const tw = palW(5.0, 9.0, 0.6);
+  const B = [tw.x - 1.2, tw.y - 1.2, tw.z + 9.5, tw.x, tw.y, tw.z, 44];
+  camLerp(A, B, k);
+  return () => hud('Ультиматум: 9:00', u - s.text, 300, { px: 110, grad: ['#FFFFFF', '#FFD0C8', '#FF4A3A'] });
+};
+SC.s5 = (u, s, T) => { // 9:02 close-up, then wide: three ships open fire, palace hit, tower shakes
+  placeShips(T); funnelSmoke(T);
+  const tick = u < 0.4 ? 1 : 2;
+  setClock(9, tick);
+  const shots = s.shots;
+  let hitShake = 0;
+  const targets = [palW(-3.5, 1.8, 2.8), palW(2.2, 4.6, 2.0), palW(5, 7.5, 1.4), palW(-1, 2.5, 2.8), palW(4.4, 10.5, 1.2), palW(-4.5, 5.2, 1.0)];
+  shots.forEach((st, i) => {
+    const s0 = ships[i % 3]; s0.g.updateMatrixWorld(true);
+    const tr = s0.turrets[0]; const mp = tr.localToWorld(tr.userData.muzzle.clone());
+    const dir = targets[i].clone().sub(mp).setY(0).normalize();
+    muzzle(mp, u - st, dir, 1.6);
+    const hitAge = u - st - 0.22;
+    boom(targets[i], hitAge, 1.8, i * 5 + 1);
+    if (hitAge > 0 && hitAge < 0.6) { hitShake = Math.max(hitShake, 1 - hitAge / 0.6); scorch[i % 4].visible = true; }
+    if (hitAge > 0.6) scorch[i % 4].visible = true;
+    if (u - st > 0 && u - st < 0.3) shakeAmt = Math.max(shakeAmt, 0.6 * (1 - (u - st) / 0.3));
+  });
+  tower.rotation.z = hitShake * 0.06 * Math.sin(u * 60); tower.rotation.x = hitShake * 0.04 * Math.sin(u * 47 + 1);
+  shakeAmt = Math.max(shakeAmt, hitShake * 0.8);
+  if (u < s.wide) {
+    const tw = palW(5.0, 9.0, 0.6);
+    cam(tw.x - 0.6, tw.y - 0.4, tw.z + 6.5, tw.x, tw.y, tw.z, 40);
+  } else {
+    const k = (u - s.wide) / (s.end - s.start - s.wide);
+    cam(lerp(-2, 1, k), 15.5, 50 - k * 2, 0, 3.5, 4, 52);
+  }
+  return () => { if (u >= s.wide) hud('09:02 — БУМ!', u - s.text, 300, { px: 130, grad: ['#FFFFFF', '#FFD24A', '#FF3A1A'] }); flash(u >= s.wide ? 0 : 0); };
+};
+const YACHT = V(9.5, 0, 9);
+SC.s6 = (u, s, T) => { // yacht Glasgow: one tiny shot, gets hit, sinks with bubbles
+  placeShips(T); funnelSmoke(T);
+  scorch.forEach(x => x.visible = true);
+  smokeColumn(palW(-3, 3.5, 2.5), T, 5, 0.8); smokeColumn(palW(3, 6.5, 1.5), T + 1.3, 5, 0.7);
+  const sinkK = easeIn(seg(u, s.hit + 0.25, s.end - s.start + 0.3));
+  yacht.g.visible = true; yacht.g.position.set(YACHT.x, -sinkK * 3.2, YACHT.z); yacht.g.rotation.set(0, -0.35, 0);
+  yacht.hull.position.y = 0.05 * Math.sin(T * 2.2); yacht.hull.rotation.z = 0.04 * Math.sin(T * 1.7) + sinkK * 0.55; yacht.hull.rotation.x = 0.05 * Math.sin(T * 1.3) + sinkK * 0.2;
+  const recoil = Math.max(0, 1 - Math.abs(u - s.shot - 0.05) / 0.1);
+  yacht.hull.position.x = -recoil * 0.06;
+  waveFlag(yacht.flag, T);
+  yacht.g.updateMatrixWorld(true);
+  const mp = yacht.hull.localToWorld(yacht.muzzle.clone());
+  // tiny pathetic shot
+  const sa = u - s.shot;
+  if (sa >= 0 && sa < 0.12) puff(mp, 0.12, '#FFF3A0', 1, '#FFC040');
+  if (sa >= 0 && sa < 1.6) puff(V(mp.x + sa * 0.3, mp.y + sa * 0.25, mp.z - sa * 0.1), 0.08 + sa * 0.12, '#DDDDDD', 1 - sa / 1.6);
+  // its little ball flops into the water a few metres away
+  const bt = seg(sa, 0.02, 0.6);
+  const dir = V(Math.cos(-0.35), 0, -Math.sin(-0.35));
+  if (sa > 0 && bt < 1) puff(V(mp.x + dir.x * bt * 3, mp.y + Math.sin(bt * Math.PI) * 0.6 - bt * 0.75, mp.z + dir.z * bt * 3), 0.06, '#222');
+  splash(V(mp.x + dir.x * 3, 0, mp.z + dir.z * 3), sa - 0.6, 0.35);
+  // big hit
+  boom(V(YACHT.x, 1.0, YACHT.z), u - s.hit, 0.9, 31);
+  splash(V(YACHT.x - 1, 0, YACHT.z + 0.5), u - s.hit - 0.05, 1.3);
+  if (u > s.hit && u < s.hit + 0.3) shakeAmt = 0.5 * (1 - (u - s.hit) / 0.3);
+  // bubbles while sinking
+  if (u > s.hit + 0.4) for (let k = 0; k < 10; k++) {
+    const a = ((u * 0.9 + hash(k) ) % 1);
+    puff(V(YACHT.x + (hash(k * 3) - 0.5) * 2.2, 0.05 + a * 0.5, YACHT.z + (hash(k * 5) - 0.5) * 1.4), 0.08 + 0.14 * Math.sin(a * Math.PI), '#EFFFFF', 1 - a, '#6090A0', k);
+  }
+  cam(YACHT.x + 3.0, 2.3, YACHT.z + 8.4, YACHT.x - 0.7, 0.9, YACHT.z, 46);
+  return () => hud('Главный корабль султана', u - s.text, 300, { px: 96 });
+};
+SC.s7 = (u, s, T) => { // stopwatch over palace stops at 0:38, flag goes down, Khalid escapes through the side door
+  placeShips(T); funnelSmoke(T);
+  scorch.forEach(x => x.visible = true);
+  smokeColumn(palW(-3, 3.5, 2.5), T, 5, 0.8); smokeColumn(palW(3, 6.5, 1.5), T + 1.3, 5, 0.7);
+  sw.visible = true; sw.scale.setScalar(2.2);
+  const st = u - s.stop;
+  sw.position.set(-4.0, 10.6 + 0.15 * Math.sin(T * 1.6), -3); sw.rotation.set(0, 0, st > 0 ? 0.12 * Math.sin(st * 30) * Math.exp(-st * 4) : 0);
+  setSW(st < 0 ? 36.6 + u * 2 : 38, st > 0 && Math.floor(st * 4) % 2 === 0);
+  const f = ease(seg(u, s.flag[0], s.flag[1]));
+  setFlag(1 - f, T);
+  // Khalid runs out of the side door (left wall) towards the palms
+  const r = seg(u, s.run[0], s.run[1]);
+  sideDoor.rotation.y = r > 0 ? -1.3 * ease(seg(u, s.run[0], s.run[0] + 0.2)) : 0;
+  if (r > 0) {
+    const p0 = palW(-6.9, 0, -1.3), p1 = palW(-11.5, 0, 9);
+    const x = lerp(p0.x, p1.x, r), z = lerp(p0.z, p1.z, r);
+    pose(khalid, { x, y: TOPY, z, ry: -Math.PI / 2 + 1.0, legL: walk(u, 22, 0.9), legR: -walk(u, 22, 0.9), armL: -walk(u, 22, 1.0) + 0.3, armR: walk(u, 22, 1.0) + 0.3, hop: Math.abs(Math.sin(u * 22)) * 0.12, lean: 0.25, headY: 0.9, mouthO: 0.8 });
+  }
+  const k = easeIO(u / (s.end - s.start));
+  cam(lerp(-5, -7, k), lerp(7.0, 11.0, k), lerp(16, 28, k), -5.5, lerp(4.5, 4.0, k), -8, 50);
+  return () => hud('Война окончена', u - s.text, 1640, { px: 120 });
+};
+SC.end = (u, s, T) => { // beach: admiral hands Khalid's supporters a long bill for the shells
+  scorch.forEach(x => x.visible = true); flag.visible = false;
+  smokeColumn(palW(-3, 3.5, 2.5), T, 5, 0.8); smokeColumn(palW(3, 6.5, 1.5), T + 1.3, 5, 0.7);
+  const bx = -1.0, bz = 1.0;
+  pose(admiral, { x: bx, y: TOPY, z: bz, ry: Math.PI / 2 - 0.25, armL: 1.3, armR: 1.3, armLout: -0.2, armRout: -0.2, headZ: 0.04 * Math.sin(u * 2), headX: -0.1 });
+  admiral.root.updateMatrixWorld(true);
+  const hands = admiral.root.localToWorld(V(0, 1.45, 0.62));
+  const L = 2.4 * easeOut(seg(u, s.bill[0], s.bill[1]));
+  bill.visible = true; bill.position.copy(hands); bill.rotation.set(0, Math.PI / 2 - 0.25, 0);
+  const hgt = hands.y - TOPY - 0.03;
+  billV.scale.set(1, hgt, 1);
+  billG.position.set(0, -hgt, 0); billG.scale.set(1, 1, Math.max(0.001, L));
+  billRoll.position.set(0, -hgt + 0.12, L + 0.05); billRoll.rotation.x = -L * 4;
+  const shock = seg(u, s.bill[1] - 0.3, s.bill[1] + 0.1);
+  fans.forEach((p, i) => {
+    const jump = Math.max(0, Math.sin(seg(u, s.bill[1] - 0.2 + i * 0.08, s.bill[1] + 0.25 + i * 0.08) * Math.PI)) * 0.3;
+    pose(p, { x: bx + 2.6 + i * 0.6, y: TOPY, z: bz + [-0.1, -0.9, 0.5][i], ry: -Math.PI / 2 + 0.25 - i * 0.15, armL: shock * (2.6 + i * 0.1), armR: shock * (2.6 - i * 0.1), armLout: shock * 0.4, armRout: shock * 0.4,
+      hop: jump, headX: -0.25 * shock, mouthO: shock, headZ: 0.08 * Math.sin(u * 5 + i) * shock });
+  });
+  const k = easeOut(u / 3);
+  cam(lerp(0.5, 0.7, k), lerp(3.2, 2.9, k), lerp(10.0, 8.4, k), 0.6, 1.2, -1.0, 50);
+  return () => {
+    black(1 - seg(u, 0, 0.25));
+    if (u < s.cta) hud('Счёт за снаряды', u - 0.6, 300, { px: 110 });
+    if (u < s.cta + 0.2) receipt(u - s.card);
+    ctaCard(u - s.cta);
+  };
+};
+
+const bloom = document.createElement('canvas'); bloom.width = LW / 3; bloom.height = LH / 3; const B = bloom.getContext('2d');
+function render(t) {
+  const s = TL.scenes.find(x => t < x.end) || TL.scenes[TL.scenes.length - 1];
+  const u = t - s.start;
+  reset(t);
+  const overlay = SC[s.id](u, s, t);
+  if (shakeAmt > 0) { camera.position.x += Math.sin(t * 71) * shakeAmt * 0.25; camera.position.y += Math.sin(t * 53 + 1) * shakeAmt * 0.2; }
+  renderer.render(scene, camera);
+  O.imageSmoothingEnabled = true; O.imageSmoothingQuality = 'low';
+  O.globalAlpha = 1; O.drawImage(glc, 0, 0, W, H);
+  // soft PS2 bloom
+  B.globalCompositeOperation = 'copy'; B.filter = 'blur(3px) brightness(1.1)'; B.drawImage(glc, 0, 0, bloom.width, bloom.height); B.filter = 'none';
+  O.globalCompositeOperation = 'screen'; O.globalAlpha = 0.22; O.drawImage(bloom, 0, 0, W, H); O.globalAlpha = 1; O.globalCompositeOperation = 'source-over';
+  // subtle interlace lines + vignette
+  O.fillStyle = 'rgba(0,0,0,0.05)'; for (let y = (Math.floor(t * 30) % 2) * 2; y < H; y += 4) O.fillRect(0, y, W, 2);
+  const vg = O.createRadialGradient(W / 2, H / 2, H * 0.32, W / 2, H / 2, H * 0.72); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.35)');
+  O.fillStyle = vg; O.fillRect(0, 0, W, H);
+  overlay && overlay();
+}
+window.render = render;
+window.ready = (async () => { TL = await (await fetch('timeline.json')).json(); render(0); return true; })();
+</script>
+</body></html>
