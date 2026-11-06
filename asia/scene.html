@@ -333,7 +333,7 @@ function render(T) {
   // final map: all regions
   if (allEnd > 0) {
     const F = { N: [105, 62], C: [66, 48], M: [45, 30], S: [79, 20], E: [108, 38], SE: [114, 2] };
-    let i = 0; for (const r in F) { const [x, y] = PX(F[r][0], F[r][1]); pill(REG[r].name, x, y, 30, REG[r].c, clamp((t - 99.4 - i * .12) / .3), back((t - 99.4 - i * .12) / .4)); i++; }
+    let i = 0; for (const r in F) { const [x, y] = PX(F[r][0], F[r][1]); pill(REG[r].name, x, y, 30, REG[r].c, clamp((t - 99.4 - i * .12) / .3) * (1 - clamp((t - 101.0) / .4)), back((t - 99.4 - i * .12) / .4)); i++; }
   }
 
   // question-mark flashes in the intro
@@ -374,17 +374,18 @@ function render(T) {
 function drawCTA(t) {
   const a = clamp((t - 101.1) / .5); if (a <= 0) return;
   ctx.fillStyle = `rgba(4,12,20,${.55 * a})`; ctx.fillRect(0, 0, W, H);
-  const p1 = clamp((t - 101.3) / .35), p2 = clamp((t - 105.3) / .35), p3 = clamp((t - 107.5) / .35);
+  const p1 = clamp((t - 101.3) / .35), p2 = clamp((t - 105.3) / .35), p3 = clamp((t - 107.8) / .35);
   ctx.globalAlpha = a * p1; glowText('Такие вопросы', W / 2, H * .17, 78, '#fff'); glowText('часто попадаются на', W / 2, H * .17 + 90, 62, '#fff');
   pill('ЕНТ по географии', W / 2, H * .17 + 220, 72, '#f0891c', a * clamp((t - 103.8) / .3), back((t - 103.8) / .45));
-  ctx.globalAlpha = a * p2; glowText('Хочешь полную', W / 2, H * .41, 70, '#fff'); glowText('консультацию к ЕНТ?', W / 2, H * .41 + 85, 70, '#fff');
-  if (p3 > 0) {
-    const pulse = 1 + .08 * Math.sin((t - 107.5) * 9) * clamp((t - 107.9) / .3);
-    ctx.save(); ctx.globalAlpha = a * p3; ctx.translate(W / 2, H * .6); ctx.scale(back((t - 107.5) / .45) * pulse, back((t - 107.5) / .45) * pulse);
-    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30; ctx.beginPath(); ctx.arc(0, 0, 105, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff'; ctx.fillRect(-55, -15, 110, 30); ctx.fillRect(-15, -55, 30, 110); ctx.restore();
-    ctx.globalAlpha = a * p3; glowText('Оставляй «+»', W / 2, H * .6 + 175, 76, '#fff'); glowText('в комментариях', W / 2, H * .6 + 255, 62, '#fff');
-  }
+  ctx.globalAlpha = a * p2; glowText('Хочешь начать', W / 2, H * .41, 70, '#fff'); glowText('подготовку к ЕНТ?', W / 2, H * .41 + 85, 70, '#fff');
+  ctx.globalAlpha = a * p3; glowText('Напиши в комментариях', W / 2, H * .6, 64, '#fff');
+  { const q = clamp((t - 108.9) / .3); if (q > 0) {   // comment bubble with the keyword
+    const pulse = 1 + .06 * Math.sin((t - 108.9) * 8) * clamp((t - 109.3) / .3), sc = back((t - 108.9) / .45) * pulse;
+    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 190); ctx.scale(sc, sc);
+    ctx.font = '800 96px R'; const w = ctx.measureText('НАЧАТЬ').width + 110, h = 170;
+    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 42); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('НАЧАТЬ', 0, 6); ctx.restore(); } }
   ctx.globalAlpha = 1;
 }
 function drawCaption(t) {

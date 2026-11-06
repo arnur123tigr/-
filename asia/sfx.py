@@ -1,7 +1,7 @@
 """Synthesise SFX (sfx.wav: whooshes on camera moves, blips on country names, pops on region labels)
 and a light electronic music bed (music.wav: soft pad + pluck arpeggio, A minor, 96 bpm)."""
 import json, re, wave, numpy as np
-SR = 48000; OFF = 0.3; DUR = 110.5
+SR = 48000; OFF = 0.3; DUR = 112
 rng = np.random.default_rng(3)
 def band(x, lo, hi):
     X = np.fft.rfft(x); f = np.fft.rfftfreq(len(x), 1 / SR); X[(f < lo) | (f > hi)] = 0; return np.fft.irfft(X, len(x))
@@ -33,7 +33,7 @@ s = np.zeros(int(SR * DUR))
 for c in cams[1:]: add(s, c + OFF - .25, whoosh(1.4), .55)
 for i, c in enumerate(sorted(names)): add(s, c + OFF, blip(1100 + 140 * (i % 5)), .35)
 for c in [103.8, 3.5, 5.9, 8.12, 8.88, 9.66, 23.0, 41.5, 46.0, 53.4, 71.2, 73.4, 82.6, 84.7, 92.1, 94.0, 96.2]: add(s, c + OFF, pop(), .5)
-for c in [0.0, 12.6, 17.8, 35.3, 65.9, 99.3, 101.0, 107.5]: add(s, c + OFF, ding(), .4)
+for c in [0.0, 12.6, 17.8, 35.3, 65.9, 99.3, 101.0, 108.9]: add(s, c + OFF, ding(), .4)
 write('sfx.wav', norm(s) * .9)
 
 # music bed
