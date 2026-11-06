@@ -29,6 +29,7 @@ for f in G['features']:
     if code == 'RUS':   # split Russia at the Urals (~59E): European part RUE, Asian part RUS
         from shapely.geometry import Polygon, box
         from shapely.validation import make_valid
+        out['RUA'] = rings   # whole Russia, used only for drawing borders
         parts = {'RUE': box(-30, -90, 59, 90), 'RUS': box(59, -90, 200, 90)}
         for name, bx in parts.items():
             rr = []

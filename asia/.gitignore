@@ -2,3 +2,4 @@ data/
 *.mp4
 *.wav
 build.log
+map_*.jpg
