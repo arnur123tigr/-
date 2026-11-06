@@ -85,17 +85,17 @@ def pop():
 fx = np.zeros(int(SR * (dur + 2)))
 s1, s2, s3, s4, s5, s6, s7, se = (sc[k] for k in ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 'end'])
 # s1-s2: wind + felt rustle; distant drum in s2
-add(fx, 0, wind(s2['end'] + 0.3), 0.35)
-add(fx, 0.2, rustle(s1['end'] - 0.3), 0.33)
+add(fx, 0, wind(s2['end'] + 0.3), 0.07)
+add(fx, 0.2, rustle(s1['end'] - 0.3), 0.14)
 for i, k in enumerate(np.arange(0.3, s2['end'] - s2['start'], 0.62)): add(fx, s2['start'] + k, band(drum(62, 0.8, 0.2), 30, 500), 0.55 if i % 2 == 0 else 0.35)
 # s3: storm wind + thunder
-add(fx, s3['start'], wind(s3['end'] - s3['start'] + 0.3, 80, 700, 0.6), 0.45)
+add(fx, s3['start'], wind(s3['end'] - s3['start'] + 0.3, 80, 700, 0.6), 0.1)
 for th in s3['thunder']: add(fx, s3['start'] + th, thunder(), 0.8)
 # s4: hooves, creaking carts, whoosh during day/night cycle
 for k in np.arange(0.05, s4['end'] - s4['start'], 0.115):
     add(fx, s4['start'] + k + 0.01 * rng.standard_normal(), hoof(), 0.28 + 0.1 * rng.random())
 for k in np.arange(0.3, s4['end'] - s4['start'] - 0.4, 0.9): add(fx, s4['start'] + k, creak(0.45 + 0.2 * rng.random()), 0.12)
-add(fx, s4['start'], wind(s4['end'] - s4['start'], 150, 700), 0.15)
+add(fx, s4['start'], wind(s4['end'] - s4['start'], 150, 700), 0.04)
 add(fx, s4['start'] + s4['cycle'][0], whoosh(s4['cycle'][1] - s4['cycle'][0] + 0.3, 300, 5000), 0.4)
 # s5: hooves slowing on the hill, river, birds
 for k in np.arange(0.05, s5['end'] - s5['start'], 0.16): add(fx, s5['start'] + k, hoof(), 0.2)
@@ -113,7 +113,7 @@ for dly, g in [(0, 0.75), (0.045, 0.5), (0.11, 0.4), (0.19, 0.3)]:
     add(fx, s7['start'] + s7['shout'] + dly, sh, g)
 add(fx, s7['start'] + s7['shout'], band(rng.standard_normal(int(SR * 3.0)), 300, 3000) * np.exp(-tt(3.0) * 0.9) * np.minimum(1, tt(3.0) / 0.2), 0.08)
 # end: soft wind, CTA pops
-add(fx, se['start'], wind(se['end'] - se['start'], 150, 800), 0.18)
+add(fx, se['start'], wind(se['end'] - se['start'], 150, 800), 0.04)
 add(fx, se['start'] + se['cta'], pop(), 0.5); add(fx, se['start'] + se['cta'] + 0.15, pop(), 0.4)
 write('sfx.wav', fx[:int(SR * dur)])
 
