@@ -1,0 +1,518 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:R;src:url(fonts/Rubik-Medium.ttf)}
+@font-face{font-family:RB;src:url(fonts/Rubik-ExtraBold.ttf)}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// "У Алаш почти не было армии, но они создали государство" — Minimal Line style (thin white lines on black).
+// render(t) is deterministic: record.js calls it for every frame.
+const C = document.getElementById('c'), X = C.getContext('2d'), W = 1080, H = 1920, PI = Math.PI;
+let TL, SC = {};
+window.ready = (async () => {
+  TL = await (await fetch('timeline.json')).json();
+  TL.scenes.forEach(s => SC[s.id] = s);
+  await document.fonts.load('80px R'); await document.fonts.load('80px RB');
+  render(0);
+})();
+
+// ---------- math ----------
+const cl = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const ease = u => { u = cl(u); return u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; };
+const eo = u => 1 - Math.pow(1 - cl(u), 3);
+const ei = u => Math.pow(cl(u), 2);
+const seg = (t, a, b) => cl((t - a) / (b - a));
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const back = u => { u = cl(u); const c = 1.9; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+
+// ---------- line engine (optional "boiling" jitter, used for erasing) ----------
+let JIT = 0, JSTEP = 0;
+function jp(x, y) {
+  if (!JIT) return [x, y];
+  const k = JSTEP;
+  const a = Math.sin(x * .045 + y * .031 + k * 2.7) + Math.sin(x * .013 - y * .052 + k * 1.3);
+  const b = Math.cos(x * .037 - y * .041 + k * 3.1) + Math.sin(x * .061 + y * .009 - k * 1.9);
+  return [x + JIT * a * .5, y + JIT * b * .5];
+}
+function subdiv(pts, closed) {
+  const out = [], n = pts.length, m = closed ? n : n - 1;
+  for (let i = 0; i < m; i++) {
+    const p = pts[i], q = pts[(i + 1) % n], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const s = JIT ? Math.max(1, Math.ceil(L / 14)) : 1;
+    for (let k = 0; k < s; k++) out.push([p[0] + (q[0] - p[0]) * k / s, p[1] + (q[1] - p[1]) * k / s]);
+  }
+  out.push(closed ? pts[0] : pts[n - 1]);
+  return out;
+}
+function poly(pts, o = {}) {
+  let closed = !!o.closed, fill = o.fill, prog = o.prog ?? 1;
+  if (prog <= 0 || pts.length < 2) return;
+  let P = subdiv(pts, closed).map(p => jp(p[0], p[1]));
+  if (prog < 1) {
+    if (closed) P.push(P[0]);
+    const L = [0]; for (let i = 1; i < P.length; i++) L.push(L[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    const tg = L[L.length - 1] * prog, Q = [P[0]];
+    for (let i = 1; i < P.length; i++) {
+      if (L[i] <= tg) Q.push(P[i]);
+      else { const u = (tg - L[i - 1]) / (L[i] - L[i - 1] || 1); Q.push([lerp(P[i - 1][0], P[i][0], u), lerp(P[i - 1][1], P[i][1], u)]); break; }
+    }
+    P = Q; closed = false; fill = false;
+  }
+  X.beginPath(); X.moveTo(P[0][0], P[0][1]);
+  for (let i = 1; i < P.length; i++) X.lineTo(P[i][0], P[i][1]);
+  if (closed) X.closePath();
+  if (fill) { X.save(); X.shadowBlur = 0; X.fillStyle = fill === true ? '#000' : fill; X.fill(); X.restore(); }
+  if (o.stroke !== false) X.stroke();
+}
+const arcPts = (cx, cy, rx, ry, a0 = 0, a1 = 2 * PI, n = 40) => { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); } return o; };
+const circle = (cx, cy, r, o = {}) => poly(arcPts(cx, cy, r, r, 0, 2 * PI, 48).slice(0, -1), { closed: true, ...o });
+const ellipse = (cx, cy, rx, ry, o = {}) => poly(arcPts(cx, cy, rx, ry, 0, 2 * PI, 48).slice(0, -1), { closed: true, ...o });
+const line = (x1, y1, x2, y2, o = {}) => poly([[x1, y1], [x2, y2]], o);
+function rrPts(x, y, w, h, r) {
+  const p = [], c = (cx, cy, a0) => { for (let i = 0; i <= 6; i++) { const a = a0 + i / 6 * PI / 2; p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  c(x + w - r, y + r, -PI / 2); c(x + w - r, y + h - r, 0); c(x + r, y + h - r, PI / 2); c(x + r, y + r, PI); return p;
+}
+const rrect = (x, y, w, h, r, o = {}) => poly(rrPts(x, y, w, h, r), { closed: true, ...o });
+function dot(x, y, r, a = 1) { const [px, py] = jp(x, y); X.save(); X.fillStyle = `rgba(255,255,255,${a})`; X.beginPath(); X.arc(px, py, r, 0, 2 * PI); X.fill(); X.restore(); }
+function ink(a = 1, w = 5, glow = 10, col = '255,255,255') {
+  X.strokeStyle = `rgba(${col},${a})`; X.lineWidth = w; X.lineCap = 'round'; X.lineJoin = 'round';
+  X.shadowColor = `rgba(${col},${Math.min(1, a) * .75})`; X.shadowBlur = glow;
+}
+function cam(z, cx, cy) { X.translate(W / 2, H / 2); X.scale(z, z); X.translate(-cx, -cy); }
+function fadeBlack(a) { if (a <= 0) return; X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.shadowBlur = 0; X.fillStyle = `rgba(0,0,0,${cl(a)})`; X.fillRect(0, 0, W, H); X.restore(); }
+
+// ---------- text ----------
+function title(str, t0, t, y = 250, size = 80) {
+  const u = eo(seg(t, t0, t0 + .4)); if (u <= 0) return;
+  X.save(); X.font = `${size}px R`;
+  let w = X.measureText(str).width; if (w > 960) { size *= 960 / w; X.font = `${size}px R`; w = 960; }
+  X.textAlign = 'center'; X.textBaseline = 'middle'; X.globalAlpha = u;
+  X.fillStyle = '#fff'; X.shadowColor = 'rgba(255,255,255,.55)'; X.shadowBlur = 14;
+  X.fillText(str, W / 2, y + (1 - u) * 26);
+  ink(.7, 3, 6); const hw = (w / 2 + 10) * eo(seg(t, t0 + .15, t0 + .7));
+  if (hw > 1) line(W / 2 - hw, y + size * .72, W / 2 + hw, y + size * .72);
+  X.restore();
+}
+function label(str, x, y, size = 40, a = 1, font = 'R', col = '255,255,255') {
+  if (a <= 0) return;
+  X.save(); X.font = `${size}px ${font}`; X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillStyle = `rgba(${col},${a})`; X.shadowColor = `rgba(${col},${.5 * a})`; X.shadowBlur = 10;
+  X.fillText(str, x, y); X.restore();
+}
+
+// ---------- props ----------
+// quill: base (x,y) is where the hand holds it; feather goes along angle ang. vane = feather width factor
+function quill(x, y, ang, len, o = {}) {
+  const vane = o.vane ?? 1, prog = o.prog ?? 1;
+  const dx = Math.cos(ang), dy = Math.sin(ang), nx = -dy, ny = dx;
+  const P = u => [x + dx * len * u, y + dy * len * u];
+  const nib = .16, nb = [x - dx * len * nib, y - dy * len * nib];
+  poly([nb, P(1)], { prog });                                              // shaft incl. nib
+  if (vane > .02) {
+    const L = [], R = [];
+    for (let i = 0; i <= 16; i++) {
+      const u = .18 + .82 * i / 16, w = len * .13 * vane * Math.pow(Math.sin(PI * (u - .18) / .82), .7) * (1 - .25 * u);
+      const p = P(u); L.push([p[0] + nx * w, p[1] + ny * w]); R.push([p[0] - nx * w * .8, p[1] - ny * w * .8]);
+    }
+    poly([...L, ...R.reverse()], { closed: true, prog });
+    X.save(); X.lineWidth *= .55;
+    for (let k = 1; k < 6; k++) { const u = .25 + k * .12, p = P(u), w = len * .11 * vane * Math.sin(PI * (u - .18) / .82); const q = P(u + .07); if (prog > u) line(p[0], p[1], q[0] + nx * w, q[1] + ny * w); }
+    X.restore();
+  }
+  // nib slit
+  if (prog > .9) { X.save(); X.lineWidth *= .6; poly([[nb[0] + nx * 7, nb[1] + ny * 7], nb, [nb[0] - nx * 7, nb[1] - ny * 7]]); X.restore(); }
+}
+// man in a coat with round glasses. (x,y) = feet. o: s, raise (0..1), beard, quill, alpha
+function person(x, y, o = {}) {
+  const s = o.s || 1, r = o.raise || 0;
+  X.save(); X.translate(x, y); X.scale(s, s);
+  // legs
+  line(-28, -100, -32, 0); line(28, -100, 32, 0); line(-32, 0, -54, 0); line(32, 0, 54, 0);
+  // coat
+  poly([[-60, -372], [60, -372], [92, -92], [-92, -92]], { closed: true, fill: true });
+  poly([[-32, -372], [0, -300], [32, -372]]);
+  line(0, -300, 0, -94);
+  dot(15, -268, 4.5); dot(15, -214, 4.5); dot(15, -160, 4.5);
+  // left arm
+  poly([[-60, -362], [-92, -250], [-86, -150]]);
+  // right arm (raised = holding quill up like a banner)
+  const ex = lerp(92, 118, r), ey = lerp(-250, -470, r), hx = lerp(86, 112, r), hy = lerp(-150, -590, r);
+  if (o.quill) quill(hx, hy, lerp(-PI / 2 + .35, -PI / 2 + .12, r), lerp(150, 240, r));
+  poly([[60, -362], [ex, ey], [hx, hy]]);
+  circle(hx, hy, 9, { fill: true });
+  // head
+  line(0, -372, 0, -390);
+  circle(0, -442, 52, { fill: true });
+  poly(arcPts(0, -452, 50, 36, PI * 1.08, PI * 1.92, 14));                  // hairline
+  X.save(); X.lineWidth *= .8;
+  circle(-20, -444, 15); circle(20, -444, 15); line(-5, -446, 5, -446); line(-35, -446, -50, -452); line(35, -446, 50, -452);
+  X.restore();
+  dot(-20, -443, 3.5); dot(20, -443, 3.5);
+  if (o.beard) {
+    poly([[-40, -430], [-36, -404], [-18, -383], [0, -378], [18, -383], [36, -404], [40, -430]]);
+    poly(arcPts(-12, -414, 13, 6, PI * 1.05, PI * 1.95, 6)); poly(arcPts(12, -414, 13, 6, PI * 1.05, PI * 1.95, 6));
+    X.save(); X.lineWidth *= .5; line(-14, -400, -10, -388); line(0, -398, 0, -384); line(14, -400, 10, -388); X.restore();
+  } else poly(arcPts(0, -428, 14, 8, .2 * PI, .8 * PI, 8));
+  X.restore();
+}
+// seated audience member seen from behind: (x,y) head centre, r head radius, hand raise 0..1
+function backHead(x, y, r, hand = 0) {
+  if (hand > 0) {
+    const sx = x + r * 1.15, sy = y + r * 1.25, hx = sx + r * .5, hy = lerp(sy, y - r * 2.4, hand);
+    line(sx, sy, hx, hy); circle(hx, hy, r * .28, { fill: true });
+  }
+  poly([...arcPts(x, y + r * 2.3, r * 1.7, r * 1.3, PI, 2 * PI, 20)], { closed: true, fill: true });
+  circle(x, y, r, { fill: true });
+}
+function yurt(x, y, s = 1, lit = 0) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  if (lit > 0) {
+    const g = X.createRadialGradient(0, -60, 5, 0, -60, 220);
+    g.addColorStop(0, `rgba(255,255,255,${.22 * lit})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+    X.fillStyle = g; X.fillRect(-230, -290, 460, 340);
+  }
+  poly([[-110, 0], [-110, -70], ...arcPts(0, -70, 110, 70, PI, 2 * PI, 20).slice(1, -1), [110, -70], [110, 0]], { closed: true, fill: true });
+  line(-110, -70, 110, -70);
+  poly(arcPts(0, -140, 22, 6, 0, 2 * PI, 12));                               // shanyrak
+  X.save(); X.lineWidth *= .6; for (const k of [-70, -35, 35, 70]) line(k * .3, -138, k, -72); X.restore();
+  poly([[-24, 0], [-24, -48], [24, -48], [24, 0]], { fill: lit > 0 ? `rgba(255,255,255,${.5 * lit})` : true });
+  X.restore();
+}
+function newspaper(x, y, s, rot = 0, a = 1) {
+  X.save(); X.translate(x, y); X.rotate(rot); X.scale(s, s); X.globalAlpha *= a;
+  ink(1, 4, 10);
+  poly([[-70, -90], [70, -90], [70, 90], [-70, 90]], { closed: true, fill: true });
+  label('ҚАЗАҚ', 0, -58, 34, 1, 'RB');
+  line(-58, -34, 58, -34);
+  X.save(); ink(.55, 3, 3);
+  for (let i = 0; i < 5; i++) { line(-58, -14 + i * 22, -6, -14 + i * 22); line(6, -14 + i * 22, 58, -14 + i * 22); }
+  X.restore(); X.restore();
+}
+function school(x, y, s, a = 1) {
+  X.save(); X.translate(x, y); X.scale(s, s); X.globalAlpha *= a;
+  poly([[-90, -40], [0, -100], [90, -40]], { closed: true, fill: true });
+  poly([[-80, -40], [80, -40], [80, 70], [-80, 70]], { closed: true, fill: true });
+  for (const k of [-55, -20, 20, 55]) line(k, -30, k, 60);
+  line(-95, 70, 95, 70); line(0, -100, 0, -150); poly([[0, -150], [36, -138], [0, -126]]);
+  X.restore();
+}
+function book(x, y, s, a = 1) {
+  X.save(); X.translate(x, y); X.scale(s, s); X.globalAlpha *= a;
+  poly([[0, -50], ...arcPts(-50, -50, 50, 14, 0, -PI, 10).slice(1), [-100, 60], ...arcPts(-50, 60, 50, 14, PI, 2 * PI, 10).slice(1), [0, 60]], { closed: true, fill: true });
+  poly([[0, -50], ...arcPts(50, -50, 50, 14, PI, 2 * PI, 10).slice(1), [100, 60], ...arcPts(50, 60, 50, 14, 0, -PI, 10).slice(1), [0, 60]], { closed: true, fill: true });
+  X.save(); ink(.55, 3, 3); for (let i = 0; i < 3; i++) { line(-80, -20 + i * 24, -20, -16 + i * 24); line(20, -16 + i * 24, 80, -20 + i * 24); } X.restore();
+  X.restore();
+}
+function sign(cx, cy, size, lit, t) {          // glowing "АЛАШ ОРДА"
+  const str = 'АЛАШ ОРДА';
+  X.save(); X.font = `${size}px RB`; X.textAlign = 'left'; X.textBaseline = 'middle';
+  const w = X.measureText(str).width; let x = cx - w / 2;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i], cw = X.measureText(ch).width;
+    const u = seg(lit, i * .07, i * .07 + .25);
+    const fl = u > 0 && u < 1 ? (hash(Math.floor(t * 40) + i * 7) > .4 ? 1 : .3) : 1;
+    const a = u * fl;
+    if (a > 0 && ch !== ' ') {
+      X.fillStyle = `rgba(255,255,255,${a})`; X.shadowColor = `rgba(255,255,255,${.9 * a})`; X.shadowBlur = 30 + 20 * u;
+      X.fillText(ch, x, cy);
+    }
+    x += cw;
+  }
+  X.restore();
+  if (lit > 0) { X.save(); ink(.6 * cl(lit * 2), 3, 8); const hw = (w / 2 + 40) * eo(seg(lit, .2, .9)); rrect(cx - hw, cy - size * .85, hw * 2, size * 1.7, 24); X.restore(); }
+  return w;
+}
+
+// ---------- scenes ----------
+// S1: tiny man with a quill vs an army of bayonets; slow pull-out; army crumbles
+function S1(t, s) {
+  const dur = s.end - s.start, u = ease(seg(t, 0, dur - .6));
+  X.save(); cam(lerp(2.1, 1, u), 540, lerp(1500, 980, u));
+  const ROWS = 11;
+  for (let r = 0; r < ROWS; r++) {
+    const k = r / (ROWS - 1), sc = lerp(.42, 1, k), y = lerp(560, 1260, Math.pow(k, 1.2)), n = Math.round(lerp(26, 13, k)), sp = 1180 / n;
+    for (let i = 0; i < n; i++) {
+      const id = r * 50 + i, x = -50 + sp * (i + .5) + (r % 2) * sp * .5 + (hash(id) - .5) * 10;
+      const ft = seg(t, s.crumble + hash(id + 3) * .45, s.crumble + hash(id + 3) * .45 + .7);
+      const a = (.5 + .5 * k) * (1 - ft);
+      if (a <= 0) continue;
+      X.save(); X.translate(x + (hash(id + 5) - .5) * 160 * ft, y + 900 * ft * ft); X.rotate((hash(id + 7) - .5) * 2.4 * ft); X.scale(sc, sc);
+      ink(a, 4, 6);
+      poly(arcPts(0, -6, 28, 22, PI, 2 * PI, 12), { closed: true, fill: true });      // helmet
+      line(-34, -6, 34, -6);
+      poly([[-40, 40], [-30, 4], [30, 4], [40, 40]], { fill: true });                    // shoulders
+      line(22, 30, 30, -170);                                                           // rifle
+      poly([[26, -170], [31, -205], [36, -170]]);                                       // bayonet
+      X.restore();
+    }
+  }
+  ink(1, 5, 12);
+  person(540, 1640, { s: .42, quill: true, raise: .15 });
+  X.restore();
+  { const g = X.createLinearGradient(0, 0, 0, 470); g.addColorStop(0, 'rgba(0,0,0,.95)'); g.addColorStop(.7, 'rgba(0,0,0,.85)'); g.addColorStop(1, 'rgba(0,0,0,0)'); X.fillStyle = g; X.fillRect(0, 0, W, 470); }
+  title('Без армии — государство?', .1, t);
+}
+// S2: a huge crown cracks and falls, zigzags flash around
+const CROWN = [[300, 980], [250, 660], [325, 850], [400, 600], [470, 810], [540, 500], [610, 810], [680, 600], [755, 850], [830, 660], [780, 980]];
+function crown(t) {
+  ink(1, 6, 16);
+  poly(CROWN, { closed: true, fill: true });
+  poly([[300, 980], [780, 980], [780, 1080], [300, 1080]], { closed: true, fill: true });
+  X.save(); ink(.6, 3, 6); line(300, 1005, 780, 1005); line(300, 1055, 780, 1055); X.restore();
+  for (const [x, y] of [[250, 660], [400, 600], [680, 600], [830, 660]]) circle(x, y, 17, { fill: true });
+  for (const x of [390, 540, 690]) ellipse(x, 1030, 22, 14);
+  line(540, 500, 540, 410); line(508, 445, 572, 445);
+}
+function bolt(x, y, len, seed) {
+  const p = [[x, y]]; let cx = x, cy = y;
+  for (let i = 0; i < 6; i++) { cx += (hash(seed + i) - .5) * 90; cy += len / 6; p.push([cx, cy]); }
+  poly(p);
+}
+function S2(t, s) {
+  const dur = s.end - s.start, c = s.crack, f = s.fall;
+  const shake = t > c && t < f + 1.2 ? Math.sin(t * 80) * 6 * Math.exp(-(t - c) * 1.5) : 0;
+  const draw = eo(seg(t, .05, .8));
+  X.save(); X.translate(shake, 0);
+  // horizon with distant flashes of gunfire
+  ink(.5, 3, 4); line(0, 1560, 1080, 1560);
+  const fu = ei(seg(t, f, f + 1.1));
+  for (const side of [-1, 1]) {
+    X.save();
+    X.beginPath(); if (side < 0) X.rect(0, 0, 540, H); else X.rect(540, 0, 540, H); X.clip();
+    X.translate(540 + side * 220 * fu, 1080 + 1100 * fu); X.rotate(side * .7 * fu); X.translate(-540, -1080);
+    X.globalAlpha = 1 - .8 * fu;
+    if (draw < 1) { ink(1, 6, 16); poly(CROWN, { closed: true, prog: draw }); poly([[300, 980], [780, 980], [780, 1080], [300, 1080]], { closed: true, prog: draw }); }
+    else crown(t);
+    X.restore();
+  }
+  // crack down the middle
+  const cp = eo(seg(t, c, c + .6));
+  if (cp > 0 && fu < .05) {
+    const p = []; for (let i = 0; i <= 10; i++) p.push([540 + (i % 2 ? 1 : -1) * (i ? 20 : 0), 410 + i * 67]);
+    ink(1, 5, 22); poly(p, { prog: cp });
+    for (let i = 0; i < 6; i++) { const yy = 520 + i * 90, d = (i % 2 ? 1 : -1); if (cp > (yy - 410) / 670) line(540 + d * 18, yy, 540 + d * (80 + hash(i) * 70), yy + 40 + hash(i + 1) * 40, { prog: eo(seg(t, c + .1 + i * .07, c + .4 + i * .07)) }); }
+  }
+  // zigzag lightning and gunfire flashes
+  for (let k = 0; k < 14; k++) {
+    const tk = f + .3 + k * .16 + hash(k) * .1, lt = t - tk;
+    if (lt < 0 || lt > .14) continue;
+    const a = 1 - lt / .14, x = 80 + hash(k + 11) * 920, y = 380 + hash(k + 17) * 780;
+    ink(a, 5, 26); bolt(x, y, 220 + hash(k + 2) * 160, k * 13);
+  }
+  for (let k = 0; k < 10; k++) {
+    const tk = f + .4 + k * .22 + hash(k + 40) * .12, lt = t - tk;
+    if (lt < 0 || lt > .2) continue;
+    const a = 1 - lt / .2, x = 60 + hash(k + 50) * 960;
+    ink(a, 3, 18); for (let j = 0; j < 6; j++) { const an = -PI + j / 5 * PI; line(x + Math.cos(an) * 8, 1556 + Math.sin(an) * 8, x + Math.cos(an) * 34, 1556 + Math.sin(an) * 34); }
+  }
+  X.restore();
+  title('1917: империя рушится', .2, t);
+  fadeBlack(seg(t, dur - .4, dur - .05));
+}
+// S3: three Alash men raise quills like banners; newspaper / school / book appear
+function S3(t, s) {
+  const dur = s.end - s.start, z = lerp(1, 1.12, ease(seg(t, 0, dur)));
+  X.save(); cam(z, 540, lerp(1060, 1000, ease(seg(t, 0, dur))));
+  ink(.45, 3, 4); line(60, 1700, 1020, 1700);
+  const XS = [250, 540, 830];
+  XS.forEach((x, i) => { ink(1, 5, 12); person(x, 1700, { s: .9, quill: true, raise: eo(seg(t, .35 + i * .22, 1.05 + i * .22)) }); });
+  const ICON = [newspaper, school, book], LAB = ['газеты', 'школы', 'учебники'];
+  XS.forEach((x, i) => {
+    const t0 = s.icons[i], u = seg(t, t0 - .15, t0 + .25); if (u <= 0) return;
+    const sc = back(u);
+    X.save(); ink(1, 5, 12);
+    if (i === 0) newspaper(x, 730, .9 * sc); else ICON[i](x, 745, .95 * sc);
+    X.restore();
+    label(LAB[i], x, 885, 40, eo(seg(t, t0, t0 + .3)));
+    if (u < 1) { X.save(); ink(.6 * (1 - u), 3, 14); circle(x, 740, 110 + u * 90); X.restore(); }
+  });
+  X.restore();
+  title('Их оружие — перо', .15, t);
+  fadeBlack(1 - seg(t, 0, .35));
+}
+// S4: newspaper sheets fly from under the quill across the steppe to yurts; camera follows
+const YURTS = [900, 1250, 1600, 1950, 2300, 2650];
+const steppeY = x => 1400 + Math.sin(x * .0021) * 40 + Math.sin(x * .0057 + 1) * 18;
+function S4(t, s) {
+  const camx = lerp(540, 2230, ease(seg(t, .45, 3.7)));
+  X.save(); cam(1, camx, 1000);
+  ink(.8, 4, 8);
+  const sp = []; for (let x = -200; x <= 3300; x += 40) sp.push([x, steppeY(x)]); poly(sp);
+  X.save(); ink(.35, 3, 3); const sp2 = []; for (let x = -200; x <= 3300; x += 40) sp2.push([x, steppeY(x) - 160 + Math.sin(x * .0013) * 50]); poly(sp2); X.restore();
+  // desk sheet & writing quill
+  ink(1, 5, 12);
+  poly([[150, 1180], [490, 1180], [520, 1330], [120, 1330]], { closed: true, fill: true });
+  X.save(); ink(.5, 3, 3); for (let i = 0; i < 4; i++) line(170 + i * 3, 1210 + i * 28, lerp(200, 470, eo(seg(t, i * .15, i * .15 + .3))) - i * 2, 1210 + i * 28); X.restore();
+  const wx = 230 + ((t * 2.2) % 1) * 220, wy = 1240 + Math.sin(t * 30) * 8;
+  ink(1, 5, 12); quill(wx, wy, -PI / 2 + .55, 300);
+  label('с 1913 года', 320, 1460, 46, eo(seg(t, 1.6, 2.0)));
+  YURTS.forEach((x, i) => {
+    const t0 = .3 + i * .24, dist = x - 330, T = .75 + dist / 2100, lt = t - t0;
+    const lit = seg(lt, T, T + .3);
+    ink(1, 5, 12); yurt(x, steppeY(x) + 4, .9, lit);
+    if (lt > T && lt < T + .5) { X.save(); ink(.6 * (1 - (lt - T) / .5), 3, 14); circle(x, steppeY(x) - 100, 80 + (lt - T) * 240); X.restore(); }
+    if (lt < 0 || lt > T) return;
+    const u = lt / T, sx = 330, sy = 1180, ex = x, ey = steppeY(x) - 150;
+    const px = lerp(sx, ex, u), py = lerp(sy, ey, u) - Math.sin(u * PI) * (350 + i * 40);
+    newspaper(px, py, lerp(.5, .7, Math.sin(u * PI)) * (1 - .4 * u), Math.sin(u * 9 + i) * .35);
+  });
+  X.restore();
+  title('Газета «Қазақ»', .1, t);
+}
+// hall drawn in world coords (0..2100)
+function hall(t, o = {}) {
+  const banner = o.banner ?? true;
+  ink(.5, 3, 4);
+  line(-200, 1780, 2300, 1780);
+  for (let x = 150; x <= 1950; x += 300) { line(x - 22, 470, x - 22, 1220); line(x + 22, 470, x + 22, 1220); line(x - 36, 470, x + 36, 470); }
+  for (let x = 150; x < 1950; x += 300) poly(arcPts(x + 150, 470, 128, 110, PI, 2 * PI, 16));
+  line(-200, 360, 2300, 360);
+  ink(.8, 4, 8);
+  poly([[250, 1220], [1850, 1220], [1850, 1290], [250, 1290]], { closed: true, fill: true });      // presidium table
+  for (let i = 0; i < 7; i++) { const x = 560 + i * 165; circle(x, 1130, 26, { fill: true }); poly(arcPts(x, 1200, 44, 36, PI, 2 * PI, 12)); }
+  if (!banner) return;
+  ink(1, 5, 12);
+  poly([[700, 560], [1400, 560], [1380, 700], [720, 700]], { closed: true, fill: true });
+  line(700, 560, 640, 400); line(1400, 560, 1460, 400);
+  label('ОРЕНБУРГ', 1050, 632, 70, 1, 'RB');
+}
+function audience(t, o = {}) {
+  const ROWS = 5;
+  for (let r = 0; r < ROWS; r++) {
+    const k = r / (ROWS - 1), rr = lerp(26, 44, k), y = lerp(1380, 1720, k), n = Math.round(lerp(22, 15, k)), sp = 2200 / n;
+    if (o.skipRow === r && o.before) continue;
+    for (let i = 0; i < n; i++) {
+      const id = r * 40 + i, x = -60 + sp * (i + .5) + (r % 2) * sp * .4;
+      if (o.gap && Math.abs(x - o.gap) < sp * .8 && r < o.gapRows) continue;
+      let h = 0;
+      if (o.hands != null && hash(id) < .85) h = eo(seg(t, o.hands + hash(id + 1) * .45, o.hands + hash(id + 1) * .45 + .35));
+      if (o.clap != null && t > o.clap) h = lerp(h, .45, eo(seg(t, o.clap, o.clap + .25)));
+      ink(lerp(.6, 1, k), lerp(3, 5, k), 8);
+      backHead(x, y, rr, h);
+      if (o.clap != null && t > o.clap + .2 && hash(Math.floor(t * 9) + id * 3) > .72) {
+        const cx = x + rr * 1.4, cy = y - rr * .3;
+        X.save(); ink(.8, 3, 10); for (let j = 0; j < 3; j++) { const an = -PI / 2 + (j - 1) * .7; line(cx + Math.cos(an) * rr * .6, cy + Math.sin(an) * rr * .6, cx + Math.cos(an) * rr * 1.1, cy + Math.sin(an) * rr * 1.1); } X.restore();
+      }
+    }
+  }
+}
+function S5(t, s) {
+  const dur = s.end - s.start, camx = lerp(620, 1480, ease(seg(t, 0, dur)));
+  X.save(); cam(1, camx, 1060);
+  hall(t);
+  audience(t, { hands: s.hands, clap: s.clap });
+  X.restore();
+  title('Декабрь 1917: автономия Алаш', .15, t, 250, 72);
+}
+// S6: Bukeikhanov rises in the middle of the hall, "Алаш Орда" lights up above him
+function S6(t, s) {
+  const dur = s.end - s.start, z = lerp(1, 1.3, ease(seg(t, 0, dur))), BX = 1050;
+  X.save(); cam(z, BX, lerp(1060, 1050, ease(seg(t, 0, dur))));
+  hall(t, { banner: false });
+  const lit = seg(t, s.sign, s.sign + 1.0);
+  sign(BX, 700, 110, lit, t);
+  if (lit > 0) { const g = X.createRadialGradient(BX, 700, 20, BX, 700, 520); g.addColorStop(0, `rgba(255,255,255,${.12 * lit})`); g.addColorStop(1, 'rgba(255,255,255,0)'); X.fillStyle = g; X.fillRect(BX - 600, 200, 1200, 900); }
+  const rise = eo(seg(t, .05, .75));
+  ink(1, 5, 14);
+  person(BX, 1690 + 230 * (1 - rise), { s: 1.0, beard: true });
+  audience(t, { gap: BX, gapRows: 4 });
+  X.restore();
+  title('Әлихан Бөкейханов', s.name, t);
+}
+// S7: sign crossed out (1920), then the men are erased one by one (1937)
+function S7(t, s) {
+  const dur = s.end - s.start;
+  sign(540, 560, 110, 1, 99);
+  const sp = eo(seg(t, s.strike, s.strike + .45));
+  if (sp > 0) { ink(1, 9, 18); line(250, 600, 830, 520, { prog: sp }); }
+  const u20 = seg(t, s.strike + .25, s.strike + .65);
+  if (u20 > 0) { X.save(); X.translate(540, 790); const k = back(u20); X.scale(k, k); label('1920', 0, 0, 130, 1, 'RB'); X.restore(); }
+  const u37 = seg(t, s.y37, s.y37 + .4);
+  if (u37 > 0) { X.save(); X.translate(540, 1000); const k = back(u37); X.scale(k, k); label('1937', 0, 0, 130, 1, 'RB'); X.restore(); }
+  ink(.45, 3, 4); line(60, 1720, 1020, 1720);
+  [250, 540, 830].forEach((x, i) => {
+    const e0 = s.erase[i], e = seg(t, e0, e0 + .6);
+    if (e >= 1) return;
+    X.save();
+    JIT = 30 * e * e; JSTEP = Math.floor(t * 12) + i * 5;
+    X.globalAlpha = 1 - e;
+    ink(1, 5, 12); person(x, 1720, { s: .85, quill: true, raise: 0 });
+    JIT = 0;
+    X.restore();
+    if (e > 0) for (let k = 0; k < 26; k++) {
+      const px = x + (hash(k + i * 50) - .5) * 180, py = 1720 - hash(k + i * 50 + 9) * 520 - e * (120 + hash(k) * 260);
+      dot(px, py, 3 + hash(k + 3) * 3, (1 - e) * .9);
+    }
+  });
+  title('1920 и 1937', .25, t);
+  fadeBlack(seg(t, dur - .4, dur - .05));
+}
+// END: the quill is drawn again from scattered lines, turns into the flagpole; flag of Kazakhstan, 1991; CTA
+const BLUE = '0,175,202', GOLD = '254,197,0';
+function flag(t, d) {               // d = draw progress 0..1, c = colour amount
+  const c = seg(d, .55, 1), x0 = 165, y0 = 520, w = 760, h = 380;
+  ink(1, 5, 12);
+  poly([[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]], { closed: true, prog: eo(seg(d, 0, .45)), fill: c > 0 ? `rgba(${BLUE},${.92 * c})` : false });
+  if (c > 0) poly([[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]], { closed: true });
+  const gu = seg(d, .3, .8), col = c > 0 ? GOLD : '255,255,255';
+  const sx = x0 + w * .53, sy = y0 + h * .4;
+  X.save(); ink(1, 4, 12, col);
+  circle(sx, sy, 62, { prog: gu, fill: c > 0 ? `rgba(${GOLD},${c})` : false });
+  for (let i = 0; i < 32; i++) { if (i / 32 > gu) break; const a = i / 32 * 2 * PI; line(sx + Math.cos(a) * 78, sy + Math.sin(a) * 78, sx + Math.cos(a) * (i % 2 ? 96 : 104), sy + Math.sin(a) * (i % 2 ? 96 : 104)); }
+  // steppe eagle
+  const ey = sy + 135;
+  poly([[sx - 250, ey - 40], [sx - 150, ey - 6], [sx - 60, ey + 6], [sx, ey + 20], [sx + 60, ey + 6], [sx + 150, ey - 6], [sx + 250, ey - 40]], { prog: gu });
+  poly([[sx - 230, ey - 26], [sx - 130, ey + 20], [sx - 40, ey + 28]], { prog: gu });
+  poly([[sx + 230, ey - 26], [sx + 130, ey + 20], [sx + 40, ey + 28]], { prog: gu });
+  poly([[sx - 18, ey + 18], [sx, ey + 50], [sx + 18, ey + 18]], { prog: gu });
+  // ornament band
+  for (let k = 0; k < 6; k++) {
+    if (k / 6 > gu) break;
+    const oy = y0 + 32 + k * 60, ox = x0 + 42;
+    poly([[ox, oy + 30], [ox, oy], [ox - 14, oy - 8], [ox - 20, oy + 6]]); poly([[ox, oy], [ox + 14, oy - 8], [ox + 20, oy + 6]]);
+  }
+  X.restore();
+}
+function END(t, s) {
+  const dur = s.end - s.start;
+  // quill assembles from scattered dashes
+  const m = ease(seg(t, .9, 1.5));                   // morph into flagpole
+  const bx = lerp(540, 165, m), by = lerp(1180, 1350, m), ang = lerp(-PI / 2 + .3, -PI / 2, m), len = lerp(560, 840, m), vane = 1 - m;
+  const qp = eo(seg(t, .35, 1.0));
+  for (let k = 0; k < 40; k++) {
+    const u = seg(t, 0, .55 + hash(k) * .3); if (u >= 1) continue;
+    const tu = .05 + hash(k + 7) * .95, tx = 540 + Math.cos(-PI / 2 + .3) * 560 * tu, ty = 1180 + Math.sin(-PI / 2 + .3) * 560 * tu;
+    const sx = hash(k + 1) * 1080, sy = 300 + hash(k + 2) * 1400, e = eo(u);
+    const x = lerp(sx, tx, e), y = lerp(sy, ty, e), a0 = hash(k + 3) * PI * 2, a = lerp(a0, -PI / 2 + .3, e);
+    ink(.8 * (1 - u * .6), 4, 10); line(x - Math.cos(a) * 18, y - Math.sin(a) * 18, x + Math.cos(a) * 18, y + Math.sin(a) * 18);
+  }
+  ink(1, 5, 14); quill(bx, by, ang, len, { prog: qp, vane });
+  flag(t, seg(t, 1.25, 2.4));
+  const u91 = seg(t, s.y91, s.y91 + .45);
+  if (u91 > 0) { X.save(); X.translate(560, 1060); const k = back(u91); X.scale(k, k); label('1991', 0, 0, 140, 1, 'RB'); X.restore(); }
+  title('Пиши 25 — гайд по истории', s.cta, t);
+  const a = eo(seg(t, s.cta + .1, s.cta + .5));
+  if (a > 0) {
+    X.save(); X.globalAlpha = a; ink(1, 5, 12);
+    poly([...rrPts(130, 1270, 820, 170, 40)], { closed: true, fill: true });
+    poly([[260, 1440], [230, 1510], [330, 1440]], { fill: true });
+    X.restore();
+    label('Комментарий', 360, 1355, 44, .5 * a);
+    const pu = seg(t, s.plus, s.plus + .35);
+    if (pu > 0) { X.save(); X.translate(790, 1355); const sc = back(pu); X.scale(sc, sc); label('25', 0, 0, 110, 1, 'RB'); X.restore(); }
+    label('Напиши «25» в комментариях —', 540, 1640, 44, .95 * eo(seg(t, s.plus + .5, s.plus + .9)));
+    label('получи в директ гайд по истории к ЕНТ', 540, 1700, 44, .95 * eo(seg(t, s.plus + .5, s.plus + .9)));
+  }
+  fadeBlack(1 - seg(t, 0, .35));
+}
+const FN = { s1: S1, s2: S2, s3: S3, s4: S4, s5: S5, s6: S6, s7: S7, end: END };
+function render(t) {
+  X.setTransform(1, 0, 0, 1, 0, 0); X.shadowBlur = 0; X.globalAlpha = 1;
+  X.fillStyle = '#000'; X.fillRect(0, 0, W, H);
+  let s = TL.scenes.find(s => t >= s.start && t < s.end) || TL.scenes[TL.scenes.length - 1];
+  X.save(); FN[s.id](t - s.start, s); X.restore();
+}
+window.render = render;
+</script></body></html>

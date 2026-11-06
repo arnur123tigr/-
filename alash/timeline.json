@@ -1,0 +1,10 @@
+{"voiceover":"vo_ru.mp3","vo_offset":0.2,"scenes":[
+{"id":"s1","start":0,"end":4.75,"crumble":3.95},
+{"id":"s2","start":4.75,"end":10.35,"crack":2.3,"fall":3.0},
+{"id":"s3","start":10.35,"end":15.45,"icons":[2.91,3.61,4.29]},
+{"id":"s4","start":15.45,"end":19.65},
+{"id":"s5","start":19.65,"end":24.55,"hands":2.9,"clap":4.1},
+{"id":"s6","start":24.55,"end":27.55,"sign":0.6,"name":1.9},
+{"id":"s7","start":27.55,"end":32.8,"strike":0.35,"y37":2.75,"erase":[3.3,3.8,4.3]},
+{"id":"end","start":32.8,"end":39.0,"y91":1.3,"cta":2.6,"plus":3.08}
+]}
