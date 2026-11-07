@@ -1,14 +1,22 @@
 """Earth-in-one-year reel. Synthesised SFX (sfx.wav: whooshes on scene changes, page flips, pops, booms, ticks, fireworks)
 and a light playful music bed (music.wav: pluck + pad + soft drums, C major, 104 bpm). Times are voice seconds (+OFF)."""
 import wave, numpy as np
+import sys, json
 SR = 48000; OFF = 0.3; DUR = 96
+LANG = sys.argv[1] if len(sys.argv) > 1 else 'ru'
+TM = json.load(open('tmap_kk.json'))['map'] if LANG == 'kk' else None
+if TM: DUR = 104
+def R2K(t):   # russian voice time -> kazakh voice time
+    if not TM: return t
+    for (k0, r0), (k1, r1) in zip(TM, TM[1:]):
+        if t <= r1 or [k1, r1] == TM[-1]: return k0 + (t - r0) * (k1 - k0) / (r1 - r0)
 rng = np.random.default_rng(5)
 def band(x, lo, hi):
     X = np.fft.rfft(x); f = np.fft.rfftfreq(len(x), 1 / SR); X[(f < lo) | (f > hi)] = 0; return np.fft.irfft(X, len(x))
 def norm(x): return x / (np.abs(x).max() + 1e-9)
 def tt(L): return np.arange(int(SR * L)) / SR
 def add(buf, t, sig, g=1.0):
-    i = int((t + OFF) * SR); j = min(len(buf), i + len(sig))
+    i = int((R2K(t) + OFF) * SR); j = min(len(buf), i + len(sig))
     if 0 <= i < j: buf[i:j] += g * sig[:j - i]
 def write(name, x):
     x = np.clip(x, -1, 1)
@@ -46,7 +54,7 @@ for i in range(16): add(s, 70.6 + i * .0625, tick(), .25)
 for c in [37.22, 42.9, 53.8, 72.3, 81.5, 89.0]: add(s, c, ding(1046), .3)
 for i in range(3): add(s, 91.5 + i * .17, tick(), .5)
 add(s, 48.0, whoosh(1.3), .5)
-write('sfx.wav', norm(s) * .9)
+write('sfx.wav' if LANG == 'ru' else 'sfx_kk.wav', norm(s) * .9)
 # music bed
 bpm = 104; beat = 60 / bpm; m = np.zeros(int(SR * DUR))
 def addm(t, sig, g=1.0):
@@ -68,5 +76,5 @@ for b in range(int(DUR / bar) + 1):
         th = tt(.05); addm(t0 + k * beat + beat / 2, band(rng.standard_normal(len(th)), 6000, 12000) * np.exp(-th * 80) * .07)
         if k % 2: tc = tt(.15); addm(t0 + k * beat, band(rng.standard_normal(len(tc)), 900, 5000) * np.exp(-tc * 30) * .1)
 fade = np.ones(len(m)); n0 = int(SR * 1.0); fade[:n0] = np.linspace(0, 1, n0); n1 = int(SR * 2.5); fade[-n1:] = np.linspace(1, 0, n1)
-write('music.wav', norm(m * fade) * .9)
+write('music.wav' if LANG == 'ru' else 'music_kk.wav', norm(m * fade) * .9)
 print('ok')

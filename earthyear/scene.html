@@ -8,7 +8,19 @@ html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
 // "Вся история Земли за один год" — flat cartoon explainer (remake of a just.imaginne reel). render(T) is deterministic, T = video seconds.
-const W = 1080, H = 1920, OFF = 0.3, END = 95.3;
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru', KKL = LANG === 'kk';
+const W = 1080, H = 1920, OFF = 0.3; let END = 95.3;
+const KK = { 'ВОЗРАСТ ЗЕМЛИ': 'ЖЕРДІҢ ЖАСЫ', '4,54 млрд лет': '4,54 млрд жыл', 'ВСЯ ИСТОРИЯ ЗЕМЛИ': 'ЖЕРДІҢ БҮКІЛ ТАРИХЫ', '= 1 год': '= 1 жыл', '365 дней': '365 күн',
+  '1 ГОД': '1 ЖЫЛ', 'ДНЕЙ': 'КҮН', 'ПЕРВЫЙ ШАГ!': 'АЛҒАШҚЫ ҚАДАМ!', 'ВЕЛИКОЕ ВЫМИРАНИЕ': 'ҰЛЫ ҚЫРЫЛУ', 'ПРАДЕДУШКА': 'ҰЛЫ АТА', 'ПРАПРАВНУК': 'ШӨБЕРЕ',
+  'ПОСЛЕДНИЕ 35 МИНУТ': 'СОҢҒЫ 35 МИНУТ', '= 144 ГОДА': '= 144 ЖЫЛ', 'ТЫ': 'СЕН', '≈ 80 ЛЕТ': '≈ 80 ЖЫЛ', '1 СЕКУНДА': '1 СЕКУНД', 'НА ЭТОМ КАЛЕНДАРЕ': 'БҰЛ КҮНТІЗБЕДЕ',
+  'Вся история:': 'Бүкіл тарих:', 'Динозавры:': 'Динозаврлар:', '13 дней': '13 күн', '9500 ДО Н.Э. · ПЕРВЫЕ ФЕРМЫ': 'Б.З.Д. 9500 · АЛҒАШҚЫ ЕГІСТІКТЕР',
+  '3200 ДО Н.Э. · ПИСЬМЕННОСТЬ': 'Б.З.Д. 3200 · ЖАЗУ', 'ПОСЛЕДНИЕ 80 ЛЕТ · ТЫ': 'СОҢҒЫ 80 ЖЫЛ · СЕН', 'СЕЙЧАС': 'ҚАЗІР', 'КСТАТИ': 'АЙТПАҚШЫ', 'ЕНТ по': 'Географиядан',
+  'географии': 'ҰБТ', 'ГАЙД': 'ҰБТ', 'ПО ГЕОГРАФИИ': 'ДАЙЫНДЫҚ', 'ЕНТ': 'ГЕОГРАФИЯ', 'Напиши:': 'Жаз:',
+  'ЯНВАРЬ': 'ҚАҢТАР', 'ФЕВРАЛЬ': 'АҚПАН', 'МАРТ': 'НАУРЫЗ', 'АПРЕЛЬ': 'СӘУІР', 'МАЙ': 'МАМЫР', 'ИЮНЬ': 'МАУСЫМ', 'ИЮЛЬ': 'ШІЛДЕ', 'АВГУСТ': 'ТАМЫЗ',
+  'СЕНТЯБРЬ': 'ҚЫРКҮЙЕК', 'ОКТЯБРЬ': 'ҚАЗАН', 'НОЯБРЬ': 'ҚАРАША', 'ДЕКАБРЬ': 'ЖЕЛТОҚСАН' };
+const L = s => (KKL && KK[s]) || s;
+let TMAP = null;   // kk: [[kk voice time, ru voice time], ...] so the RU-timed animation follows the Kazakh voice
+const mapT = v => { if (!TMAP) return v; let i = 0; while (i < TMAP.length - 2 && v > TMAP[i + 1][0]) i++; const [a0, b0] = TMAP[i], [a1, b1] = TMAP[i + 1]; return b0 + (v - a0) * (b1 - b0) / (a1 - a0); };
 const cv = document.getElementById('c'), MAIN = cv.getContext('2d'); let ctx = MAIN;
 const off = document.createElement('canvas'); off.width = W; off.height = H; const OFFC = off.getContext('2d');
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -39,9 +51,9 @@ function pop(v, t0, d = .45) { return back((v - t0) / d); }
 
 // ---------- dates ----------
 const MD = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-const MG = ['ЯНВАРЯ', 'ФЕВРАЛЯ', 'МАРТА', 'АПРЕЛЯ', 'МАЯ', 'ИЮНЯ', 'ИЮЛЯ', 'АВГУСТА', 'СЕНТЯБРЯ', 'ОКТЯБРЯ', 'НОЯБРЯ', 'ДЕКАБРЯ'];
-const MN = ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'];
-const ML = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д'];
+const MG = KKL ? ['ҚАҢТАР', 'АҚПАН', 'НАУРЫЗ', 'СӘУІР', 'МАМЫР', 'МАУСЫМ', 'ШІЛДЕ', 'ТАМЫЗ', 'ҚЫРКҮЙЕК', 'ҚАЗАН', 'ҚАРАША', 'ЖЕЛТОҚСАН'] : ['ЯНВАРЯ', 'ФЕВРАЛЯ', 'МАРТА', 'АПРЕЛЯ', 'МАЯ', 'ИЮНЯ', 'ИЮЛЯ', 'АВГУСТА', 'СЕНТЯБРЯ', 'ОКТЯБРЯ', 'НОЯБРЯ', 'ДЕКАБРЯ'];
+const MN = KKL ? MG : ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'];
+const ML = KKL ? ['Қ', 'А', 'Н', 'С', 'М', 'М', 'Ш', 'Т', 'Қ', 'Қ', 'Қ', 'Ж'] : ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д'];
 const AGE = 4.54e9, dOf = ya => 365 * (1 - ya / AGE);
 function splitD(d) { let m = 0, r = Math.floor(d); while (m < 11 && r >= MD[m]) { r -= MD[m]; m++; } return { m, day: r + 1, sec: (d - Math.floor(d)) * 86400 }; }
 const p2 = n => String(n).padStart(2, '0');
@@ -63,18 +75,20 @@ function hudState(v) {
   return { d, ya, fmt: K[2], sub: K[3] };
 }
 function yaLabel(ya) {
+  if (KKL) { if (ya >= 1e9) return (ya / 1e9).toFixed(2).replace('.', ',') + ' МЛРД ЖЫЛ БҰРЫН'; if (ya >= 1e6) return Math.round(ya / 1e6) + ' МЛН ЖЫЛ БҰРЫН';
+    return Math.round(ya).toLocaleString('ru-RU').replace(/\s/g, ' ') + ' ЖЫЛ БҰРЫН'; }
   if (ya >= 1e9) return (ya / 1e9).toFixed(2).replace('.', ',') + ' МЛРД ЛЕТ НАЗАД';
   if (ya >= 1e6) return Math.round(ya / 1e6) + ' МЛН ЛЕТ НАЗАД';
   return Math.round(ya).toLocaleString('ru-RU').replace(/\s/g, ' ') + ' ЛЕТ НАЗАД';
 }
 function dateStr(d, fmt) {
-  if (d >= 365 - 1e-10) return ['31 ДЕКАБРЯ', '24:00:00'];
+  if (d >= 365 - 1e-10) return ['31 ' + MG[11], '24:00:00'];
   const { m, day, sec } = splitD(d); const h = Math.floor(sec / 3600), mi = Math.floor(sec / 60) % 60, s = sec % 60;
   let tm = p2(h) + ':' + p2(mi); if (fmt !== 'hm') tm += ':' + p2(Math.floor(s)); if (fmt === 'hms1') tm += ',' + Math.floor((s % 1) * 10);
   return [day + ' ' + MG[m], tm];
 }
 function header(sub, main, yel, a = 1, y0 = 150) {
-  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a;
+  if (a <= 0) return; sub = L(sub); main = L(main); yel = yel && L(yel); ctx.save(); ctx.globalAlpha *= a;
   ctx.font = '34px MB'; ctx.letterSpacing = '4px'; T(sub, W / 2, y0, 34, '#aeb6d6', 'MB'); ctx.letterSpacing = '0px';
   ctx.font = '96px MB'; const w1 = ctx.measureText(main).width, w2 = yel ? ctx.measureText(' ' + yel).width : 0;
   let size = 96; const tot = w1 + w2; if (tot > 1000) size = 96 * 1000 / tot;
@@ -186,6 +200,7 @@ function calPage(w, h, head, num, sub) {
   ctx.lineWidth = w * .022; ctx.strokeStyle = '#2b2236'; rr(-w / 2, -h / 2, w, h, w * .07); ctx.stroke();
 }
 function calendar(x, y, w, head, num, opt = {}) {
+  head = L(head); if (opt.sub) opt = Object.assign({}, opt, { sub: L(opt.sub) }); if (opt.fly) opt = Object.assign({}, opt, { fly: [opt.fly[0], L(opt.fly[1]), opt.fly[2]] });
   const h = w * 1.12, a = opt.a ?? 1; if (a <= 0) return;
   ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.rotate(opt.rot || 0); const s = opt.s ?? 1; ctx.scale(s, s);
   ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18;
@@ -220,7 +235,7 @@ function blobGuy(x, y, s, v, sleep = true) {   // the green first-life blob
   if (sleep) for (let k = 0; k < 3; k++) { const ph = (v * .6 + k / 3) % 1; ctx.globalAlpha = Math.sin(ph * Math.PI); T('z', x + 70 * s + ph * 60, y - 60 * s - ph * 120, (30 + ph * 30) * s * 1.4, '#fff', 'MB'); } ctx.globalAlpha = 1;
 }
 function badge(s, x, y, size, a = 1, rot = 0, bg = '#ffd400', fg = '#1a1a1a') {
-  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= clamp(a); ctx.translate(x, y); ctx.rotate(rot); const sc = a; ctx.scale(sc, sc);
+  if (a <= 0) return; s = L(s); ctx.save(); ctx.globalAlpha *= clamp(a); ctx.translate(x, y); ctx.rotate(rot); const sc = a; ctx.scale(sc, sc);
   ctx.font = `${size}px MB`; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
   ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 6; rr(-w / 2, -h / 2, w, h, h * .3); ctx.fillStyle = bg; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0)';
   ctx.lineWidth = 5; ctx.strokeStyle = '#1a1a1a'; ctx.stroke();
@@ -267,7 +282,7 @@ function sYear(v) {    // 3.0 - 4.4  = 1 year
   space(v);
   const k = pop(v, 3.0);
   header('ВСЯ ИСТОРИЯ ЗЕМЛИ', '= 1 год', '', clamp((v - 3) / .3), 160);
-  T('365 дней', W / 2, 330, 40, '#5ee3ff', 'MB');
+  T(L('365 дней'), W / 2, 330, 40, '#5ee3ff', 'MB');
   calendar(W / 2, 850, 520, '1 ГОД', '365', { s: k, sub: 'ДНЕЙ' });
 }
 function hud(v, a = 1) {
@@ -415,7 +430,7 @@ function frame(x, y, w, rot, em, label, a, col) {
   ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; rr(-w / 2, -w * .62, w, w * 1.24, 18); ctx.fillStyle = '#b07840'; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0)';
   rr(-w / 2 + 22, -w * .62 + 22, w - 44, w - 44, 8); ctx.fillStyle = col; ctx.fill(); E(em, 0, -w * .62 + w / 2, w * .72, 1, 0, true);
   rr(-w / 2 + 30, w * .62 - 110, w - 60, 80, 10); ctx.fillStyle = '#f2dcb0'; ctx.fill();
-  let fs = 46; ctx.font = `${fs}px MB`; const tw = ctx.measureText(label).width; if (tw > w - 90) fs *= (w - 90) / tw; T(label, 0, w * .62 - 70, fs, '#4a2a10', 'MB', 'center', 0);
+  label = L(label); let fs = 46; ctx.font = `${fs}px MB`; const tw = ctx.measureText(label).width; if (tw > w - 90) fs *= (w - 90) / tw; T(label, 0, w * .62 - 70, fs, '#4a2a10', 'MB', 'center', 0);
   ctx.restore();
 }
 function sFamily(v) {   // 52.78 - 55.02
@@ -502,7 +517,7 @@ function stopwatch(cx, cy, r, ang, wedge) {
     for (let i = 0; i < 60; i += 5) { const a = i / 60 * TAU; ctx.strokeStyle = '#2b2236'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(cx + Math.sin(a) * r * .8, cy - Math.cos(a) * r * .8); ctx.lineTo(cx + Math.sin(a) * r * .7, cy - Math.cos(a) * r * .7); ctx.stroke(); } }
   ctx.strokeStyle = '#2b2236'; ctx.lineCap = 'round'; ctx.lineWidth = r * .045; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(ang) * r * .68, cy - Math.cos(ang) * r * .68); ctx.stroke();
   ctx.fillStyle = '#2b2236'; ctx.beginPath(); ctx.arc(cx, cy, r * .07, 0, TAU); ctx.fill(); ctx.restore();
-  T('1 СЕКУНДА', cx, cy + r * .45, r * .11, '#5a5068', 'MB', 'center', 0);
+  T(L('1 СЕКУНДА'), cx, cy + r * .45, r * .11, '#5a5068', 'MB', 'center', 0);
 }
 function sSecond(v) {   // 70.42 - 76.98
   night(v); hud(v);
@@ -538,7 +553,7 @@ function book(x, y, w, a) {
   ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 16; rr(-w / 2, -h / 2, w, h, 22); ctx.fillStyle = '#2f8a5a'; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0)';
   ctx.fillStyle = '#25704a'; ctx.fillRect(-w / 2, -h / 2 + 10, 36, h - 20);
   ctx.fillStyle = '#f7f0e3'; ctx.fillRect(w / 2 - 14, -h / 2 + 18, 10, h - 36);
-  T('ГАЙД', 18, -h * .3, w * .2, '#ffd400', 'MB'); T('ПО ГЕОГРАФИИ', 18, -h * .3 + w * .2, w * .085, '#fff', 'MB');
+  T(L('ГАЙД'), 18, -h * .3, w * (KKL ? .26 : .2), '#ffd400', 'MB'); T(L('ПО ГЕОГРАФИИ'), 18, -h * .3 + w * .2, w * .085, '#fff', 'MB');
   globe(18, h * .14, w * .26, 40, { land: '#4caf50', glow: 'rgba(255,255,255,.2)' });
   badge('ЕНТ', 18, h * .4, w * .08, 1, 0, '#ffd400');
   ctx.restore();
@@ -555,9 +570,9 @@ function sCTA(v) {      // 84.46 - end
     ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8; rr(-400, -70, 800, 140, 70); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0)';
     ctx.beginPath(); ctx.moveTo(-300, 60); ctx.lineTo(-340, 120); ctx.lineTo(-250, 66); ctx.fill();
     ctx.fillStyle = '#d8dbe8'; ctx.beginPath(); ctx.arc(-320, 0, 40, 0, TAU); ctx.fill();
-    const typed = 'гео'.slice(0, Math.floor(clamp((v - 91.5) / .5) * 3 + .001));
-    T('Напиши:', -250, 0, 42, '#8a8fa8', 'MD', 'left', 0);
-    ctx.font = '62px MB'; const tx = -40; T('«' + typed + (Math.floor(v * 3) % 2 && typed.length < 3 ? '|' : '') + (typed.length === 3 ? '»' : ''), tx, 2, 62, '#1d1a26', 'MB', 'left', 0);
+    const KW = KKL ? '+' : 'гео', typed = KW.slice(0, Math.floor(clamp((v - 91.5) / .5) * KW.length + .001));
+    T(L('Напиши:'), -250, 0, 42, '#8a8fa8', 'MD', 'left', 0);
+    ctx.font = '62px MB'; const tx = KKL ? -110 : -40; T('«' + typed + (Math.floor(v * 3) % 2 && typed.length < KW.length ? '|' : '') + (typed.length === KW.length ? '»' : ''), tx, 2, 62, '#1d1a26', 'MB', 'left', 0);
     const sb = 1 + .06 * Math.sin(v * 7); rr(250, -46, 130, 92, 46); ctx.fillStyle = '#ffd400'; ctx.fill(); ctx.save(); ctx.translate(315, 0); ctx.scale(sb, sb); ctx.fillStyle = '#1d1a26'; ctx.beginPath(); ctx.moveTo(-18, -24); ctx.lineTo(26, 0); ctx.lineTo(-18, 24); ctx.fill(); ctx.restore();
     ctx.restore();
     E('point', 140 + 20 * Math.sin(v * 6), 1310, 120 * pop(v, 91.6), 1, -.6);
@@ -596,18 +611,19 @@ function captions(v) {
 }
 
 window.render = function (Tm) {
-  const v = Tm - OFF; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  const vk = Tm - OFF, v = mapT(vk); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
   let i = SC.findIndex(s => v >= s[0] && v < s[1]); if (i < 0) i = 0;
   SC[i][2](v);
   const fd = .3; if (i > 0 && v - SC[i][0] < fd && !NOFADE.has(SC[i][2])) {   // crossfade from the previous scene
     ctx = OFFC; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; SC[i - 1][2](v); ctx = MAIN;
     ctx.globalAlpha = 1 - (v - SC[i][0]) / fd; ctx.drawImage(off, 0, 0); ctx.globalAlpha = 1; }
-  ctx.globalAlpha = 1; captions(v);
+  ctx.globalAlpha = 1; captions(vk);
   // end fade
   if (Tm > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((Tm - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
 };
 window.ready = (async () => {
-  CAPS = await (await fetch('captions.json')).json();
+  CAPS = await (await fetch(KKL ? 'captions_kk.json' : 'captions.json')).json();
+  if (KKL) { TMAP = await (await fetch('tmap_kk.json')).json(); END = TMAP.end; TMAP = TMAP.map; }
   await Promise.all(Object.entries(EMN).map(([k, c]) => new Promise(r => { const im = new Image(); im.onload = r; im.onerror = () => { console.log('missing', c); r(); }; im.src = 'emoji/' + c + '.svg'; EM[k] = im; })));
   await document.fonts.load('80px MB'); await document.fonts.load('40px MD');
   return true;
