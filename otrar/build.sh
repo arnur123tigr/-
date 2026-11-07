@@ -54,7 +54,7 @@ ffmpeg -y -v error -i audio/vo_a.mp3 -i audio/sfx.wav -i audio/music.wav -filter
 [sfx][mus]amix=inputs=2:normalize=0[bed];
 [bed][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350[duck];
 [vo][duck]amix=inputs=2:normalize=0,alimiter=limit=0.95[m]" -map "[m]" -ac 2 -ar 48000 "$O/tmp_mix.wav"
-ffmpeg -y -v error -i "$O/tmp_mix.wav" -af loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json -f null - 2> "$O/ln.txt" || true
+ffmpeg -y -hide_banner -nostats -i "$O/tmp_mix.wav" -af loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json -f null - 2> "$O/ln.txt" || true
 python3 - "$O" "$2" <<'PY'
 import json, re, sys, subprocess
 O, out = sys.argv[1], sys.argv[2]
