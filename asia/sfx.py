@@ -1,13 +1,21 @@
 """Synthesise SFX (sfx.wav: whooshes on camera moves, blips on country names, pops on region labels)
 and a light electronic music bed (music.wav: soft pad + pluck arpeggio, A minor, 96 bpm)."""
 import json, re, wave, numpy as np
-SR = 48000; OFF = 0.3; DUR = 112
+import os, sys
+SR = 48000; OFF = 0.3; DUR = float(os.environ.get('VDUR', 112))
+LANG = os.environ.get('VLANG', 'ru')
+WP = json.load(open(f'warp_{LANG}.json')) if LANG != 'ru' else None
+def inv(t):   # Russian timeline time -> this language's voice time
+    if not WP: return t
+    xs = [b for a, b in WP]; ys = [a for a, b in WP]
+    return float(np.interp(t, xs, ys, left=None, right=None)) if xs[0] <= t <= xs[-1] else t + (ys[-1] - xs[-1] if t > xs[-1] else 0)
 rng = np.random.default_rng(3)
 def band(x, lo, hi):
     X = np.fft.rfft(x); f = np.fft.rfftfreq(len(x), 1 / SR); X[(f < lo) | (f > hi)] = 0; return np.fft.irfft(X, len(x))
 def norm(x): return x / (np.abs(x).max() + 1e-9)
 def tt(L): return np.arange(int(SR * L)) / SR
-def add(buf, t, sig, g=1.0):
+def add(buf, t, sig, g=1.0, raw=False):
+    if not raw and WP is not None: t = inv(t - OFF) + OFF
     i = int(t * SR); j = min(len(buf), i + len(sig))
     if 0 <= i < j: buf[i:j] += g * sig[:j - i]
 def write(name, x):
@@ -43,17 +51,17 @@ bar = 4 * beat; t_bar = tt(bar)
 for b in range(int(DUR / bar) + 1):
     ch = prog[b % 4]; t0 = b * bar
     pad = sum(band(np.sign(np.sin(2 * np.pi * N(n) * t_bar)) * .3 + np.sin(2 * np.pi * N(n) * 1.003 * t_bar), 80, 1800) for n in ch)
-    add(m, t0, pad * np.minimum(1, t_bar / .3) * np.minimum(1, (bar - t_bar) / .3) * .12)
+    add(m, t0, raw=True, sig=pad * np.minimum(1, t_bar / .3) * np.minimum(1, (bar - t_bar) / .3) * .12)
     bass = np.sin(2 * np.pi * N(ch[0] - 12) * t_bar) * np.minimum(1, t_bar / .05) * np.minimum(1, (bar - t_bar) / .1)
-    add(m, t0, bass * .25)
+    add(m, t0, bass * .25, raw=True)
     arp = [ch[0] + 12, ch[1] + 12, ch[2] + 12, ch[1] + 12]
     for k in range(8):
         tp = tt(beat * 1.5); n = arp[k % 4]
         pl = (np.sin(2 * np.pi * N(n) * tp) + .4 * np.sin(2 * np.pi * N(n) * 2 * tp)) * np.exp(-tp * 7)
-        add(m, t0 + k * beat / 2, pl * .16)
+        add(m, t0 + k * beat / 2, pl * .16, raw=True)
     for k in range(4):   # soft kick + hat
-        tk = tt(.3); add(m, t0 + k * beat, np.sin(2 * np.pi * np.cumsum(55 * (1 + 2 * np.exp(-tk * 30))) / SR) * np.exp(-tk * 10) * .35)
-        th = tt(.05); add(m, t0 + k * beat + beat / 2, band(rng.standard_normal(len(th)), 6000, 12000) * np.exp(-th * 80) * .08)
+        tk = tt(.3); add(m, t0 + k * beat, raw=True, sig=np.sin(2 * np.pi * np.cumsum(55 * (1 + 2 * np.exp(-tk * 30))) / SR) * np.exp(-tk * 10) * .35)
+        th = tt(.05); add(m, t0 + k * beat + beat / 2, raw=True, sig=band(rng.standard_normal(len(th)), 6000, 12000) * np.exp(-th * 80) * .08)
 fade = np.ones(len(m)); n0 = int(SR * 1.5); fade[:n0] = np.linspace(0, 1, n0); n1 = int(SR * 2.5); fade[-n1:] = np.linspace(1, 0, n1)
 write('music.wav', norm(m * fade) * .9)
 print('ok', len(cams), len(names))

@@ -9,6 +9,11 @@ html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block
 <script src="data.js"></script>
 <script>
 // Neon map: "Чем отличаются регионы Азии". render(t) is deterministic, t in seconds of the video.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const KK = {"Южная Азия": "Оңтүстік Азия", "Центральная Азия": "Орталық Азия", "Восточная Азия": "Шығыс Азия", "Юго-Восточная Азия": "Оңтүстік-Шығыс Азия", "Северная Азия": "Солтүстік Азия", "Ближний Восток": "Таяу Шығыс", "Индия": "Үндістан", "Пакистан": "Пәкістан", "Афганистан": "Ауғанстан", "Мальдивы": "Мальдив", "Казахстан": "Қазақстан", "Узбекистан": "Өзбекстан", "Туркменистан": "Түрікменстан", "Кыргызстан": "Қырғызстан", "Таджикистан": "Тәжікстан", "Китай": "Қытай", "Монголия": "Моңғолия", "КНДР": "КХДР", "Южная Корея": "Оңтүстік Корея", "Япония": "Жапония", "Таиланд": "Тайланд", "Филиппины": "Филиппин", "Вост. Тимор": "Шығыс Тимор", "Саудовская Аравия": "Сауд Арабиясы", "Турция": "Түркия", "ОАЭ": "БАӘ", "Азербайджан": "Әзірбайжан", "Египет": "Мысыр", "Гималаи": "Гималай", "ООН": "БҰҰ", "Европа": "Еуропа", "Дальний Восток": "Қиыр Шығыс", "Ближний": "Таяу", "Запад Азии": "Азияның батысы", "Западная Азия": "Батыс Азия", "«Ближний Восток»": "«Таяу Шығыс»", "Южная": "Оңтүстік", "Восточная": "Шығыс", "Юго-Восточная": "Оңтүстік-Шығыс", "стран в Азии": "ел Азияда", "Давай разберёмся": "Кәне, түсінейік", "всей суши": "бүкіл құрлықтың", "человек": "адам", "почти половина — здесь": "жартысына жуығы — осында", "РОССИЯ": "РЕСЕЙ", "= Европа": "= Еуропа", "территории — в Азии": "аумағы — Азияда", "Забавно…": "Қызық…", "Теперь ты знаешь": "Енді сен білесің", "Такие вопросы": "Мұндай сұрақтар", "часто попадаются на": "жиі кездеседі", "ЕНТ по географии": "ҰБТ: география", "Хочешь начать": "ҰБТ-ға дайындықты", "подготовку к ЕНТ?": "бастағың келе ме?", "Напиши в комментариях": "Комментарийге жаз", "НАЧАТЬ": "БАСТАУ"};
+const TR = s => (LANG === 'kk' && KK[s]) || s;
+let WARP = null;   // [[voice time, RU timeline time], ...] for non-RU voiceovers
+const warp = t => { if (!WARP) return t; let i = 0; while (i < WARP.length - 2 && t > WARP[i + 1][0]) i++; const [a0, b0] = WARP[i], [a1, b1] = WARP[i + 1]; if (t < a0) return b0 + (t - a0); if (t > a1 && i === WARP.length - 2) return b1 + (t - a1); return b0 + (b1 - b0) * (t - a0) / (a1 - a0); };
 const W = 1080, H = 1920, OFF = 0.3;            // voice starts 0.3 s into the video
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const gl = document.createElement('canvas'); gl.width = W / 4; gl.height = H / 4; const gx = gl.getContext('2d');
@@ -23,20 +28,20 @@ const my = lat => 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * lat * D2R)) / D2R
 
 // ---------- regions ----------
 const REG = {
-  S: { c: '#3fc43a', name: 'Южная Азия', k: ['IND', 'PAK', 'AFG', 'BGD', 'NPL', 'BTN', 'LKA', 'MDV'] },
-  C: { c: '#dc3326', name: 'Центральная Азия', k: ['KAZ', 'UZB', 'TKM', 'KGZ', 'TJK'] },
-  E: { c: '#e2cf2c', name: 'Восточная Азия', k: ['CHN', 'MNG', 'PRK', 'KOR', 'JPN', 'TWN'] },
-  SE: { c: '#3cc6e2', name: 'Юго-Восточная Азия', k: ['VNM', 'THA', 'LAO', 'KHM', 'MMR', 'MYS', 'SGP', 'IDN', 'PHL', 'BRN', 'TLS'] },
-  N: { c: '#2a46dc', name: 'Северная Азия', k: ['RUS'] },
-  M: { c: '#f0891c', name: 'Ближний Восток', k: ['TUR', 'GEO', 'ARM', 'AZE', 'SYR', 'LBN', 'ISR', 'PSX', 'JOR', 'IRQ', 'IRN', 'KWT', 'SAU', 'BHR', 'QAT', 'ARE', 'OMN', 'YEM', 'CYP', 'CYN'] },
+  S: { c: '#3fc43a', name: TR('Южная Азия'), k: ['IND', 'PAK', 'AFG', 'BGD', 'NPL', 'BTN', 'LKA', 'MDV'] },
+  C: { c: '#dc3326', name: TR('Центральная Азия'), k: ['KAZ', 'UZB', 'TKM', 'KGZ', 'TJK'] },
+  E: { c: '#e2cf2c', name: TR('Восточная Азия'), k: ['CHN', 'MNG', 'PRK', 'KOR', 'JPN', 'TWN'] },
+  SE: { c: '#3cc6e2', name: TR('Юго-Восточная Азия'), k: ['VNM', 'THA', 'LAO', 'KHM', 'MMR', 'MYS', 'SGP', 'IDN', 'PHL', 'BRN', 'TLS'] },
+  N: { c: '#2a46dc', name: TR('Северная Азия'), k: ['RUS'] },
+  M: { c: '#f0891c', name: TR('Ближний Восток'), k: ['TUR', 'GEO', 'ARM', 'AZE', 'SYR', 'LBN', 'ISR', 'PSX', 'JOR', 'IRQ', 'IRN', 'KWT', 'SAU', 'BHR', 'QAT', 'ARE', 'OMN', 'YEM', 'CYP', 'CYN'] },
 };
 const OF = {}; for (const r in REG) for (const k of REG[r].k) OF[k] = r;
 const ASIA = new Set(Object.keys(OF));
-const NAMES = { IND: 'Индия', PAK: 'Пакистан', AFG: 'Афганистан', BGD: 'Бангладеш', NPL: 'Непал', BTN: 'Бутан', LKA: 'Шри-Ланка', MDV: 'Мальдивы',
-  KAZ: 'Казахстан', UZB: 'Узбекистан', TKM: 'Туркменистан', KGZ: 'Кыргызстан', TJK: 'Таджикистан',
-  CHN: 'Китай', MNG: 'Монголия', PRK: 'КНДР', KOR: 'Южная Корея', JPN: 'Япония', TWN: 'Тайвань',
-  VNM: 'Вьетнам', THA: 'Таиланд', LAO: 'Лаос', KHM: 'Камбоджа', MMR: 'Мьянма', MYS: 'Малайзия', SGP: 'Сингапур', IDN: 'Индонезия', PHL: 'Филиппины', BRN: 'Бруней', TLS: 'Вост. Тимор',
-  IRN: 'Иран', IRQ: 'Ирак', SAU: 'Саудовская Аравия', ISR: 'Израиль', PSX: 'Палестина', TUR: 'Турция', SYR: 'Сирия', JOR: 'Иордания', YEM: 'Йемен', OMN: 'Оман', ARE: 'ОАЭ', KWT: 'Кувейт', GEO: 'Грузия', ARM: 'Армения', AZE: 'Азербайджан', LBN: 'Ливан', EGY: 'Египет' };
+const NAMES = { IND: TR('Индия'), PAK: TR('Пакистан'), AFG: TR('Афганистан'), BGD: TR('Бангладеш'), NPL: TR('Непал'), BTN: TR('Бутан'), LKA: TR('Шри-Ланка'), MDV: TR('Мальдивы'),
+  KAZ: TR('Казахстан'), UZB: TR('Узбекистан'), TKM: TR('Туркменистан'), KGZ: TR('Кыргызстан'), TJK: TR('Таджикистан'),
+  CHN: TR('Китай'), MNG: TR('Монголия'), PRK: TR('КНДР'), KOR: TR('Южная Корея'), JPN: TR('Япония'), TWN: TR('Тайвань'),
+  VNM: TR('Вьетнам'), THA: TR('Таиланд'), LAO: TR('Лаос'), KHM: TR('Камбоджа'), MMR: TR('Мьянма'), MYS: TR('Малайзия'), SGP: TR('Сингапур'), IDN: TR('Индонезия'), PHL: TR('Филиппины'), BRN: TR('Бруней'), TLS: TR('Вост. Тимор'),
+  IRN: TR('Иран'), IRQ: TR('Ирак'), SAU: TR('Саудовская Аравия'), ISR: TR('Израиль'), PSX: TR('Палестина'), TUR: TR('Турция'), SYR: TR('Сирия'), JOR: TR('Иордания'), YEM: TR('Йемен'), OMN: TR('Оман'), ARE: TR('ОАЭ'), KWT: TR('Кувейт'), GEO: TR('Грузия'), ARM: TR('Армения'), AZE: TR('Азербайджан'), LBN: TR('Ливан'), EGY: TR('Египет') };
 // label anchor (lon, lat) and when each country is named in the voice (voice time); size factor
 const LBL = {
   IND: [79, 22, 24.26], PAK: [69.5, 29.5, 25.0], AFG: [65.5, 33.6, 25.74], BGD: [90.3, 23.8, 26.62], NPL: [84, 28.4, 27.84, .8], BTN: [90.5, 27.5, 28.1, .8], LKA: [80.7, 7.6, 30.42, .85], MDV: [73.3, 3.5, 31.18, .85],
@@ -159,8 +164,8 @@ function labelAlpha(k, t) {
 // ---------- overlays ----------
 function drawMountains(t) {
   const a = win(t, 44.1, 51.8, .4); if (a <= 0) return;
-  const ranges = [{ n: 'Гималаи', at: 44.3, p: [[73, 35.6], [76, 34.4], [78.5, 32.6], [81, 30.4], [84, 28.6], [87, 27.9], [90, 28], [93, 28.4], [95.5, 29.3]], lab: [84, 31.6] },
-    { n: 'Тянь-Шань', at: 45.04, p: [[68.5, 41.6], [71.5, 41.7], [75, 42], [78.5, 42.4], [82, 43], [86, 43.3], [90, 43.4], [94, 43.2]], lab: [80, 45.3] }];
+  const ranges = [{ n: TR('Гималаи'), at: 44.3, p: [[73, 35.6], [76, 34.4], [78.5, 32.6], [81, 30.4], [84, 28.6], [87, 27.9], [90, 28], [93, 28.4], [95.5, 29.3]], lab: [84, 31.6] },
+    { n: TR('Тянь-Шань'), at: 45.04, p: [[68.5, 41.6], [71.5, 41.7], [75, 42], [78.5, 42.4], [82, 43], [86, 43.3], [90, 43.4], [94, 43.2]], lab: [80, 45.3] }];
   for (const R of ranges) {
     const k = eout((t - R.at) / 1.0); if (k <= 0) continue;
     ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#e8f6ff'; ctx.fillStyle = 'rgba(200,235,255,.18)'; ctx.lineWidth = 3; ctx.shadowColor = '#bfe9ff'; ctx.shadowBlur = 16; ctx.lineJoin = 'round';
@@ -196,7 +201,7 @@ function drawUN(t) {
   ctx.beginPath(); ctx.arc(0, -10, 62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -10, 38, 0, 7); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-62, -10); ctx.lineTo(62, -10); ctx.moveTo(0, -72); ctx.lineTo(0, 52); ctx.stroke();
   for (const sd of [-1, 1]) for (let i = 0; i < 6; i++) { const an = Math.PI / 2 + sd * (0.5 + i * .33); ctx.beginPath(); ctx.ellipse(Math.cos(an) * 92, -10 + Math.sin(an) * 92, 13, 6, an + Math.PI / 2 + sd * .5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
-  ctx.font = '800 54px R'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText('ООН', 0, 175);
+  ctx.font = '800 54px R'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(TR('ООН'), 0, 175);
   ctx.restore();
 }
 function arrow(x0, y0, x1, y1, k, col, bend = -.25) {
@@ -216,12 +221,12 @@ function drawEye(t) {
   const look = clamp((t - 81.1) / .6) - clamp((t - 83.7) / .6) * 1.6;  // looks east, then towards the Middle East
   ctx.fillStyle = '#0a1a3a'; ctx.beginPath(); ctx.arc(14 + 18 * clamp(look, -1, 1), 4, 22 * blink, 0, 7); ctx.fill();
   ctx.restore();
-  tag('Европа', x, y + 80, 38, a, '#fff', '#9fe8ff');
+  tag(TR('Европа'), x, y + 80, 38, a, '#fff', '#9fe8ff');
   const [cx, cy] = PX(112, 35), [mx, mmy] = PX(44, 30);
   arrow(x + 50, y - 20, cx - 60, cy - 30, (t - 81.2) / .9, '#ffd83d', -.18);
-  pill('Дальний Восток', cx, cy - 80, 40, '#ffd83d', clamp((t - 82.6) / .3), back((t - 82.6) / .4));
+  pill(TR('Дальний Восток'), cx, cy - 80, 40, '#ffd83d', clamp((t - 82.6) / .3), back((t - 82.6) / .4));
   arrow(x + 20, y + 40, mx - 40, mmy - 20, (t - 83.8) / .7, '#ff9a2e', .2);
-  pill('Ближний', mx, mmy + 80, 40, '#ff9a2e', clamp((t - 84.7) / .3), back((t - 84.7) / .4));
+  pill(TR('Ближний'), mx, mmy + 80, 40, '#ff9a2e', clamp((t - 84.7) / .3), back((t - 84.7) / .4));
 }
 function drawMeridian(t) {
   const a = win(t, 74.6, 78.3, .3); if (a <= 0) return;
@@ -230,12 +235,12 @@ function drawMeridian(t) {
   ctx.beginPath(); ctx.moveTo(x0, H * .12); ctx.lineTo(x0, H * .12 + H * .62 * k); ctx.stroke(); ctx.restore();
   const [ax, ay] = PX(40, 31);
   arrow(ax + 160, ay - 260, ax - 30, ay - 40, (t - 75.6) / .7, '#fff', .25);
-  pill('Запад Азии', ax + 170, ay - 300, 40, '#ffffff', clamp((t - 75.8) / .3), back((t - 75.8) / .4));
+  pill(TR('Запад Азии'), ax + 170, ay - 300, 40, '#ffffff', clamp((t - 75.8) / .3), back((t - 75.8) / .4));
 }
 
 // ---------- main render ----------
 function render(T) {
-  const t = T - OFF;
+  const tv = T - OFF, t = warp(tv); TRU = t;
   cam = camAt(t);
   // background
   ctx.fillStyle = '#0d3340'; ctx.fillRect(0, 0, W, H);
@@ -313,23 +318,23 @@ function render(T) {
     const L = LBL[k]; const [x, y] = PX(L[0], L[1]); const sz = 40 * (L[3] || 1) * Math.min(1.2, Math.max(.9, cam.s / 18));
     const pop = back((t - L[2]) / .35);
     let hl = null;
-    if (OF[k] === 'C' || k === 'AFG' || k === 'PAK') { const h = clamp((t - 35.5) / .4) * (t < 42.8 ? 1 : 0); if (h > 0 && NAMES[k].includes('стан')) hl = { s: NAMES[k].endsWith('стан') ? 'стан' : 'стан', c: '#ffd83d', a: h }; }
+    if (OF[k] === 'C' || k === 'AFG' || k === 'PAK') { const h = clamp((t - 35.5) / .4) * (t < 42.8 ? 1 : 0); if (h > 0 && NAMES[k].includes(TR('стан'))) hl = { s: NAMES[k].endsWith(TR('стан')) ? TR('стан') : TR('стан'), c: '#ffd83d', a: h }; }
     ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); tag(NAMES[k], 0, 0, sz, a, '#fff', '#000', hl); ctx.restore();
   }
   // Afghanistan / Pakistan re-shown and crossed out during "кроме Афганистана и Пакистана"
   for (const [k, at] of [['AFG', 39.82], ['PAK', 40.52]]) {
     const a = win(t, at - .3, 42.8, .25); if (a <= 0) continue; const L = LBL[k]; const [x, y] = PX(L[0], L[1]);
-    tag(NAMES[k], x, y, 34, a, '#fff', '#000', { s: 'стан', c: '#ffd83d', a: 1 }); ctx.globalAlpha = a; strike(NAMES[k], x, y, 34, (t - at) / .4); ctx.globalAlpha = 1;
+    tag(NAMES[k], x, y, 34, a, '#fff', '#000', { s: TR('стан'), c: '#ffd83d', a: 1 }); ctx.globalAlpha = a; strike(NAMES[k], x, y, 34, (t - at) / .4); ctx.globalAlpha = 1;
   }
   // Egypt label
-  { const a = clamp((t - 96.2) / .3) * (1 - clamp((t - 99.3) / .4)); if (a > 0) { const [x, y] = PX(30, 26.5); tag('Египет', x, y, 40, a); } }
-  { const [x, y] = PX(20, 8); tag('АФРИКА', x, y, 56, af, '#fff', '#fff'); }
+  { const a = clamp((t - 96.2) / .3) * (1 - clamp((t - 99.3) / .4)); if (a > 0) { const [x, y] = PX(30, 26.5); tag(TR('Египет'), x, y, 40, a); } }
+  { const [x, y] = PX(20, 8); tag(TR('АФРИКА'), x, y, 56, af, '#fff', '#fff'); }
 
   // ---- region pills ----
   const RP = { S: [[79, 13.5], 23.0, 32.0], C: [[66, 52.5], 41.5, 42.8], E: [[112, 43], 46.0, 51.8], SE: [[108, -9], 53.4, 61.0], N: [[105, 64], 71.2, 72.3], M: [[47, 19], 73.4, 85.3] };
   for (const r in RP) { const [[lo, la], a0, a1] = RP[r]; const a = win(t, a0, a1, .25); if (a > 0) { const [x, y] = PX(lo, la); pill(REG[r].name, x, y, 46, REG[r].c, a, back((t - a0) / .4)); } }
-  { const a = win(t, 92.1, 99.3, .25); if (a > 0) { const [x, y] = PX(46, 41.5); pill('Западная Азия', x, y, 46, REG.M.c, a, back((t - 92.1) / .4)); } }
-  { const a = win(t, 94.0, 99.3, .25); if (a > 0) { const [x, y] = PX(50, 13); pill('«Ближний Восток»', x, y, 38, '#ffffff', a * .95, back((t - 94.0) / .4)); } }
+  { const a = win(t, 92.1, 99.3, .25); if (a > 0) { const [x, y] = PX(46, 41.5); pill(TR('Западная Азия'), x, y, 46, REG.M.c, a, back((t - 92.1) / .4)); } }
+  { const a = win(t, 94.0, 99.3, .25); if (a > 0) { const [x, y] = PX(50, 13); pill(TR('«Ближний Восток»'), x, y, 38, '#ffffff', a * .95, back((t - 94.0) / .4)); } }
   // final map: all regions
   if (allEnd > 0) {
     const F = { N: [105, 62], C: [66, 48], M: [45, 30], S: [79, 20], E: [108, 38], SE: [114, 2] };
@@ -340,7 +345,7 @@ function render(T) {
   for (const [r, a0, a1, lo, la] of [['M', 3.5, 5.0, 52, 27], ['C', 5.9, 7.3, 66, 45]]) {
     const a = win(t, a0, a1, .2); if (a > 0) { const [x, y] = PX(lo, la); pill(REG[r].name + '?', x, y, 44, REG[r].c, a, back((t - a0) / .35)); }
   }
-  { const a = win(t, 8.0, 11.3, .2); if (a > 0) { const items = [['Южная', 'S', 8.12], ['Восточная', 'E', 8.88], ['Юго-Восточная', 'SE', 9.66]];
+  { const a = win(t, 8.0, 11.3, .2); if (a > 0) { const items = [[TR('Южная'), 'S', 8.12], [TR('Восточная'), 'E', 8.88], [TR('Юго-Восточная'), 'SE', 9.66]];
     for (let i = 0; i < 3; i++) { const [s, r, at] = items[i]; pill(s, W / 2, H * .17 + i * 92, 46, REG[r].c, a * clamp((t - at) / .2), back((t - at) / .35)); } } }
 
   drawUN(t);
@@ -348,24 +353,24 @@ function render(T) {
   drawEye(t);
 
   // ---- big headline numbers ----
-  { const a = win(t, -.3, 2.3, .3); if (a > 0) { ctx.globalAlpha = a; const n = Math.round(48 * eout(t / 1.1)); glowText(String(n), W / 2, H * .17, 210, '#fff', '#2de2ff'); glowText('стран в Азии', W / 2, H * .17 + 135, 62, '#bdf3ff', '#2de2ff'); ctx.globalAlpha = 1; } }
-  { const a = win(t, 11.1, 12.5, .25); if (a > 0) { ctx.globalAlpha = a; glowText('Давай разберёмся', W / 2, H * .2, 78, '#fff', '#2de2ff'); ctx.globalAlpha = 1; } }
-  { const a = win(t, 12.6, 17.6, .3); if (a > 0) { ctx.globalAlpha = a; glowText('АЗИЯ', W / 2, H * .13, 150, '#fff', '#2de2ff'); glowText('44,6 млн км²', W / 2, H * .13 + 120, 64, '#bdf3ff', '#2de2ff');
+  { const a = win(t, -.3, 2.3, .3); if (a > 0) { ctx.globalAlpha = a; const n = Math.round(48 * eout(t / 1.1)); glowText(String(n), W / 2, H * .17, 210, '#fff', '#2de2ff'); glowText(TR('стран в Азии'), W / 2, H * .17 + 135, 62, '#bdf3ff', '#2de2ff'); ctx.globalAlpha = 1; } }
+  { const a = win(t, 11.1, 12.5, .25); if (a > 0) { ctx.globalAlpha = a; glowText(TR('Давай разберёмся'), W / 2, H * .2, 78, '#fff', '#2de2ff'); ctx.globalAlpha = 1; } }
+  { const a = win(t, 12.6, 17.6, .3); if (a > 0) { ctx.globalAlpha = a; glowText(TR('АЗИЯ'), W / 2, H * .13, 150, '#fff', '#2de2ff'); glowText(TR('44,6 млн км²'), W / 2, H * .13 + 120, 64, '#bdf3ff', '#2de2ff');
       const k = eout((t - 15.4) / 1.2); if (t > 15.2) { const cx = W / 2, cy = H * .13 + 270; ctx.lineWidth = 22; ctx.strokeStyle = 'rgba(127,230,255,.18)'; ctx.beginPath(); ctx.arc(cx, cy, 80, 0, 7); ctx.stroke();
         ctx.strokeStyle = '#7fe6ff'; ctx.shadowColor = '#2de2ff'; ctx.shadowBlur = 25; ctx.beginPath(); ctx.arc(cx, cy, 80, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * .3 * k); ctx.stroke(); ctx.shadowBlur = 0;
-        glowText(Math.round(30 * k) + '%', cx, cy + 4, 50, '#fff', '#2de2ff'); glowText('всей суши', cx, cy + 135, 44, '#bdf3ff', '#2de2ff'); } ctx.globalAlpha = 1; } }
-  { const a = win(t, 17.8, 23.4, .3); if (a > 0) { ctx.globalAlpha = a; const n = (5 * eout((t - 17.8) / 1.4)).toFixed(1).replace('.', ','); glowText(n + ' млрд', W / 2, H * .12, 130, '#fff', '#2de2ff'); glowText('человек', W / 2, H * .12 + 105, 62, '#bdf3ff', '#2de2ff');
-      const h = clamp((t - 20.6) / .4); if (h > 0) { ctx.globalAlpha = a * h; glowText('почти половина — здесь', W / 2, H * .12 + 190, 52, '#c9ffe0', '#3dff8f'); } ctx.globalAlpha = 1; } }
-  { const a = win(t, 35.3, 38.6, .25); if (a > 0) { ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * .14); const s = back((t - 35.3) / .4); ctx.scale(s, s); glowText('…СТАН', 0, 0, 140, '#ffd83d', '#ffb800'); ctx.restore(); } }
-  { const a = win(t, 61.2, 63.3, .25); if (a > 0) { ctx.globalAlpha = a; glowText('РОССИЯ', W / 2, H * .14, 120, '#fff', '#a0beff'); ctx.globalAlpha = 1; } }
-  { const a = win(t, 64.8, 66.2, .2); if (a > 0) { ctx.globalAlpha = a; glowText('= Европа', W / 2, H * .27 + 270, 64, '#fff', '#a0beff'); ctx.globalAlpha = 1; } }
-  { const a = win(t, 65.9, 71.1, .3); if (a > 0) { ctx.globalAlpha = a; const n = Math.round(77 * eout((t - 65.9) / 1.0)); glowText(n + '%', W / 2, H * .13, 190, '#fff', REG.N.c); glowText('территории — в Азии', W / 2, H * .13 + 125, 56, '#d2d8ff', REG.N.c); ctx.globalAlpha = 1; } }
-  { const a = win(t, 74.4, 78.3, .25); if (a > 0) { ctx.globalAlpha = a; glowText('Забавно…', W / 2, H * .12, 92, '#fff', '#ff9a2e'); ctx.globalAlpha = 1; } }
+        glowText(Math.round(30 * k) + '%', cx, cy + 4, 50, '#fff', '#2de2ff'); glowText(TR('всей суши'), cx, cy + 135, 44, '#bdf3ff', '#2de2ff'); } ctx.globalAlpha = 1; } }
+  { const a = win(t, 17.8, 23.4, .3); if (a > 0) { ctx.globalAlpha = a; const n = (5 * eout((t - 17.8) / 1.4)).toFixed(1).replace('.', ','); glowText(n + TR(' млрд'), W / 2, H * .12, 130, '#fff', '#2de2ff'); glowText(TR('человек'), W / 2, H * .12 + 105, 62, '#bdf3ff', '#2de2ff');
+      const h = clamp((t - 20.6) / .4); if (h > 0) { ctx.globalAlpha = a * h; glowText(TR('почти половина — здесь'), W / 2, H * .12 + 190, 52, '#c9ffe0', '#3dff8f'); } ctx.globalAlpha = 1; } }
+  { const a = win(t, 35.3, 38.6, .25); if (a > 0) { ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * .14); const s = back((t - 35.3) / .4); ctx.scale(s, s); glowText(TR('…СТАН'), 0, 0, 140, '#ffd83d', '#ffb800'); ctx.restore(); } }
+  { const a = win(t, 61.2, 63.3, .25); if (a > 0) { ctx.globalAlpha = a; glowText(TR('РОССИЯ'), W / 2, H * .14, 120, '#fff', '#a0beff'); ctx.globalAlpha = 1; } }
+  { const a = win(t, 64.8, 66.2, .2); if (a > 0) { ctx.globalAlpha = a; glowText(TR('= Европа'), W / 2, H * .27 + 270, 64, '#fff', '#a0beff'); ctx.globalAlpha = 1; } }
+  { const a = win(t, 65.9, 71.1, .3); if (a > 0) { ctx.globalAlpha = a; const n = Math.round(77 * eout((t - 65.9) / 1.0)); glowText(n + '%', W / 2, H * .13, 190, '#fff', REG.N.c); glowText(TR('территории — в Азии'), W / 2, H * .13 + 125, 56, '#d2d8ff', REG.N.c); ctx.globalAlpha = 1; } }
+  { const a = win(t, 74.4, 78.3, .25); if (a > 0) { ctx.globalAlpha = a; glowText(TR('Забавно…'), W / 2, H * .12, 92, '#fff', '#ff9a2e'); ctx.globalAlpha = 1; } }
 
   // ---- captions ----
-  drawCaption(t);
+  drawCaption(tv);
   // ending
-  { const a = win(t, 99.3, 101.2, .4); if (a > 0) { ctx.globalAlpha = a; glowText('Теперь ты знаешь', W / 2, H * .13, 92, '#fff', '#2de2ff'); ctx.globalAlpha = 1; } }
+  { const a = win(t, 99.3, 101.2, .4); if (a > 0) { ctx.globalAlpha = a; glowText(TR('Теперь ты знаешь'), W / 2, H * .13, 92, '#fff', '#2de2ff'); ctx.globalAlpha = 1; } }
   drawCTA(t);
   // fade from black / vignette
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.4)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
@@ -375,21 +380,22 @@ function drawCTA(t) {
   const a = clamp((t - 101.1) / .5); if (a <= 0) return;
   ctx.fillStyle = `rgba(4,12,20,${.55 * a})`; ctx.fillRect(0, 0, W, H);
   const p1 = clamp((t - 101.3) / .35), p2 = clamp((t - 105.3) / .35), p3 = clamp((t - 107.8) / .35);
-  ctx.globalAlpha = a * p1; glowText('Такие вопросы', W / 2, H * .17, 78, '#fff'); glowText('часто попадаются на', W / 2, H * .17 + 90, 62, '#fff');
-  pill('ЕНТ по географии', W / 2, H * .17 + 220, 72, '#f0891c', a * clamp((t - 103.8) / .3), back((t - 103.8) / .45));
-  ctx.globalAlpha = a * p2; glowText('Хочешь начать', W / 2, H * .41, 70, '#fff'); glowText('подготовку к ЕНТ?', W / 2, H * .41 + 85, 70, '#fff');
-  ctx.globalAlpha = a * p3; glowText('Напиши в комментариях', W / 2, H * .6, 64, '#fff');
+  ctx.globalAlpha = a * p1; glowText(TR('Такие вопросы'), W / 2, H * .17, 78, '#fff'); glowText(TR('часто попадаются на'), W / 2, H * .17 + 90, 62, '#fff');
+  pill(TR('ЕНТ по географии'), W / 2, H * .17 + 220, 72, '#f0891c', a * clamp((t - 103.8) / .3), back((t - 103.8) / .45));
+  ctx.globalAlpha = a * p2; glowText(TR('Хочешь начать'), W / 2, H * .41, 70, '#fff'); glowText(TR('подготовку к ЕНТ?'), W / 2, H * .41 + 85, 70, '#fff');
+  ctx.globalAlpha = a * p3; glowText(TR('Напиши в комментариях'), W / 2, H * .6, 64, '#fff');
   { const q = clamp((t - 108.9) / .3); if (q > 0) {   // comment bubble with the keyword
     const pulse = 1 + .06 * Math.sin((t - 108.9) * 8) * clamp((t - 109.3) / .3), sc = back((t - 108.9) / .45) * pulse;
     ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 190); ctx.scale(sc, sc);
-    ctx.font = '800 96px R'; const w = ctx.measureText('НАЧАТЬ').width + 110, h = 170;
+    ctx.font = '800 96px R'; const w = ctx.measureText(TR('НАЧАТЬ')).width + 110, h = 170;
     ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
     ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 42); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('НАЧАТЬ', 0, 6); ctx.restore(); } }
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(TR('НАЧАТЬ'), 0, 6); ctx.restore(); } }
   ctx.globalAlpha = 1;
 }
+let TRU = 0;
 function drawCaption(t) {
-  if (t > 101.1) return;
+  if (TRU > 101.1) return;
   const c = CAPS.find(c => t >= c.s - .05 && t < c.e + .15); if (!c) return;
   const a = clamp((t - c.s + .05) / .12) * clamp((c.e + .15 - t) / .12);
   ctx.save(); ctx.globalAlpha = a; ctx.font = '800 62px R'; ctx.textBaseline = 'middle';
@@ -409,7 +415,8 @@ function drawCaption(t) {
   ctx.restore();
 }
 window.ready = (async () => {
-  CAPS = await (await fetch('captions.json')).json();
+  CAPS = await (await fetch(LANG === 'kk' ? 'captions_kk.json' : 'captions.json')).json();
+  if (LANG !== 'ru') WARP = await (await fetch('warp_' + LANG + '.json')).json();
   await Promise.all(['lo', 'hi'].map(k => new Promise(r => { MAP[k].onload = r; MAP[k].src = 'map_' + k + '.jpg'; })));
   await MAP.lo.decode(); await MAP.hi.decode();
   await document.fonts.load('800 40px R'); await document.fonts.load('40px RM');
