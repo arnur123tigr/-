@@ -8,7 +8,14 @@ html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
 // "Эль-Ниньо" — satellite-map explainer (remake of a geoglobe_tales reel). render(T) is deterministic, T = video seconds.
-const W = 1080, H = 1920, OFF = 0.3, END = 95.4;
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const KK = { 'Восточная часть': 'Тынық мұхитының', 'Тихого океана': 'шығыс бөлігі', 'Супер': 'Супер', 'Пассаты': 'Пассаттар', 'Австралия': 'Аустралия',
+  'около': 'шамамен', 'человек': 'адам', '≈ 3% населения Земли': '≈ Жер халқының 3%-ы', 'Такие вопросы': 'Мұндай сұрақтар', 'часто попадаются на': 'жиі кездеседі:',
+  'ЕНТ по географии': 'Географиядан ҰБТ', 'Мы подготовили': 'Біз дайындадық:', 'гайд ЕНТ по географии': 'ҰБТ географиясынан гайд', 'Напиши в комментариях': 'Комментарийге жаз' };
+const L = s => (LANG === 'kk' && KK[s]) || s;
+let TMAP = null;   // kk: [[kk voice time, ru voice time], ...] so the same animation follows the Kazakh voice
+const mapT = v => { if (!TMAP) return v; let i = 0; while (i < TMAP.length - 2 && v > TMAP[i + 1][0]) i++; const [a0, b0] = TMAP[i], [a1, b1] = TMAP[i + 1]; return b0 + (v - a0) * (b1 - b0) / (a1 - a0); };
+const W = 1080, H = 1920, OFF = 0.3; let END = 95.4;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const gl = document.createElement('canvas'); gl.width = W / 4; gl.height = H / 4; const gx = gl.getContext('2d');
 let CAPS = []; const MAP = new Image(), SST = new Image();
@@ -146,7 +153,7 @@ function drawSST(a) {
   ctx.drawImage(SST, sx, sy, W / cam.s * SSI, H / cam.s * SSI, 0, 0, W, H); ctx.restore();
 }
 function render(T) {
-  const t = T - OFF;
+  const tv = T - OFF, t = mapT(tv);
   cam = camAt(t);
   // famine scene: dark, desaturated map
   const dark = win(t, 56.2, 64.6, .6), heat = win(t, 77.4, 83.7, .8), hot2027 = win(t, 79.2, 83.7, .5);
@@ -186,23 +193,23 @@ function render(T) {
     const sz = 190 * back((t - 1.9) / .5) * cam.s / 10;
     fan(x, y - sz * .3, sz, spinV, a, clamp((t - 5.6) / 1.3) * (t < 7 ? 1 : 0));
   }
-  { const a = win(t, 3.3, 6.2, .3); if (a > 0) { const [x, y] = PX(238, 3); ctx.globalAlpha = a; txt('Восточная часть', x, y - 40, 52, '#bfefff', 'R', '#2aa8ff', .6); txt('Тихого океана', x, y + 25, 52, '#bfefff', 'R', '#2aa8ff', .6); ctx.globalAlpha = 1; } }
+  { const a = win(t, 3.3, 6.2, .3); if (a > 0) { let [x, y] = PX(238, 3); x = Math.max(330, x); ctx.globalAlpha = a; txt(L('Восточная часть'), x, y - 40, 52, '#bfefff', 'R', '#2aa8ff', .6); txt(L('Тихого океана'), x, y + 25, 52, '#bfefff', 'R', '#2aa8ff', .6); ctx.globalAlpha = 1; } }
   { const a = win(t, 7.0, 9.6, .3); if (a > 0) { const [x, y] = PX(255, 2); ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12;
       ctx.beginPath(); ctx.ellipse(x, y, 330, 190, -.18, -1.4, -1.4 + Math.PI * 2 * eout((t - 7) / .7)); ctx.stroke(); ctx.restore(); } }
   { const a = win(t, 10.2, 14.1, .3); if (a > 0) { ctx.save(); ctx.globalAlpha = a; const sc = back((t - 10.2) / .45); ctx.translate(W / 2, H * .36); ctx.scale(sc, sc);
       const sup = clamp((t - 12.5) / .3);
-      txt('Эль-Ниньо', 0, 0, 130, '#ffffff', 'R', '#2a6bff', .55);
-      if (sup > 0) { ctx.globalAlpha = a * sup; ctx.save(); ctx.translate(0, -140); const s2 = back((t - 12.5) / .4); ctx.scale(s2, s2); txt('Супер', 0, 0, 130, '#ffffff', 'R', '#ff2a2a', .55); ctx.restore(); }
+      txt(L('Эль-Ниньо'), 0, 0, 130, '#ffffff', 'R', '#2a6bff', .55);
+      if (sup > 0) { ctx.globalAlpha = a * sup; ctx.save(); ctx.translate(0, -140); const s2 = back((t - 12.5) / .4); ctx.scale(s2, s2); txt(L('Супер'), 0, 0, 130, '#ffffff', 'R', '#ff2a2a', .55); ctx.restore(); }
       ctx.restore(); } }
-  { const a = win(t, 18.2, 21.2, .35); if (a > 0) { const [x, y] = PX(205, 6); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(-.07); txt('Пассаты', 0, 0, 96, '#ffffff', 'R', '#8fd8ff', .5); ctx.restore(); } }
+  { const a = win(t, 18.2, 21.2, .35); if (a > 0) { const [x, y] = PX(205, 6); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(-.07); txt(L('Пассаты'), 0, 0, 96, '#ffffff', 'R', '#8fd8ff', .5); ctx.restore(); } }
   { const a = win(t, 19.8, 21.4, .3); if (a > 0) { ctx.save(); ctx.globalAlpha = a * .8; ctx.strokeStyle = '#e8f2f7'; ctx.fillStyle = '#e8f2f7'; ctx.lineWidth = 16; ctx.lineCap = 'round';
       for (const la of [-4, -10]) { const k = eout((t - 19.8) / .8), [x1, y1] = PX(255, la), [x2, y2] = PX(lerp(255, 165, k), la);
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x2 - 30, y2); ctx.lineTo(x2 + 14, y2 - 30); ctx.lineTo(x2 + 14, y2 + 30); ctx.closePath(); ctx.fill(); }
       ctx.restore(); } }
   { const a = win(t, 21.3, 25.0, .4); for (const [l0, la, sz] of [[240, 4, 110], [225, -6, 90], [262, -2, 80]]) { const [x, y] = PX(l0 - (t - 21.3) * 6, la); emoji('⛵', x, y + Math.sin(t * 3 + la) * 6, sz, a); } }
-  label('Индонезия', 117, 2, win(t, 26.4, 30.1, .3), 44); label('Австралия', 134, -24, win(t, 27.4, 30.1, .3), 44);
+  label(L('Индонезия'), 117, 2, win(t, 26.4, 30.1, .3), 44); label(L('Австралия'), 134, -24, win(t, 27.4, 30.1, .3), 44);
   { const a = win(t, 28.9, 30.4, .3); const [x, y] = PX(118, 8); emoji('🌧️', x, y - 30 + 8 * Math.sin(t * 2), 150, a * eout((t - 28.9) / .4)); }
-  label('Эквадор', 281.5, -1.2, win(t, 31.4, 35.3, .3), 42); label('Перу', 284, -10, win(t, 30.7, 35.3, .3), 42);
+  label(L('Эквадор'), 281.5, -1.2, win(t, 31.4, 35.3, .3), 42); label(L('Перу'), 284, -10, win(t, 30.7, 35.3, .3), 42);
   { const a = win(t, 34.2, 37.4, .3), [x, y] = PX(292, 4), [x2, y2] = PX(286, -13); emoji('☀️', x, y - 40, 140 * back((t - 34.2) / .4), a, t * .3); emoji('🏜️', x2, y2, 110 * back((t - 34.5) / .4), a); }
   { const a = win(t, 41.6, 43.9, .25); if (a > 0) { const vals = [[205, 3, 1.2, 41.7], [222, -4, 1.4, 41.9], [242, 2, 0.6, 42.0], [228, 6, 1.9, 42.3]];
       for (const [lo, la, v, t0] of vals) { const [x, y] = PX(lo, la); const k = clamp((t - t0) / .8); thermo(x, y, v * eout(k) + (t > 42.8 ? (v < 1 ? 1.6 : .6) * eout((t - 42.8) / .8) : 0), a * clamp((t - t0) / .2), 2.5, 1.1); } } }
@@ -218,8 +225,8 @@ function render(T) {
       ctx.save(); ctx.globalAlpha = am * k; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore();
       emoji('🌾', x, y, r * 1.1, am * k); ctx.save(); ctx.globalAlpha = am * k; ctx.strokeStyle = '#d42020'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.moveTo(x - r * .7, y - r * .7); ctx.lineTo(x + r * .7, y + r * .7); ctx.stroke(); ctx.restore(); });
     const ac = win(t, 61.4, 64.6, .3); if (ac > 0) { ctx.globalAlpha = ac; const n = Math.round(40e6 * eout((t - 61.4) / 1.2)); const s = n.toLocaleString('ru-RU').replace(/ | /g, ' ');
-      txt('около', W / 2, H * .08, 60, '#fff', 'R'); txt(s, W / 2, H * .08 + 110, 130, '#ffffff', 'R', '#ff1a1a', .6); txt('человек', W / 2, H * .08 + 215, 60, '#fff', 'R');
-      const b = clamp((t - 62.5) / .3); ctx.globalAlpha = ac * b; txt('≈ 3% населения Земли', W / 2, H * .08 + 300, 58, '#ffd2d2', 'R'); ctx.globalAlpha = 1; }
+      txt(L('около'), W / 2, H * .08, 60, '#fff', 'R'); txt(s, W / 2, H * .08 + 110, 130, '#ffffff', 'R', '#ff1a1a', .6); txt(L('человек'), W / 2, H * .08 + 215, 60, '#fff', 'R');
+      const b = clamp((t - 62.5) / .3); ctx.globalAlpha = ac * b; txt(L('≈ 3% населения Земли'), W / 2, H * .08 + 300, 58, '#ffd2d2', 'R'); ctx.globalAlpha = 1; }
   }
   { const a = win(t, 72.6, 77.6, .3); if (a > 0) { const [x, y] = PX(232, 3); thermo(x, y, 3.3 * eout((t - 72.6) / 2.2), a, 3.6, 1.15); } }
   ARROWS.forEach(r => { const [x, y] = PX(r.lon, r.lat); arrowUp(x, y, r.len, (t - 75.4 - r.d * .8) / 1.2, win(t, 75.4, 79.4, .4)); });
@@ -239,19 +246,20 @@ function render(T) {
       ctx.font = `${380 * back((t - 45.8) / .4)}px ${EMO}`; ctx.fillText('💥', 0, -330); }
     ctx.restore(); } }
 
-  drawCaption(t);
+  drawCaption(tv, t);
   drawCTA(t);
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.35)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   if (T < .25) { ctx.fillStyle = `rgba(0,0,0,${1 - T / .25})`; ctx.fillRect(0, 0, W, H); }
   if (T > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
 }
-function drawCaption(t) {
-  if (t > 83.6) return;
+function drawCaption(t, tr) {
+  if (tr > 83.6) return;
   const c = CAPS.find(c => t >= c.s - .05 && t < c.e + .1); if (!c) return;
   const a = clamp((t - c.s + .05) / .1) * clamp((c.e + .1 - t) / .1);
   ctx.save(); ctx.globalAlpha = a; ctx.font = '800 62px RM';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3; ctx.fillStyle = '#fff';
+  const cw = ctx.measureText(c.t).width; if (cw > 980) ctx.font = `800 ${Math.floor(62 * 980 / cw)}px RM`;
   ctx.fillText(c.t, W / 2, H * .655); ctx.restore();
 }
 function pill(s, x, y, size, col, a = 1, sc = 1) {
@@ -264,11 +272,11 @@ function drawCTA(t) {
   const a = clamp((t - 83.6) / .5); if (a <= 0) return;
   ctx.fillStyle = `rgba(4,12,20,${.55 * a})`; ctx.fillRect(0, 0, W, H);
   const p1 = clamp((t - 83.7) / .35), p2 = clamp((t - 87.6) / .35), p3 = clamp((t - 91.6) / .35);
-  ctx.globalAlpha = a * p1; txt('Такие вопросы', W / 2, H * .13, 78); txt('часто попадаются на', W / 2, H * .13 + 90, 62);
-  pill('ЕНТ по географии', W / 2, H * .13 + 220, 72, '#e8792a', a * clamp((t - 86.1) / .3), back((t - 86.1) / .45));
-  ctx.globalAlpha = a * p2; txt('Мы подготовили', W / 2, H * .36, 70); txt('гайд ЕНТ по географии', W / 2, H * .36 + 85, 70);
+  ctx.globalAlpha = a * p1; txt(L('Такие вопросы'), W / 2, H * .13, 78); txt(L('часто попадаются на'), W / 2, H * .13 + 90, 62);
+  pill(L('ЕНТ по географии'), W / 2, H * .13 + 220, 72, '#e8792a', a * clamp((t - 86.1) / .3), back((t - 86.1) / .45));
+  ctx.globalAlpha = a * p2; txt(L('Мы подготовили'), W / 2, H * .36, 70); txt(L('гайд ЕНТ по географии'), W / 2, H * .36 + 85, 70);
   { const q = clamp((t - 88.3) / .4); if (q > 0) emoji('📘', W / 2, H * .36 + 220, 150 * back(q), a * q); }
-  ctx.globalAlpha = a * p3; txt('Напиши в комментариях', W / 2, H * .53 + 40, 64);
+  ctx.globalAlpha = a * p3; txt(L('Напиши в комментариях'), W / 2, H * .53 + 40, 64);
   { const q = clamp((t - 92.5) / .3); if (q > 0) {
     const pulse = 1 + .06 * Math.sin((t - 92.5) * 8) * clamp((t - 92.9) / .3), sc = back((t - 92.5) / .45) * pulse;
     ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .53 + 230); ctx.scale(sc, sc);
@@ -279,7 +287,8 @@ function drawCTA(t) {
   ctx.globalAlpha = 1;
 }
 window.ready = (async () => {
-  CAPS = await (await fetch('captions.json')).json();
+  CAPS = await (await fetch(LANG === 'kk' ? 'captions_kk.json' : 'captions.json')).json();
+  if (LANG === 'kk') { TMAP = await (await fetch('tmap_kk.json')).json(); END = (await (await fetch('timeline_kk.json')).json()).scenes[0].end; }
   await Promise.all([[MAP, 'map_hi.jpg'], [SST, 'sst.png']].map(([im, s]) => new Promise(r => { im.onload = r; im.src = s; })));
   await MAP.decode(); await SST.decode();
   await document.fonts.load('800 40px R'); await document.fonts.load('40px RM'); await document.fonts.load(`40px ${EMO}`);

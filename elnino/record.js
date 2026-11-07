@@ -4,11 +4,11 @@ const http = require('http'), fs = require('fs'), path = require('path'), { spaw
 const root = __dirname, out = process.argv[2] || 'video_silent.mp4', fps = +(process.argv[3] || 30);
 const srv = http.createServer((q, r) => { const f = path.join(root, decodeURIComponent(q.url.split('?')[0])); fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); return r.end(); } r.writeHead(200, { 'Content-Type': ({ '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.ttf': 'font/ttf' })[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); }).listen(0);
 (async () => {
-  const tl = JSON.parse(fs.readFileSync(path.join(root, 'timeline.json')));
+  const Q = process.env.LANG_Q || '', tl = JSON.parse(fs.readFileSync(path.join(root, Q ? `timeline_${Q}.json` : 'timeline.json')));
   const dur = tl.scenes[tl.scenes.length - 1].end, N = Math.round(dur * fps);
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 540, height: 960 } });
   p.on('pageerror', e => console.log('ERR', e.message));
-  await p.goto(`http://localhost:${srv.address().port}/scene.html`); await p.waitForFunction(() => window.ready); await p.evaluate(() => window.ready);
+  await p.goto(`http://localhost:${srv.address().port}/scene.html${Q ? '?lang=' + Q : ''}`); await p.waitForFunction(() => window.ready); await p.evaluate(() => window.ready);
   const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', path.join(root, out)], { stdio: ['pipe', 'inherit', 'inherit'] });
   for (let i = 0; i < N; i++) {
     const url = await p.evaluate(t => { render(t); return document.getElementById('c').toDataURL('image/jpeg', 0.93); }, i / fps);

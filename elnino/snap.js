@@ -7,7 +7,7 @@ const srv = http.createServer((q, r) => { const f = path.join(root, decodeURICom
   fs.mkdirSync(outDir, { recursive: true });
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 540, height: 960 } });
   p.on('pageerror', e => console.log('ERR', e.message)); p.on('console', m => console.log('LOG', m.text()));
-  await p.goto(`http://localhost:${srv.address().port}/scene.html`); await p.waitForFunction(() => window.ready); await p.evaluate(() => window.ready);
+  await p.goto(`http://localhost:${srv.address().port}/scene.html${process.env.LANG_Q ? '?lang=' + process.env.LANG_Q : ''}`); await p.waitForFunction(() => window.ready); await p.evaluate(() => window.ready);
   for (const t of times) {
     const t0 = Date.now();
     const url = await p.evaluate(t => { render(t); return document.getElementById('c').toDataURL('image/jpeg', .85); }, t);
