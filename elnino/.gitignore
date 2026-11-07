@@ -1,0 +1,6 @@
+*.mp4
+*.wav
+build.log
+data/
+map_*.jpg
+sst.png
