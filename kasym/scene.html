@@ -557,18 +557,18 @@ SCN.end = {
     drawStrokes(LC, prep([E(CX, y + 4, 300, 78, { color: YEL, lw: 8 }, -Math.PI * 0.55, Math.PI * 1.5)]), seg(t, 0.2, 0.9));
     drawStrokes(LC, prep([P([[CX + 330, y - 10], [CX + 360, y + 30], [CX + 420, y - 50]], { color: YEL, lw: 10 })]), seg(t, 0.9, 1.2));
     if (t > 1.2) glowText('B) Есім хан', CX, y, 92 * 0.86, 0.2 + 0.08 * Math.sin(t * 4));
-    // comment bubble with 25
+    // comment bubble with 7
     const ip = seg(t, 1.4, 2.0);
     if (ip > 0) {
       LC.save(); LC.translate(CX, 1370); drawStrokes(LC, BUBBLE, ip); LC.restore();
       const np = seg(t, 1.8, 2.2), pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 2.2) * 6);
-      chalkText(LC, '25', CX, 1370, 190 * pulse, np);
-      if (np >= 1) glowText('25', CX, 1370, 190 * pulse, 0.35 + 0.15 * Math.sin(t * 6));
+      chalkText(LC, '7', CX, 1370, 210 * pulse, np);
+      if (np >= 1) glowText('7', CX, 1370, 210 * pulse, 0.35 + 0.15 * Math.sin(t * 6));
     }
-    chalkText(UC, 'Комментарийге «25» деп жаз —', CX, 1680, 62, seg(t, 2.4, 3.2));
+    chalkText(UC, 'Комментарийге «7» деп жаз —', CX, 1680, 62, seg(t, 2.4, 3.2));
     chalkText(UC, 'ҰБТ-ға арналған тарих гайдын', CX, 1755, 62, seg(t, 2.9, 3.7));
     chalkText(UC, 'директке ал', CX, 1830, 62, seg(t, 3.4, 3.9), { color: YEL });
-    headline('25 деп жаз — тарих гайды', t, { t0: 1.3, dur: 1.0, px: 86 });
+    headline('7 деп жаз — тарих гайды', t, { t0: 1.3, dur: 1.0, px: 86 });
   }
 };
 
