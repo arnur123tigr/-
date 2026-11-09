@@ -1,0 +1,635 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Kasym Esim chalkboard</title>
+<style>
+@font-face{font-family:Chalk;src:url(fonts/Caveat.ttf);font-weight:400 700}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------
+// Chalkboard reel (KZ): "Қасым хан мен Есім хан: кімнің заңы қайсы?"
+// Deterministic: window.render(t) draws the frame for time t (sec).
+// Scene timing comes from timeline.json (fitted to the voiceover).
+// ---------------------------------------------------------------
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const main = document.getElementById('c');
+const M = main.getContext('2d');
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// ---------- seeded random ----------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+// ---------- colours ----------
+const BOARD = '#24332d';
+const CHALK = 'rgb(238,236,226)';
+const YEL = 'rgb(255,228,140)';
+const PINK = 'rgb(255,170,160)';
+const BLUE = 'rgb(170,215,255)';
+
+// ---------- board background (baked once) ----------
+const bg = mk();
+(function bakeBoard() {
+  const g = bg.getContext('2d');
+  g.fillStyle = BOARD; g.fillRect(0, 0, W, H);
+  const r = rng(7);
+  // big soft eraser clouds
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W, y = r() * H, rad = 180 + r() * 420;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, `rgba(255,255,255,${0.025 + r() * 0.03})`);
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // eraser swipe arcs
+  g.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.012 + r() * 0.02})`;
+    g.lineWidth = 60 + r() * 90;
+    g.beginPath();
+    const x = r() * W, y = r() * H;
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + (r() - .5) * 600, y + (r() - .5) * 200, x + (r() - .5) * 800, y + (r() - .5) * 300);
+    g.stroke();
+  }
+  // fine dust
+  const id = g.getImageData(0, 0, W, H), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (r() - 0.5) * 14;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    if (r() < 0.0025) { d[i] += 40; d[i + 1] += 40; d[i + 2] += 40; }
+  }
+  g.putImageData(id, 0, 0);
+  // vignette
+  const v = g.createRadialGradient(CX, CY, H * 0.25, CX, CY, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  // wooden frame
+  const fr = 26;
+  const wood = g.createLinearGradient(0, 0, W, 0);
+  wood.addColorStop(0, '#5a3b22'); wood.addColorStop(.5, '#6e4a2c'); wood.addColorStop(1, '#4e3320');
+  g.fillStyle = wood;
+  g.fillRect(0, 0, W, fr); g.fillRect(0, H - fr, W, fr); g.fillRect(0, 0, fr, H); g.fillRect(W - fr, 0, fr, H);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 4; g.strokeRect(fr, fr, W - 2 * fr, H - 2 * fr);
+})();
+
+// ---------- chalk grain mask (holes punched out of chalk) ----------
+const grain = mk();
+(function bakeGrain() {
+  const g = grain.getContext('2d');
+  const id = g.createImageData(W, H), d = id.data, r = rng(99);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = r();
+    d[i] = d[i + 1] = d[i + 2] = 0;
+    d[i + 3] = v < 0.32 ? 255 * (0.35 + r() * 0.65) : (v < 0.5 ? 70 : 0);
+  }
+  g.putImageData(id, 0, 0);
+  // horizontal drag streaks
+  g.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `rgba(0,0,0,${0.3 + r() * 0.5})`;
+    g.fillRect(r() * W, r() * H, 3 + r() * 16, 1.2);
+  }
+})();
+
+// ---------- layers ----------
+const L = mk(), LC = L.getContext('2d');     // chalk (world space)
+const U = mk(), UC = U.getContext('2d');     // ui text
+const T = mk(), TC = T.getContext('2d');     // temp (eraseable figure)
+const A = mk(), AC = A.getContext('2d');     // scene frame A
+const B = mk(), BC = B.getContext('2d');     // scene frame B
+let glows = [];                               // drawn additively after grain
+
+// ---------- geometry helpers ----------
+function catmull(cp, n = 10) {
+  if (cp.length < 3) return cp.slice();
+  const out = [];
+  for (let i = 0; i < cp.length - 1; i++) {
+    const p0 = cp[Math.max(0, i - 1)], p1 = cp[i], p2 = cp[i + 1], p3 = cp[Math.min(cp.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  out.push(cp[cp.length - 1]);
+  return out;
+}
+function ell(cx, cy, rx, ry, a0 = 0, a1 = Math.PI * 2, n = 36) {
+  const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return o;
+}
+const S = (pts, extra = {}) => Object.assign({ pts: catmull(pts) }, extra);      // smooth stroke
+const P = (pts, extra = {}) => Object.assign({ pts }, extra);                       // poly stroke
+const E = (cx, cy, rx, ry, extra = {}, a0, a1) => Object.assign({ pts: ell(cx, cy, rx, ry, a0, a1) }, extra);
+
+function prep(strokes) {
+  let tot = 0;
+  for (const s of strokes) {
+    let l = 0; s.cum = [0];
+    for (let i = 1; i < s.pts.length; i++) { l += Math.hypot(s.pts[i][0] - s.pts[i - 1][0], s.pts[i][1] - s.pts[i - 1][1]); s.cum.push(l); }
+    s.len = l; s.start = tot; tot += l;
+  }
+  strokes.total = tot;
+  return strokes;
+}
+
+// draw a stroke set, progress 0..1 along total length
+function drawStrokes(ctx, strokes, prog = 1, o = {}) {
+  const lw = o.lw || 7, col = o.color || CHALK;
+  const upto = strokes.total * clamp(prog);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const s of strokes) {
+    if (s.start >= upto) break;
+    const avail = upto - s.start;
+    ctx.save();
+    if (s.g === 'head' && o.head) o.head(ctx);
+    ctx.strokeStyle = s.color || col;
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (pass ? 0.45 : 1);
+      ctx.lineWidth = (s.lw || lw) * (pass ? 0.55 : 1);
+      ctx.beginPath();
+      const ox = pass ? 1.6 : 0, oy = pass ? -1.2 : 0;
+      ctx.moveTo(s.pts[0][0] + ox, s.pts[0][1] + oy);
+      for (let i = 1; i < s.pts.length; i++) {
+        if (s.cum[i] <= avail) ctx.lineTo(s.pts[i][0] + ox, s.pts[i][1] + oy);
+        else {
+          const f = (avail - s.cum[i - 1]) / (s.cum[i] - s.cum[i - 1]);
+          ctx.lineTo(lerp(s.pts[i - 1][0], s.pts[i][0], f) + ox, lerp(s.pts[i - 1][1], s.pts[i][1], f) + oy);
+          break;
+        }
+      }
+      ctx.stroke();
+    }
+    if (s.fill && avail >= s.len) { ctx.globalAlpha = 0.9; ctx.fillStyle = s.color || col; ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// ---------- characters ----------
+// Chalk khan, front view. Origin at feet, body height ~600, hat on top.
+// kind: 'kasym' (tall fur-rimmed borik, short beard), 'esim' (pointed helmet, long moustache),
+//       'tauke' (round cap with owl feather, small beard)
+function khan(kind) {
+  const st = [];
+  const H = { g: 'head' };
+  // head + ears
+  st.push(E(0, -600, 46, 54, H));
+  st.push(E(-48, -598, 7, 13, { g: 'head', lw: 4 }, Math.PI * 0.5, Math.PI * 1.5));
+  st.push(E(48, -598, 7, 13, { g: 'head', lw: 4 }, -Math.PI * 0.5, Math.PI * 0.5));
+  // eyes (kind, slightly closed arcs) + brows
+  st.push(E(-17, -606, 8, 5, { g: 'head', lw: 5 }, Math.PI, Math.PI * 2));
+  st.push(E(17, -606, 8, 5, { g: 'head', lw: 5 }, Math.PI, Math.PI * 2));
+  st.push(S([[-30, -624], [-18, -630], [-6, -626]], { g: 'head', lw: 5 }));
+  st.push(S([[6, -626], [18, -630], [30, -624]], { g: 'head', lw: 5 }));
+  st.push(S([[0, -600], [-5, -584], [3, -580]], { g: 'head', lw: 4 }));
+  if (kind === 'kasym') {
+    // short moustache + short rounded beard
+    st.push(S([[-2, -570], [-14, -574], [-26, -566]], { g: 'head', lw: 5 }));
+    st.push(S([[2, -570], [14, -574], [26, -566]], { g: 'head', lw: 5 }));
+    st.push(S([[-40, -580], [-36, -550], [-18, -526], [0, -520], [18, -526], [36, -550], [40, -580]], { g: 'head', lw: 6 }));
+    for (let k = -2; k <= 2; k++) st.push(P([[k * 12, -548], [k * 13, -530]], { g: 'head', lw: 3 }));
+    // tall borik: fur brim + tall crown + tassel
+    st.push(S([[-56, -636], [-60, -664], [0, -674], [60, -664], [56, -636]], { color: CHALK }));
+    st.push(S([[-56, -636], [0, -628], [56, -636]]));
+    for (let k = -5; k <= 5; k++) st.push(P([[k * 10, -634], [k * 10 + 3, -664]], { lw: 3 }));
+    st.push(S([[-46, -666], [-44, -760], [-22, -810], [8, -822], [34, -800], [46, -750], [46, -668]], { color: YEL }));
+    st.push(S([[-20, -700], [0, -720], [20, -700], [0, -760], [-20, -700]], { lw: 4, color: YEL }));
+    st.push(P([[8, -822], [10, -850]], { lw: 5, color: YEL }));
+    st.push(E(10, -858, 8, 8, { lw: 5, color: YEL }));
+  } else if (kind === 'esim') {
+    // long drooping moustache, tiny chin tuft
+    st.push(S([[-2, -570], [-18, -574], [-34, -560], [-44, -530], [-46, -500]], { g: 'head', lw: 6 }));
+    st.push(S([[2, -570], [18, -574], [34, -560], [44, -530], [46, -500]], { g: 'head', lw: 6 }));
+    st.push(S([[-6, -550], [0, -534], [6, -550]], { g: 'head', lw: 4 }));
+    // pointed helmet with spike, rim, nose guard and chain neck guard
+    st.push(S([[-54, -620], [-52, -676], [-30, -722], [0, -790], [30, -722], [52, -676], [54, -620]], { color: BLUE }));
+    st.push(S([[-56, -624], [0, -636], [56, -624]], { color: BLUE }));
+    st.push(P([[0, -790], [0, -836]], { lw: 6, color: BLUE }));
+    st.push(E(0, -842, 6, 6, { lw: 5, color: BLUE }));
+    st.push(P([[0, -634], [0, -592]], { lw: 6, color: BLUE }));
+    st.push(S([[-54, -620], [-62, -560], [-74, -520]], { color: BLUE, lw: 5 }));
+    st.push(S([[54, -620], [62, -560], [74, -520]], { color: BLUE, lw: 5 }));
+    for (let k = 0; k < 3; k++) { st.push(E(-60 - k * 5, -596 + k * 28, 8, 6, { lw: 3, color: BLUE })); st.push(E(60 + k * 5, -596 + k * 28, 8, 6, { lw: 3, color: BLUE })); }
+    st.push(S([[-40, -700], [0, -712], [40, -700]], { lw: 4, color: BLUE }));
+  } else {
+    // tauke: small pointed beard + round cap with owl-feather (uki)
+    st.push(S([[-2, -570], [-14, -574], [-24, -566]], { g: 'head', lw: 5 }));
+    st.push(S([[2, -570], [14, -574], [24, -566]], { g: 'head', lw: 5 }));
+    st.push(S([[-30, -570], [-18, -530], [0, -500], [18, -530], [30, -570]], { g: 'head', lw: 5 }));
+    st.push(S([[-56, -630], [-52, -690], [-20, -722], [20, -722], [52, -690], [56, -630]], { color: PINK }));
+    st.push(S([[-58, -630], [0, -620], [58, -630]], { color: PINK }));
+    st.push(S([[-58, -646], [0, -638], [58, -646]], { color: PINK, lw: 4 }));
+    st.push(S([[10, -722], [22, -780], [40, -830], [52, -860]], { color: CHALK, lw: 5 }));
+    for (let k = 0; k < 5; k++) { const y = -740 - k * 24, x = 16 + k * 8; st.push(P([[x, y], [x + 22, y - 10]], { lw: 3 })); st.push(P([[x, y], [x - 16, y - 16]], { lw: 3 })); }
+  }
+  // shapan (long robe): collar, wrap, wide sleeves, belt, ornament near hem
+  st.push(S([[-28, -520], [-90, -496], [-122, -420], [-138, -220], [-150, -40]]));
+  st.push(S([[28, -520], [90, -496], [122, -420], [138, -220], [150, -40]]));
+  st.push(S([[-150, -40], [-70, -32], [0, -30], [70, -32], [150, -40]]));
+  st.push(P([[-28, -520], [0, -470], [28, -520]], { lw: 6 }));
+  st.push(S([[0, -470], [24, -380], [18, -200], [24, -36]], { lw: 6 }));
+  st.push(S([[-122, -320], [0, -312], [122, -320]], { color: YEL, lw: 6 }));
+  st.push(S([[-122, -298], [0, -290], [122, -298]], { color: YEL, lw: 4 }));
+  st.push(E(10, -306, 14, 12, { lw: 4, color: YEL }));
+  for (const sx of [-1, 1]) {
+    st.push(S([[sx * 120, -70], [sx * 104, -96], [sx * 84, -84], [sx * 92, -66], [sx * 104, -74]], { lw: 4, color: YEL }));
+    st.push(S([[sx * 70, -66], [sx * 58, -92], [sx * 40, -82], [sx * 48, -62], [sx * 58, -70]], { lw: 4, color: YEL }));
+  }
+  // boots
+  st.push(S([[-70, -34], [-72, -6], [-104, 0], [-96, -14], [-74, -18]], { lw: 6 }));
+  st.push(S([[70, -34], [72, -6], [104, 0], [96, -14], [74, -18]], { lw: 6 }));
+  // left arm hanging in wide sleeve
+  st.push(S([[-96, -490], [-140, -400], [-150, -300], [-136, -250]]));
+  st.push(S([[-100, -440], [-104, -340], [-112, -262]]));
+  st.push(P([[-140, -252], [-108, -260]], { lw: 5 }));
+  st.push(E(-124, -236, 13, 15, { lw: 5 }));
+  // right arm bent, holding a rolled scroll upright in front of the chest
+  st.push(S([[96, -490], [140, -420], [130, -350], [70, -330]]));
+  st.push(S([[96, -440], [100, -380], [64, -366]]));
+  st.push(P([[30, -432], [30, -236]], { color: YEL, lw: 6 }));
+  st.push(P([[60, -432], [60, -236]], { color: YEL, lw: 6 }));
+  st.push(E(45, -432, 15, 6, { color: YEL, lw: 5 }));
+  st.push(E(45, -236, 15, 6, { color: YEL, lw: 5 }));
+  st.push(P([[30, -380], [60, -386]], { color: YEL, lw: 3 }));
+  st.push(E(62, -346, 15, 14, { lw: 5 }));
+  return prep(st);
+}
+const KASYM = khan('kasym'), ESIM = khan('esim'), TAUKE = khan('tauke');
+// handy: draw a figure at x,y with scale s and progress p
+function fig(F, x, y, s, p, o = {}) { LC.save(); LC.translate(x, y); LC.scale(s, s); drawStrokes(LC, F, p, o); LC.restore(); }
+
+// icons for the opened scroll (centred at 0,0, ~180px)
+const ICON_LAND = prep([
+  P([[-100, 50], [100, 50]]),
+  S([[-95, 50], [-60, -10], [-30, 15], [5, -45], [40, 0], [70, -20], [98, 50]]),
+  P([[5, -45], [5, -110]], { lw: 5 }), P([[5, -110], [55, -95], [5, -80]], { color: YEL, lw: 5 }),
+  S([[-70, 32], [-50, 30]], { lw: 3 }), S([[30, 34], [56, 30]], { lw: 3 }),
+]);
+const ICON_SHIELD = prep([
+  S([[-64, -76], [0, -92], [64, -76], [60, 0], [32, 50], [0, 78], [-32, 50], [-60, 0], [-64, -76]], { color: BLUE }),
+  E(0, -8, 18, 18, { color: BLUE, lw: 5 }),
+  P([[-40, -50], [-18, -26]], { lw: 4, color: BLUE }), P([[40, -50], [18, -26]], { lw: 4, color: BLUE }),
+  P([[0, 12], [0, 50]], { lw: 4, color: BLUE }),
+]);
+const ICON_LETTER = prep([
+  P([[-80, -52], [80, -52], [80, 52], [-80, 52], [-80, -52]]),
+  P([[-80, -52], [0, 12], [80, -52]], { lw: 5 }),
+  E(0, 12, 14, 14, { color: PINK, lw: 6 }),
+  P([[-80, 52], [-24, 0]], { lw: 3 }), P([[80, 52], [24, 0]], { lw: 3 }),
+]);
+
+// ---------- text helpers ----------
+function font(px, w = 700, fam = 'Chalk') { return `${w} ${px}px ${fam}`; }
+// write-on text revealed left->right (or right->left for rtl)
+function chalkText(ctx, txt, x, y, px, prog = 1, o = {}) {
+  if (prog <= 0) return;
+  ctx.save();
+  ctx.font = font(px, o.w || 700, o.fam || 'Chalk');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (o.rtl) ctx.direction = 'rtl';
+  const w = ctx.measureText(txt).width;
+  ctx.beginPath();
+  const pw = (w + px) * clamp(prog);
+  if (o.rtl) ctx.rect(x + w / 2 + px / 2 - pw, y - px * 1.2, pw, px * 2.4);
+  else ctx.rect(x - w / 2 - px / 2, y - px * 1.2, pw, px * 2.4);
+  ctx.clip();
+  ctx.fillStyle = o.color || CHALK;
+  ctx.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  ctx.fillText(txt, x, y);
+  ctx.globalAlpha *= 0.4; ctx.fillText(txt, x + 1.5, y - 1.5);
+  ctx.restore();
+  return w;
+}
+function wrap(ctx, txt, px, maxW) {
+  ctx.font = font(px); const words = txt.split(' '); const lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  if (lines.length === 2) {           // balance two lines
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const l1 = words.slice(0, k).join(' '), l2 = words.slice(k).join(' ');
+      const m = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
+      if (m <= maxW && (!best || m < best[0])) best = [m, [l1, l2]];
+    }
+    if (best) return best[1];
+  }
+  return lines;
+}
+// headline at top (screen space), written on over `dur` seconds
+function headline(txt, t, o = {}) {
+  const px = o.px || 92, y0 = o.y || 210;
+  const lines = wrap(UC, txt, px, 940);
+  const tot = lines.reduce((a, l) => a + l.length, 0);
+  let acc = 0; const dur = o.dur || 0.9;
+  lines.forEach((ln, i) => {
+    const a = acc / tot, b = (acc + ln.length) / tot; acc += ln.length;
+    const p = seg(t, (o.t0 || 0) + a * dur, (o.t0 || 0) + b * dur);
+    chalkText(UC, ln, CX, y0 + i * px * 1.05, px, p, { color: o.color || YEL });
+  });
+  // underline
+  const ul = seg(t, (o.t0 || 0) + dur, (o.t0 || 0) + dur + 0.3);
+  if (ul > 0 && !o.noLine) {
+    const y = y0 + (lines.length - 1) * px * 1.05 + px * 0.62;
+    UC.save(); UC.strokeStyle = o.color || YEL; UC.lineWidth = 6; UC.lineCap = 'round'; UC.globalAlpha = .8;
+    UC.beginPath(); UC.moveTo(CX - 200, y); UC.quadraticCurveTo(CX, y + 10, CX - 200 + 400 * ul, y - 2); UC.stroke(); UC.restore();
+  }
+}
+function glowText(txt, x, y, px, alpha, color = YEL, fam = 'Chalk', rtl = false) {
+  glows.push({ txt, x, y, px, alpha, color, fam, rtl });
+}
+// multi-colour chalk text, centred at x: parts = [[txt, colour], ...]
+function chalkParts(ctx, parts, x, y, px, prog = 1) {
+  if (prog <= 0) return [];
+  ctx.save(); ctx.font = font(px);
+  const ws = parts.map(p => ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0);
+  let cx = x - tot / 2; const boxes = [];
+  ctx.beginPath(); ctx.rect(x - tot / 2 - px / 2, y - px * 1.2, (tot + px) * clamp(prog), px * 2.4); ctx.clip();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  parts.forEach((p, i) => {
+    ctx.fillStyle = p[1]; ctx.globalAlpha = 1; ctx.fillText(p[0], cx, y);
+    ctx.globalAlpha = 0.4; ctx.fillText(p[0], cx + 1.5, y - 1.5);
+    boxes.push([cx, ws[i]]); cx += ws[i];
+  });
+  ctx.restore();
+  return boxes;
+}
+// sponge path: zigzag rows across a box, returns points up to p
+function spongePath(p, x0 = 140, x1 = 940, top = 260, bot = 1760, rows = 7) {
+  const pts = [];
+  for (let r = 0; r <= rows; r++) pts.push([r % 2 ? x1 : x0, lerp(top, bot, r / rows)]);
+  const all = catmull(pts, 16);
+  return all.slice(0, Math.max(1, Math.floor(all.length * clamp(p))));
+}
+function sponge(ctx, q) {
+  ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(-0.15);
+  ctx.fillStyle = 'rgb(214,178,92)'; ctx.strokeStyle = 'rgb(120,90,40)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.roundRect(-120, -60, 240, 120, 24); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgb(90,70,50)'; ctx.beginPath(); ctx.roundRect(-120, 22, 240, 38, 14); ctx.fill();
+  ctx.restore();
+}
+function arrow(ctx, pts, prog, o = {}) {
+  const st = prep([S(pts, { color: o.color, lw: o.lw || 6 })]);
+  drawStrokes(ctx, st, prog);
+  if (prog >= 0.98) {
+    const a = pts[pts.length - 1], b = pts[pts.length - 2], ang = Math.atan2(a[1] - b[1], a[0] - b[0]), L = 34;
+    drawStrokes(ctx, prep([P([[a[0] - L * Math.cos(ang - 0.5), a[1] - L * Math.sin(ang - 0.5)], a, [a[0] - L * Math.cos(ang + 0.5), a[1] - L * Math.sin(ang + 0.5)]], { color: o.color, lw: o.lw || 6 })]), 1);
+  }
+}
+// the ENT test card (used in s2 and the end scene)
+function testCard(t, o = {}) {
+  const y0 = o.y0 || 640, sc = o.s || 1, p = o.p == null ? null : o.p;
+  const q = k => p == null ? seg(t, k[0], k[1]) : p;
+  LC.save(); LC.translate(CX, y0); LC.scale(sc, sc);
+  drawStrokes(LC, prep([P([[-440, 0], [440, 0], [440, 640], [-440, 640], [-440, 0]], { lw: 8 })]), q([0, 0.5]));
+  chalkText(LC, '«Ескі жолды»', 0, 120, 100, q([0.3, 0.9]), { color: YEL });
+  chalkText(LC, 'қабылдаған:', 0, 232, 84, q([0.7, 1.2]));
+  chalkText(LC, 'A) Қасым хан', 0, 390, 92, q([1.1, 1.6]));
+  chalkText(LC, 'B) Есім хан', 0, 530, 92, q([1.5, 2.0]));
+  LC.restore();
+}
+
+const SCN = {};
+
+SCN.s1 = {   // two names, two laws, tangled arrows
+  cam: (t, d) => ({ s: lerp(0.92, 1.12, easeOut(seg(t, 0, 0.9))) + 0.03 * seg(t, 0.9, d), x: 0, y: 0 }),
+  draw(t, d) {
+    chalkText(LC, 'Қасым', 300, 720, 150, seg(t, 0.05, 0.45));
+    chalkText(LC, 'Есім', 780, 720, 150, seg(t, 0.3, 0.7));
+    chalkText(LC, 'Қасқа жол', 290, 1290, 100, seg(t, 0.55, 0.95), { color: YEL });
+    chalkText(LC, 'Ескі жол', 790, 1290, 100, seg(t, 0.75, 1.15), { color: BLUE });
+    arrow(LC, [[290, 820], [420, 940], [700, 1010], [640, 1110], [760, 1200]], seg(t, 0.9, 1.5));
+    arrow(LC, [[790, 820], [640, 930], [380, 1000], [460, 1100], [320, 1200]], seg(t, 1.1, 1.7));
+    drawStrokes(LC, prep([S([[520, 960], [600, 1010], [560, 1060], [480, 1020], [520, 960], [590, 1000]], { lw: 5 })]), seg(t, 1.5, 1.9));
+    [[540, 900, 1.6], [200, 1040, 1.85], [880, 1040, 2.05]].forEach(([x, y, t0], i) => {
+      const p = seg(t, t0, t0 + 0.25), bob = p >= 1 ? Math.sin((t - t0) * 6 + i) * 6 : 0;
+      chalkText(LC, '?', x, y + bob, 130, p, { color: PINK });
+      if (p >= 1) glowText('?', x, y + bob, 130, 0.25, PINK);
+    });
+    headline('Кімнің заңы қайсы?', t, { t0: 0.05, dur: 0.8 });
+  }
+};
+
+SCN.s2 = {   // test question, then a sponge wipes the board
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    testCard(t, { y0: 620 });
+    // little thinking student hint
+    const qp = seg(t, 2.3, 2.6);
+    chalkText(LC, '?', 860, 560, 110, qp, { color: PINK });
+    chalkText(LC, '?', 940, 500, 80, seg(t, 2.5, 2.8), { color: PINK });
+    chalkText(LC, 'Көп адам осында шатасады', CX, 1440, 66, seg(t, 0.9, 1.9), { color: CHALK, alpha: 0.85 });
+    headline('ҰБТ сұрағы', t, { t0: 0.05, dur: 0.6, color: PINK });
+    const ep = ease(seg(t, d - 0.85, d - 0.05));
+    if (ep > 0) {
+      const pts = spongePath(ep);
+      for (const c of [LC, UC]) {
+        c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out';
+        c.lineWidth = 330; c.lineCap = 'round'; c.lineJoin = 'round';
+        c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.stroke(); c.restore();
+      }
+      // faint chalk smear left behind
+      LC.save(); LC.strokeStyle = 'rgba(240,240,230,0.06)'; LC.lineWidth = 300; LC.lineCap = 'round'; LC.lineJoin = 'round';
+      LC.beginPath(); pts.forEach((q, i) => i ? LC.lineTo(q[0], q[1]) : LC.moveTo(q[0], q[1])); LC.stroke(); LC.restore();
+      if (ep < 1) sponge(UC, pts[pts.length - 1]);
+    }
+  }
+};
+
+SCN.s3 = {   // Kasym drawn
+  cam: (t, d) => ({ s: lerp(1.0, 1.14, ease(t / d)), x: 0, y: lerp(0, 90, ease(t / d)) }),
+  draw(t, d) {
+    fig(KASYM, CX, 1700, 1.22, seg(t, 0, 2.4));
+    chalkText(LC, 'XVI ғасыр', CX, 420, 100, seg(t, 0.4, 1.1), { color: YEL });
+    if (t > 1.1) glowText('XVI ғасыр', CX, 420, 100, 0.18 * seg(t, 1.1, 1.6));
+    const lp = seg(t, 2.9, 3.6);
+    chalkText(LC, '«Қасқа жол»', 790, 1150, 70, lp, { color: YEL });
+    arrow(LC, [[790, 1210], [720, 1270], [640, 1300]], seg(t, 3.4, 3.8), { color: YEL, lw: 5 });
+    if (lp >= 1) glowText('«Қасқа жол»', 790, 1150, 70, 0.25 * seg(t, 3.6, 4.0));
+    headline('Қасым ханның қасқа жолы', t, { t0: 0.1, dur: 1.0, px: 84 });
+  }
+};
+
+SCN.s4 = {   // the scroll unrolls: land, army, envoys
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    const op = easeOut(seg(t, 0.1, 1.0)), hw = lerp(40, 440, op), cy = 1000, hh = 360;
+    // paper
+    LC.save(); LC.lineWidth = 7; LC.strokeStyle = YEL; LC.lineJoin = 'round';
+    LC.beginPath(); LC.moveTo(CX - hw, cy - hh); LC.quadraticCurveTo(CX, cy - hh - 18, CX + hw, cy - hh);
+    LC.lineTo(CX + hw, cy + hh); LC.quadraticCurveTo(CX, cy + hh + 18, CX - hw, cy + hh); LC.closePath();
+    LC.globalAlpha = 0.07; LC.fillStyle = CHALK; LC.fill(); LC.globalAlpha = 1; LC.stroke();
+    // rollers
+    for (const sx of [-1, 1]) {
+      const x = CX + sx * hw;
+      LC.beginPath(); LC.roundRect(x - 22, cy - hh - 40, 44, hh * 2 + 80, 20); LC.stroke();
+      LC.beginPath(); LC.ellipse(x, cy - hh - 52, 12, 12, 0, 0, Math.PI * 2); LC.stroke();
+      LC.beginPath(); LC.ellipse(x, cy + hh + 52, 12, 12, 0, 0, Math.PI * 2); LC.stroke();
+    }
+    LC.restore();
+    if (op > 0.9) {
+      chalkText(LC, 'Қасқа жол', CX, cy - 250, 96, seg(t, 0.9, 1.5), { color: YEL });
+      drawStrokes(LC, prep([P([[CX - 300, cy - 185], [CX + 300, cy - 185]], { lw: 4 })]), seg(t, 1.3, 1.6));
+      const items = [[ICON_LAND, 'жер', 2.0], [ICON_SHIELD, 'әскер', 2.5], [ICON_LETTER, 'елшілер', 3.3]];
+      items.forEach(([ic, lab, t0], i) => {
+        const x = CX + (i - 1) * 285, y = cy + 10;
+        LC.save(); LC.translate(x, y); LC.scale(1.05, 1.05); drawStrokes(LC, ic, seg(t, t0, t0 + 0.45)); LC.restore();
+        chalkText(LC, lab, x, cy + 190, 70, seg(t, t0 + 0.2, t0 + 0.6));
+        if (t > t0 + 0.6) glowText(lab, x, cy + 190, 70, 0.15 * seg(t, t0 + 0.6, t0 + 1));
+      });
+    }
+    headline('Қасқа — айқын, тура', t, { t0: 0.1, dur: 0.9 });
+  }
+};
+
+SCN.s5 = {   // Esim drawn next to Kasym, ~100 years later
+  cam: (t, d) => ({ s: lerp(1.0, 1.1, ease(t / d)), x: lerp(0, -80, ease(t / d)), y: lerp(0, 60, ease(t / d)) }),
+  draw(t, d) {
+    fig(KASYM, 290, 1720, 0.92, 1, { alpha: 0.5 });
+    chalkText(LC, 'XVI', 290, 830, 72, 1, { color: YEL, alpha: 0.6 });
+    fig(ESIM, 760, 1720, 1.0, seg(t, 0.2, 2.4));
+    chalkText(LC, 'XVII ғасыр', 760, 790, 88, seg(t, 0.6, 1.3), { color: BLUE });
+    if (t > 1.3) glowText('XVII ғасыр', 760, 790, 88, 0.2 * seg(t, 1.3, 1.8), BLUE);
+    arrow(LC, [[230, 600], [540, 570], [850, 600]], seg(t, 1.0, 1.7), { lw: 6 });
+    chalkText(LC, '≈ 100 жыл', CX, 500, 74, seg(t, 1.3, 1.9));
+    const lp = seg(t, 3.2, 3.8);
+    chalkText(LC, '«Ескі жол»', 760, 1815, 78, lp, { color: BLUE });
+    if (lp >= 1) glowText('«Ескі жол»', 760, 1815, 78, 0.25 * seg(t, 3.8, 4.1), BLUE);
+    headline('Есім ханның ескі жолы', t, { t0: 0.1, dur: 1.0, px: 88 });
+  }
+};
+
+SCN.s6 = {   // memory trick with coloured chalk
+  cam: (t, d) => ({ s: lerp(1.0, 1.06, ease(t / d)), x: 0, y: lerp(0, 40, ease(t / d)) }),
+  draw(t, d) {
+    const row = (y, a, b, pre, col, t0, t1) => {
+      const ba = chalkParts(LC, [[pre, col], [a.slice(pre.length), CHALK]], 280, y, 130, seg(t, t0, t0 + 0.4));
+      if (t > t0 + 0.3) { chalkText(LC, '→', CX, y, 120, seg(t, t0 + 0.3, t0 + 0.6)); }
+      const bb = chalkParts(LC, [[pre, col], [b.slice(pre.length), CHALK]], 800, y, 130, seg(t, t1, t1 + 0.4));
+      // circles around the matching starts
+      const cp = seg(t, t1 + 0.4, t1 + 0.8);
+      if (cp > 0) for (const bx of [ba, bb]) if (bx.length) {
+        const [x0, w] = bx[0];
+        drawStrokes(LC, prep([E(x0 + w / 2, y + 6, w / 2 + 24, 82, { color: col, lw: 6 }, -Math.PI * 0.6, Math.PI * 1.45)]), cp);
+      }
+      if (cp >= 1) for (const bx of [ba, bb]) if (bx.length) glowText(pre, bx[0][0] + bx[0][1] / 2, y, 130, 0.3 + 0.1 * Math.sin(t * 5), col);
+    };
+    chalkText(LC, '1-әріптер', CX, 520, 80, seg(t, 0.4, 1.0), { alpha: 0.85 });
+    row(850, 'Қасым', 'Қасқа', 'Қас', YEL, 2.15, 2.85);
+    row(1250, 'Есім', 'Ескі', 'Ес', BLUE, 3.65, 4.25);
+    headline('Қас — қасқа, Ес — ескі', t, { t0: 0.1, dur: 1.0 });
+  }
+};
+// glowText aligns centre; helper above passes centre x of the prefix box
+
+SCN.s7 = {   // pan right: third khan Tauke with "Zheti zhargy"
+  cam: (t, d) => ({ s: 1, x: lerp(220, -330, ease(seg(t, 0, d * 0.8))), y: 0 }),
+  draw(t, d) {
+    fig(KASYM, 230, 1700, 0.66, 1, { alpha: 0.7 });
+    fig(ESIM, 560, 1700, 0.66, 1, { alpha: 0.7 });
+    chalkText(LC, 'Қасым', 230, 1790, 56, 1, { alpha: 0.8 });
+    chalkText(LC, 'Есім', 560, 1790, 56, 1, { alpha: 0.8 });
+    chalkText(LC, 'Қасқа жол', 230, 1080, 54, 1, { color: YEL, alpha: 0.8 });
+    chalkText(LC, 'Ескі жол', 560, 1080, 54, 1, { color: BLUE, alpha: 0.8 });
+    fig(TAUKE, 1060, 1700, 0.8, seg(t, 0.2, 2.0));
+    chalkText(LC, '«Жеті жарғы»', 1060, 950, 74, seg(t, 1.0, 1.6), { color: PINK });
+    if (t > 1.6) glowText('«Жеті жарғы»', 1060, 950, 74, 0.25 * seg(t, 1.6, 2.0), PINK);
+    chalkText(LC, 'Тәуке', 1060, 1800, 80, seg(t, 2.1, 2.6), { color: PINK });
+    headline('Тәуке — Жеті жарғы', t, { t0: 0.1, dur: 0.9 });
+  }
+};
+
+const BUBBLE = prep([S([[-170, -110], [170, -110], [190, -90], [190, 90], [170, 110], [-60, 110], [-120, 175], [-110, 110], [-170, 110], [-190, 90], [-190, -90], [-170, -110]], { lw: 9, color: YEL })]);
+SCN.end = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    testCard(t, { y0: 420, s: 0.86, p: 1 });
+    // chalk circles the right answer + tick
+    const y = 420 + 530 * 0.86;
+    drawStrokes(LC, prep([E(CX, y + 4, 300, 78, { color: YEL, lw: 8 }, -Math.PI * 0.55, Math.PI * 1.5)]), seg(t, 0.2, 0.9));
+    drawStrokes(LC, prep([P([[CX + 330, y - 10], [CX + 360, y + 30], [CX + 420, y - 50]], { color: YEL, lw: 10 })]), seg(t, 0.9, 1.2));
+    if (t > 1.2) glowText('B) Есім хан', CX, y, 92 * 0.86, 0.2 + 0.08 * Math.sin(t * 4));
+    // comment bubble with 7
+    const ip = seg(t, 1.4, 2.0);
+    if (ip > 0) {
+      LC.save(); LC.translate(CX, 1370); drawStrokes(LC, BUBBLE, ip); LC.restore();
+      const np = seg(t, 1.8, 2.2), pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 2.2) * 6);
+      chalkText(LC, '7', CX, 1370, 210 * pulse, np);
+      if (np >= 1) glowText('7', CX, 1370, 210 * pulse, 0.35 + 0.15 * Math.sin(t * 6));
+    }
+    chalkText(UC, 'Комментарийге «7» деп жаз —', CX, 1680, 62, seg(t, 2.4, 3.2));
+    chalkText(UC, 'ҰБТ-ға арналған тарих гайдын', CX, 1755, 62, seg(t, 2.9, 3.7));
+    chalkText(UC, 'директке ал', CX, 1830, 62, seg(t, 3.4, 3.9), { color: YEL });
+    headline('7 деп жаз — тарих гайды', t, { t0: 1.3, dur: 1.0, px: 86 });
+  }
+};
+
+
+// ---------- timeline ----------
+let TL = null;
+async function loadTL() { TL = await (await fetch('timeline.json')).json(); }
+
+function renderScene(ctx, id, t, d) {
+  const sc = SCN[id];
+  glows = [];
+  LC.setTransform(1, 0, 0, 1, 0, 0); LC.clearRect(0, 0, W, H);
+  UC.setTransform(1, 0, 0, 1, 0, 0); UC.clearRect(0, 0, W, H);
+  const cam = sc.cam(t, d);
+  const camT = c => { c.translate(CX, CY); c.scale(cam.s, cam.s); c.translate(-CX + cam.x, -CY + cam.y); };
+  LC.save(); camT(LC); sc.draw(t, d); LC.restore();
+  // grain
+  for (const c of [LC, UC]) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out'; c.drawImage(grain, 0, 0); c.restore(); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(bg, 0, 0);
+  if (sc.dark) { ctx.fillStyle = `rgba(0,0,0,${sc.dark(t, d)})`; ctx.fillRect(0, 0, W, H); }
+  ctx.drawImage(L, 0, 0);
+  // glow pass
+  if (glows.length) {
+    ctx.save(); camT(ctx); ctx.globalCompositeOperation = 'lighter';
+    for (const g of glows) {
+      ctx.font = font(g.px, 700, g.fam); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (g.rtl) ctx.direction = 'rtl'; else ctx.direction = 'ltr';
+      ctx.shadowColor = g.color; ctx.shadowBlur = 40; ctx.fillStyle = g.color; ctx.globalAlpha = clamp(g.alpha);
+      ctx.fillText(g.txt, g.x, g.y);
+    }
+    ctx.restore();
+  }
+  ctx.drawImage(U, 0, 0);
+}
+
+window.render = function (t) {
+  const sc = TL.scenes;
+  let i = sc.findIndex(s => t >= s.start && t < s.end); if (i < 0) i = sc.length - 1;
+  const s = sc[i], lt = t - s.start, d = s.end - s.start;
+  M.setTransform(1, 0, 0, 1, 0, 0); M.globalAlpha = 1;
+  const tr = s.trIn;   // transition INTO this scene
+  const trD = 0.4;
+  if (tr === 'swipe' && lt < trD && i > 0) {
+    const prev = sc[i - 1];
+    renderScene(AC, prev.id, prev.end - prev.start - 0.001 + lt, prev.end - prev.start);
+    renderScene(BC, s.id, lt, d);
+    const p = ease(lt / trD);
+    M.fillStyle = '#000'; M.fillRect(0, 0, W, H);
+    M.drawImage(A, -p * W, 0); M.drawImage(B, (1 - p) * W, 0);
+  } else {
+    renderScene(M, s.id, lt, d);
+  }
+  // fades (to/from black)
+  let fade = 0;
+  if (s.fadeOut) fade = Math.max(fade, seg(lt, d - 0.35, d));
+  if (s.fadeIn) fade = Math.max(fade, 1 - seg(lt, 0, 0.35));
+  if (fade > 0) { M.fillStyle = `rgba(0,0,0,${fade})`; M.fillRect(0, 0, W, H); }
+};
+
+window.ready = (async () => { await loadTL(); await document.fonts.load(font(80)); await document.fonts.ready; window.render(0); return true; })();
+</script>
+</body></html>
