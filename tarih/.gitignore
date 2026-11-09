@@ -1,0 +1,6 @@
+data
+*.wav
+video_silent*.mp4
+tarih_*.mp4
+words_*.json
+*.log
