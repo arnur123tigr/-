@@ -398,10 +398,10 @@ function endScene(t) {
     txt(d, x + 88, y + 2, fit(d, 26, 160), '#fff'); txt(n, x + 192, y + 2, fit(n, 30, 270, 'MX'), C.ink, 'MX', 'left'); });
   ctx.restore();
   // CTA comment bubble
-  const c = clamp((t - 55.9) / .35); if (c > 0) { ctx.save(); ctx.globalAlpha = c * clamp((END - .2 - t) / .4); const s = back((t - 55.9) / .45); ctx.translate(W / 2, 1765); ctx.scale(s, s);
+  const c = clamp((t - 56.3) / .35); if (c > 0) { ctx.save(); ctx.globalAlpha = c * clamp((END - .2 - t) / .4); const s = back((t - 56.3) / .45); ctx.translate(W / 2, 1765); ctx.scale(s, s);
     rr(-470, -66, 940, 132, 66); ctx.fillStyle = '#25D366'; ctx.fill(); ctx.beginPath(); ctx.moveTo(-360, 60); ctx.lineTo(-390, 110); ctx.lineTo(-310, 64); ctx.fill();
-    rr(-450, -48, 160, 96, 48); ctx.fillStyle = '#fff'; ctx.fill(); txt('25', -370, 3, 64, '#1E9E4F');
-    txt('деп жаз — тарих гайды', 70, 3, fit('деп жаз — тарих гайды', 52, 600), '#fff'); ctx.restore(); }
+    rr(-450, -48, 160, 96, 48); ctx.fillStyle = '#fff'; ctx.fill(); txt('7', -370, 3, 72, '#1E9E4F');
+    txt('деп жаз — ҰБТ тарих гайды', 70, 3, fit('деп жаз — ҰБТ тарих гайды', 52, 600), '#fff'); ctx.restore(); }
 }
 
 // ---------- main render ----------

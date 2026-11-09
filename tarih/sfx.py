@@ -79,7 +79,7 @@ for i in range(4): add(s, 47.2 + i * .3, pop(), .3)
 add(s, 51.4, brass([62, 66, 69], .35), .45); add(s, 51.75, brass([62, 66, 69], .35), .45); add(s, 52.1, brass([67, 71, 74], 2.2), .55)
 # end: card + CTA
 for i in range(13): add(s, 54.95 + i * .07, pop(), .12)
-add(s, 55.9, pop(), .5); add(s, 55.95, chime(1760, 1.0), .3)
+add(s, 56.3, pop(), .5); add(s, 56.35, chime(1760, 1.0), .3)
 write('sfx.wav', norm(s) * .9)
 
 # ---- epic music bed: D minor, toms + low strings + ostinato, tempo 96 -> 136 bpm ----
