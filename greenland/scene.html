@@ -1,0 +1,359 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:MS;src:url(fonts/Montserrat-SemiBold.ttf);font-weight:600}
+@font-face{font-family:PSI;src:url(fonts/PTSerif-BoldItalic.ttf);font-weight:700}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// "Почему Гренландия ледяная, а Исландия зелёная" — Russian remake of a geography reel:
+// satellite map + glowing labels, old parchment map with a longship, spyglass view, cartoon Vikings.
+// render(T) is deterministic, T = video seconds; t = voice time (T - OFF).
+const W = 1080, H = 1920, OFF = 0.3, END = 72.0, CTA0 = 61.75;
+const main = document.getElementById('c'); let ctx = main.getContext('2d');
+const SAT = new Image(), HI = new Image(), PAR = new Image(); let SH = null, CAPS = [];
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const ap = (t, t0, d = .3) => clamp((t - t0) / d);
+const my = lat => Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85, 85) * D2R / 2)) / D2R;
+let cam = { lon: 0, y: 0, s: 10 };
+const PX = (lon, lat) => [W / 2 + (lon - cam.lon) * cam.s, H / 2 - (my(lat) - cam.y) * cam.s];
+function camKeys(K, t) {          // K: [[t, lon, lat, px/deg, dur], ...] eased moves, slow drift-in
+  let i = 0; while (i < K.length - 1 && t >= K[i + 1][0]) i++;
+  const A = K[i], F = i === 0 ? A : K[i - 1], d = A[4] || 1.1, k = ease((t - A[0]) / d);
+  const s = Math.exp(lerp(Math.log(F[3]), Math.log(A[3]), k)) * (1 + Math.max(0, t - A[0]) * .008);
+  return { lon: lerp(F[1], A[1], k), y: lerp(my(F[2]), my(A[2]), k), s };
+}
+let SRC;
+function blit(S) {
+  const im = S.img, sx = (cam.lon - W / 2 / cam.s - S.L0) * S.S, sy = (S.YT - (cam.y + H / 2 / cam.s)) * S.S, sw = W / cam.s * S.S, sh = H / cam.s * S.S;
+  const x0 = Math.max(0, sx), y0 = Math.max(0, sy), x1 = Math.min(im.width, sx + sw), y1 = Math.min(im.height, sy + sh);
+  if (x1 > x0 && y1 > y0) ctx.drawImage(im, x0, y0, x1 - x0, y1 - y0, (x0 - sx) / sw * W, (y0 - sy) / sh * H, (x1 - x0) / sw * W, (y1 - y0) / sh * H);
+}
+function drawBase(src = 'sat') {
+  ctx.fillStyle = src === 'par' ? '#2e3a2c' : '#0d3a44'; ctx.fillRect(0, 0, W, H);
+  if (src === 'par') { blit(SRC.par); return; }
+  blit(SRC.sat); if (cam.s > 26) blit(SRC.hi);
+}
+function cpath(rings) { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => { const [x, y] = PX(lo, la); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); } }
+function glowFill(rings, col, a = 1, blur = 40) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; cpath(rings); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = blur; ctx.fill(); ctx.restore(); }
+function flat(rings, col, a = 1) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; cpath(rings); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(20,10,5,.5)'; ctx.stroke(); ctx.restore(); }
+function txt(s, x, y, size, col = '#fff', font = 'M', align = 'center', sh = .75) {
+  const wt = { M: 900, MX: 800, MS: 600, PSI: 700 }[font];
+  ctx.font = `${wt} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = `rgba(0,0,0,${sh})`; ctx.shadowBlur = size * .25; ctx.shadowOffsetY = size * .05; ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+}
+function popIn(t, t0, x, y, fn, sc = 1, d = .4) {
+  const q = clamp((t - t0) / .2); if (q <= 0) return; ctx.save(); ctx.globalAlpha *= q; ctx.translate(x, y); const b = back((t - t0) / d) * sc; ctx.scale(b, b); fn(); ctx.restore();
+}
+function vignette(k = .4) { const g = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+function rnd(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+
+// ---------- labels ----------
+function yellowBox(s, x, y, size, a = 1, rot = 0, sc = 1) {    // black text on a lime-yellow box (like the original)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.rotate(rot * D2R); ctx.scale(sc, sc);
+  ctx.font = `800 ${size}px MX`; const w = ctx.measureText(s).width + size * .5, h = size * 1.3;
+  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 14; ctx.fillStyle = '#ecf53b'; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#16180c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, 0, size * .05); ctx.restore();
+}
+function glowWord(s, x, y, size, kind, a = 1, rot = 0, sc = 1) {   // 'green' = grassy glow, 'ice' = frosty blue glow with icicles
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.rotate(rot * D2R); ctx.scale(sc, sc);
+  ctx.font = `900 ${size}px M`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const w = ctx.measureText(s).width;
+  const G = kind === 'green' ? ['#3dff3a', '#e8ffd0', '#7dff4a', '#1f9a1a'] : ['#2aa8ff', '#f4fbff', '#9fdcff', '#1a5fb0'];
+  ctx.shadowColor = G[0]; ctx.shadowBlur = size * .9; ctx.fillStyle = G[0]; ctx.fillText(s, 0, 0); ctx.shadowBlur = size * .35; ctx.fillText(s, 0, 0);
+  const g = ctx.createLinearGradient(0, -size * .5, 0, size * .5); g.addColorStop(0, G[1]); g.addColorStop(.55, G[2]); g.addColorStop(1, G[3]);
+  ctx.shadowBlur = 0; ctx.fillStyle = g; ctx.fillText(s, 0, 0);
+  ctx.lineWidth = size * .03; ctx.strokeStyle = kind === 'green' ? 'rgba(10,70,10,.85)' : 'rgba(10,50,110,.8)'; ctx.strokeText(s, 0, 0);
+  if (kind === 'ice') { const r = rnd(s.length * 7); ctx.fillStyle = 'rgba(235,248,255,.95)'; for (let i = 0; i < 12; i++) { const ix = -w / 2 + r() * w, l = size * (.12 + r() * .3); ctx.beginPath(); ctx.moveTo(ix - size * .05, size * .32); ctx.lineTo(ix + size * .05, size * .32); ctx.lineTo(ix, size * .32 + l); ctx.fill(); } }
+  if (kind === 'green') { const r = rnd(s.length * 3); for (let i = 0; i < 9; i++) { const ix = -w / 2 + r() * w; ctx.fillStyle = i % 2 ? '#7be04a' : '#a8f070'; ctx.beginPath(); ctx.arc(ix, -size * .42, size * (.07 + r() * .07), 0, 7); ctx.fill(); } }
+  ctx.restore();
+}
+
+// ---------- characters & props ----------
+function horns(s, col = '#f2ecdf') {   // pair of horns for a helmet of radius s
+  ctx.fillStyle = col; for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(d * s * .78, -s * .35); ctx.quadraticCurveTo(d * s * 1.55, -s * .55, d * s * 1.35, -s * 1.45); ctx.quadraticCurveTo(d * s * 1.18, -s * .85, d * s * .62, -s * .72); ctx.closePath(); ctx.fill(); }
+}
+function settler(sz = 1) {      // white silhouette viking head (like the original)
+  ctx.save(); ctx.scale(sz, sz); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 10; ctx.fillStyle = '#fff';
+  horns(30, '#fff'); ctx.beginPath(); ctx.arc(0, -8, 30, Math.PI, 0); ctx.lineTo(30, 10); ctx.quadraticCurveTo(30, 52, 0, 60); ctx.quadraticCurveTo(-30, 52, -30, 10); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function erik(sz = 1, face = 'n') {    // red-bearded viking head with horned helmet
+  ctx.save(); ctx.scale(sz, sz);
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 16;
+  horns(34);
+  ctx.fillStyle = '#c92a1e'; ctx.beginPath(); ctx.moveTo(-34, 0); ctx.quadraticCurveTo(-40, 56, 0, 74); ctx.quadraticCurveTo(40, 56, 34, 0); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#f2c7a5'; ctx.beginPath(); ctx.ellipse(0, 4, 26, 24, 0, 0, 7); ctx.fill();
+  const hg = ctx.createLinearGradient(0, -40, 0, 0); hg.addColorStop(0, '#b9bfcc'); hg.addColorStop(1, '#6a7184');
+  ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, -4, 35, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#545a6b'; ctx.fillRect(-36, -8, 72, 9); ctx.fillRect(-4, -8, 8, 26);
+  ctx.fillStyle = '#1b1410'; if (face === 'shock') { ctx.beginPath(); ctx.arc(-11, 9, 4, 0, 7); ctx.arc(11, 9, 4, 0, 7); ctx.fill(); } else { ctx.fillRect(-15, 7, 8, 4); ctx.fillRect(7, 7, 8, 4); }
+  ctx.fillStyle = '#e0412c'; ctx.beginPath(); ctx.moveTo(-22, 20); ctx.quadraticCurveTo(0, 12, 22, 20); ctx.quadraticCurveTo(14, 28, 0, 24); ctx.quadraticCurveTo(-14, 28, -22, 20); ctx.fill();
+  if (face === 'shock') { ctx.fillStyle = '#5a1a12'; ctx.beginPath(); ctx.ellipse(0, 36, 6, 8, 0, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function bigViking() {          // large cartoon viking head (shot 3)
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+  horns(150);
+  ctx.fillStyle = '#c87a3a'; ctx.beginPath(); ctx.moveTo(-150, 20); ctx.quadraticCurveTo(-170, 260, 0, 330); ctx.quadraticCurveTo(170, 260, 150, 20); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(90,40,10,.6)'; ctx.lineWidth = 5; for (let i = -4; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(i * 28, 120); ctx.quadraticCurveTo(i * 34, 220, i * 18, 300); ctx.stroke(); }
+  ctx.fillStyle = '#f0c29a'; ctx.beginPath(); ctx.ellipse(0, 40, 118, 115, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#e8a77c'; ctx.beginPath(); ctx.ellipse(0, 70, 26, 40, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2a1b12'; ctx.beginPath(); ctx.ellipse(-46, 30, 13, 15, 0, 0, 7); ctx.ellipse(46, 30, 13, 15, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#9a5424'; ctx.fillRect(-80, 0, 60, 14); ctx.fillRect(20, 0, 60, 14);
+  ctx.fillStyle = '#a85a26'; ctx.beginPath(); ctx.moveTo(-90, 120); ctx.quadraticCurveTo(-40, 90, 0, 112); ctx.quadraticCurveTo(40, 90, 90, 120); ctx.quadraticCurveTo(50, 150, 0, 134); ctx.quadraticCurveTo(-50, 150, -90, 120); ctx.fill();
+  const hg = ctx.createLinearGradient(0, -160, 0, -10); hg.addColorStop(0, '#9fc3c8'); hg.addColorStop(1, '#4f7c86');
+  ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, -20, 150, Math.PI, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#c99a5a'; ctx.fillRect(-156, -34, 312, 34); ctx.fillRect(-16, -170, 32, 150);
+  ctx.fillStyle = '#7a5530'; for (let i = -5; i <= 5; i++) { ctx.beginPath(); ctx.arc(i * 28, -17, 5, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function longship(sz = 1, tt = 0, sail = '#d23a2a') {
+  ctx.save(); ctx.scale(sz, sz); ctx.rotate(Math.sin(tt * 3) * .05); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 12;
+  ctx.fillStyle = '#8a5a2c'; ctx.beginPath(); ctx.moveTo(-70, -30); ctx.quadraticCurveTo(-60, 10, 0, 12); ctx.quadraticCurveTo(60, 10, 70, -30); ctx.lineTo(62, -30); ctx.quadraticCurveTo(50, -6, 0, -6); ctx.quadraticCurveTo(-50, -6, -62, -30); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-70, -30); ctx.quadraticCurveTo(-84, -52, -70, -62); ctx.quadraticCurveTo(-74, -46, -64, -30); ctx.fill(); ctx.beginPath(); ctx.moveTo(70, -30); ctx.quadraticCurveTo(84, -52, 70, -62); ctx.quadraticCurveTo(74, -46, 64, -30); ctx.fill();
+  ctx.fillStyle = '#6a4220'; ctx.fillRect(-58, -12, 116, 18); ctx.shadowBlur = 0;
+  for (let i = -3; i <= 3; i++) { ctx.fillStyle = i % 2 ? '#d9b04a' : '#c23a2a'; ctx.beginPath(); ctx.arc(i * 16, -10, 7, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = '#4a2c14'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, -100); ctx.stroke();
+  ctx.fillStyle = sail; ctx.beginPath(); ctx.moveTo(-40, -94); ctx.lineTo(40, -94); ctx.quadraticCurveTo(46, -60, 40, -30); ctx.lineTo(-40, -30); ctx.quadraticCurveTo(-46, -60, -40, -94); ctx.fill();
+  ctx.fillStyle = '#f2e6cc'; for (let i = 0; i < 4; i++) ctx.fillRect(-40 + i * 20, -94, 10, 64);
+  ctx.restore();
+}
+function caravel(sz = 1, tt = 0) {
+  ctx.save(); ctx.scale(sz, sz); ctx.rotate(Math.sin(tt * 3) * .05); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 12;
+  ctx.fillStyle = '#7a4a26'; ctx.beginPath(); ctx.moveTo(-62, -26); ctx.lineTo(66, -26); ctx.lineTo(48, 8); ctx.lineTo(-48, 8); ctx.closePath(); ctx.fill(); ctx.fillRect(-62, -44, 30, 18); ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#4a2c14'; ctx.lineWidth = 4; for (const x of [-10, 26]) { ctx.beginPath(); ctx.moveTo(x, -26); ctx.lineTo(x, -110); ctx.stroke(); }
+  ctx.fillStyle = '#f4eee0'; for (const x of [-10, 26]) { ctx.beginPath(); ctx.moveTo(x - 26, -100); ctx.quadraticCurveTo(x, -90, x + 26, -100); ctx.lineTo(x + 26, -40); ctx.quadraticCurveTo(x, -32, x - 26, -40); ctx.fill(); }
+  ctx.fillStyle = '#c4161f'; ctx.fillRect(-14, -78, 8, 22); ctx.fillRect(-21, -71, 22, 8);
+  ctx.fillStyle = '#e8b81c'; ctx.beginPath(); ctx.moveTo(26, -110); ctx.lineTo(50, -104); ctx.lineTo(26, -98); ctx.fill();
+  ctx.restore();
+}
+function boot(sz = 1) { ctx.save(); ctx.scale(sz, sz); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 12; ctx.fillStyle = '#7a4a26';
+  ctx.beginPath(); ctx.moveTo(-20, -90); ctx.lineTo(20, -90); ctx.lineTo(22, -10); ctx.quadraticCurveTo(70, -8, 74, 14); ctx.lineTo(-22, 14); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#c23a2a'; ctx.fillRect(-22, -96, 44, 14); ctx.fillStyle = '#4a2c14'; ctx.fillRect(-22, 8, 96, 8); ctx.restore(); }
+function flower(sz, hue, tt) { ctx.save(); ctx.scale(sz, sz); ctx.rotate(tt); ctx.fillStyle = `hsl(${hue},85%,62%)`; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(Math.cos(i * 1.047) * 11, Math.sin(i * 1.047) * 11, 9, 6, i * 1.047, 0, 7); ctx.fill(); } ctx.fillStyle = '#ffd23a'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill(); ctx.restore(); }
+function emoji(kind, sz = 1) {
+  ctx.save(); ctx.scale(sz, sz); const g = ctx.createRadialGradient(-20, -24, 10, 0, 0, 70); g.addColorStop(0, '#ffe680'); g.addColorStop(1, '#f5a623');
+  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 16; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 64, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#5a3a14'; ctx.strokeStyle = '#5a3a14'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  if (kind === 'meh') { ctx.beginPath(); ctx.moveTo(-34, -10); ctx.lineTo(-12, -10); ctx.moveTo(12, -10); ctx.lineTo(34, -10); ctx.moveTo(-18, 30); ctx.lineTo(18, 30); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-36, -26); ctx.lineTo(-12, -22); ctx.moveTo(36, -26); ctx.lineTo(12, -22); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.ellipse(-22, -14, 9, 13, 0, 0, 7); ctx.ellipse(22, -14, 9, 13, 0, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(0, 30, 12, 15, 0, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(-22, -40, 14, Math.PI * 1.15, Math.PI * 1.85); ctx.moveTo(34, -46); ctx.arc(22, -40, 14, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
+  ctx.restore();
+}
+function arrowCurve(x0, y0, x1, y1, k = 1, col = '#ecf53b') {
+  const cx = (x0 + x1) / 2 + 80, cy = (y0 + y1) / 2 - 40; ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8;
+  ctx.beginPath(); const n = 30; for (let i = 0; i <= n * k; i++) { const u = i / n, x = (1 - u) ** 2 * x0 + 2 * (1 - u) * u * cx + u * u * x1, y = (1 - u) ** 2 * y0 + 2 * (1 - u) * u * cy + u * u * y1; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  if (k >= 1) { const a = Math.atan2(y1 - cy, x1 - cx); ctx.beginPath(); ctx.moveTo(x1 - Math.cos(a - .5) * 26, y1 - Math.sin(a - .5) * 26); ctx.lineTo(x1, y1); ctx.lineTo(x1 - Math.cos(a + .5) * 26, y1 - Math.sin(a + .5) * 26); ctx.stroke(); } ctx.restore();
+}
+function dashed(pts, k, col = '#f0d23a', w = 7) {   // dashed route lon/lat drawn up to fraction k; returns tip [x,y]
+  const P = pts.map(p => PX(...p)); let L = 0; const seg = []; for (let i = 1; i < P.length; i++) { const d = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(d); L += d; }
+  let rem = L * clamp(k), tip = P[0]; ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash([22, 18]); ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 6; ctx.beginPath(); ctx.moveTo(...P[0]);
+  for (let i = 1; i < P.length && rem > 0; i++) { const u = Math.min(1, rem / seg[i - 1]); tip = [lerp(P[i - 1][0], P[i][0], u), lerp(P[i - 1][1], P[i][1], u)]; ctx.lineTo(...tip); rem -= seg[i - 1]; }
+  ctx.stroke(); ctx.restore(); return tip;
+}
+function snow(t, a, n = 160) { if (a <= 0) return; const r = rnd(42); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 6;
+  for (let i = 0; i < n; i++) { const sp = 60 + r() * 140, s = 2 + r() * 7, x = (r() * W + Math.sin(t * (.5 + r()) + i) * 30 + W) % W, y = (r() * H + t * sp) % (H + 20) - 10; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); } ctx.restore(); }
+
+// ---------- painted photo cards ----------
+let CARD = [];
+function makeCards() {
+  const mk = (fn) => { const c = document.createElement('canvas'); c.width = 400; c.height = 260; const g = c.getContext('2d'); fn(g, rnd(c.width + CARD.length * 13)); return c; };
+  const sky = (g, a, b) => { const s = g.createLinearGradient(0, 0, 0, 150); s.addColorStop(0, a); s.addColorStop(1, b); g.fillStyle = s; g.fillRect(0, 0, 400, 260); };
+  const hills = (g, r, y, col, amp) => { g.fillStyle = col; g.beginPath(); g.moveTo(0, 260); for (let x = 0; x <= 400; x += 10) g.lineTo(x, y - amp * Math.abs(Math.sin(x / 90 + y)) - r() * 6); g.lineTo(400, 260); g.fill(); };
+  // 1: green valley with mountains and a little house
+  CARD.push(mk((g, r) => { sky(g, '#6aa6dc', '#d8e8f0'); hills(g, r, 140, '#5b6f8a', 70); g.fillStyle = '#eef3f6'; g.beginPath(); g.moveTo(150, 80); g.lineTo(175, 62); g.lineTo(200, 84); g.fill(); hills(g, r, 180, '#3f8a34', 40); hills(g, r, 220, '#5fb03e', 20);
+    g.fillStyle = '#f2ede2'; g.fillRect(260, 196, 34, 20); g.fillStyle = '#b23a2a'; g.beginPath(); g.moveTo(256, 196); g.lineTo(277, 182); g.lineTo(298, 196); g.fill(); }));
+  // 2: sunset waterfall cliffs (Kirkjufell-like)
+  CARD.push(mk((g, r) => { sky(g, '#f08a4a', '#ffd9a0'); g.fillStyle = '#3a4a3a'; g.beginPath(); g.moveTo(120, 170); g.quadraticCurveTo(170, 40, 230, 60); g.quadraticCurveTo(290, 90, 330, 170); g.fill(); hills(g, r, 200, '#4f8a3a', 25);
+    g.fillStyle = '#9fd8f0'; g.fillRect(60, 170, 280, 90); g.fillStyle = 'rgba(255,255,255,.85)'; for (const x of [140, 190, 240]) g.fillRect(x, 186, 12, 50); hills(g, r, 250, '#3f7a2e', 10); }));
+  // 3: steaming hot spring
+  CARD.push(mk((g, r) => { sky(g, '#7fb2e0', '#e2eef4'); hills(g, r, 150, '#6f8a7a', 40); hills(g, r, 200, '#4f9a3a', 18); g.fillStyle = '#5fd0d8'; g.beginPath(); g.ellipse(200, 222, 150, 30, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.55)'; for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(80 + r() * 240, 120 + r() * 90, 14 + r() * 22, 0, 7); g.fill(); } }));
+}
+function card(i, w = 300) { const c = CARD[i], h = w * .65; ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 22; ctx.fillStyle = '#fff'; ctx.fillRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12); ctx.shadowBlur = 0; ctx.drawImage(c, -w / 2, -h / 2, w, h); ctx.restore(); }
+
+// ---------- shots ----------
+const GRLC = [-41, 72.5], ISLC = [-18.6, 64.95];
+function iceSheet(t, k) {      // icy blue wash over Greenland rising from the south, with "80%" written on it
+  if (k <= 0) return; const [, ys] = PX(-40, 59), [, yn] = PX(-40, 84); const yc = lerp(ys + 20, yn - 20, ease(k));
+  ctx.save(); cpath(SH.GRL); ctx.clip(); ctx.beginPath(); ctx.rect(0, yc, W, H); ctx.clip();
+  ctx.globalAlpha = .62; ctx.fillStyle = '#a8d4ff'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+  const [x, y] = PX(-40, 72.5); ctx.translate(x, y); ctx.rotate(-60 * D2R); ctx.globalAlpha = .85; txt('80% — лёд', 0, 0, 92, '#eaf6ff', 'M', 'center', .2); ctx.restore();
+}
+function shot(t) {
+  // 0 – 7.2 : Greenland. "Зелёная земля"? ...80% ice
+  if (t < 7.2) {
+    cam = camKeys([[-1, -42, 71.5, 14], [5.2, -36, 68, 11.5, 1.8]], t); drawBase();
+    const [gx, gy] = PX(-41, 76.5);
+    yellowBox('Гренландия', gx, gy, 96, ap(t, -.2) * (1 - ap(t, .9, .2)), 0, back((t + .2) / .4));
+    const gk = ap(t, .9, .5); if (gk > 0) { glowFill(SH.GRL, 'rgba(110,255,90,.28)', gk * (1 - .6 * ap(t, 3.0, .6)), 60); glowWord('Зелёная земля', gx, gy, 112, 'green', gk, 0, back((t - .9) / .45)); }
+    iceSheet(t, ap(t, 2.9, 1.6));
+    return;
+  }
+  // 7.2 – 12.3 : Iceland — green landscapes, hot springs — "Ледяная земля"?
+  if (t < 12.3) {
+    cam = camKeys([[7.2, -30, 66, 12], [7.25, -18.8, 64.4, 56, .9]], t); drawBase();
+    const [ix, iy] = PX(-18.6, 66.9);
+    yellowBox('Исландия', ix, iy - 60, 84, ap(t, 7.5) * (1 - ap(t, 10.9, .2)), 0, back((t - 7.5) / .4));
+    popIn(t, 8.7, W * .73, H * .17, () => card(0, 330)); popIn(t, 9.0, W * .27, H * .6, () => card(1, 330)); popIn(t, 9.9, W * .73, H * .6, () => card(2, 330));
+    if (t > 11.0) glowWord('Ледяная земля', ix, iy - 60, 92, 'ice', ap(t, 11.0, .3), 0, back((t - 11.0) / .45));
+    return;
+  }
+  // 12.3 – 17.0 : names seem swapped -> a Viking trick
+  if (t < 17.0) {
+    cam = camKeys([[12.2, -30, 69, 13], [12.25, -29, 69.5, 14.5, 1.0]], t); drawBase();
+    const sw = ease(ap(t, 12.9, 1.0));
+    const [gx, gy] = PX(-42, 74), [ix, iy] = PX(-18.6, 66.4);
+    glowWord('Ледяная земля', lerp(ix, gx, sw), lerp(iy, gy, sw) - Math.sin(sw * Math.PI) * 120, 66, 'ice');
+    glowWord('Зелёная земля', lerp(gx, ix, sw), lerp(gy, iy, sw) + Math.sin(sw * Math.PI) * 120, 66, 'green');
+    if (t > 14.6) { ctx.save(); ctx.fillStyle = `rgba(0,0,0,${.25 * ap(t, 14.6)})`; ctx.fillRect(0, 0, W, H); ctx.restore(); popIn(t, 14.7, W / 2, H * .5, () => bigViking(), 1.15, .5); }
+    if (t > 15.4) popIn(t, 15.5, W / 2, H * .27, () => yellowBox('хитрость викингов', 0, 0, 70), 1, .4);
+    return;
+  }
+  // 17.0 – 27.2 : old map. 9th century, Norwegian Vikings sail to Iceland in winter
+  if (t < 27.2) {
+    cam = camKeys([[16.9, 0, 47, 6.5], [17.6, -2, 60, 13, 1.6], [21.0, -16, 64.2, 30, 2.4]], t); drawBase('par');
+    flat(SH.NOR, '#b8202a', ap(t, 17.8, .4));
+    const ik = ap(t, 21.4, .8); flat(SH.ISL, '#2e4f8f', ik * .92);
+    const route = [[5.0, 61.5], [-1, 63.0], [-7, 63.9], [-12.2, 64.3]];
+    const k = ease(ap(t, 18.6, 3.2)); if (t > 18.4) { const [x, y] = dashed(route, k); ctx.save(); ctx.translate(x, y - 10); longship(lerp(1.0, 1.7, ap(t, 21, 2)), t); ctx.restore(); }
+    snow(t, ap(t, 21.0, .8));
+    if (t < 19.0) { ctx.save(); ctx.globalAlpha = ap(t, 16.95, .2) * (1 - ap(t, 18.6, .3)); const sc = back((t - 16.95) / .4); ctx.translate(W / 2, H * .2); ctx.scale(sc, sc); txt('IX век', 0, 0, 200, '#e9a07a', 'M', 'center', .4); ctx.restore(); }
+    if (t > 25.1) { const [x, y] = PX(-18.6, 66.6); glowWord('Исландия', x, y - 90, 110, 'ice', ap(t, 25.2, .3), 0, back((t - 25.2) / .45)); }
+    return;
+  }
+  // 27.2 – 31.8 : spyglass: the first thing explorers saw
+  if (t < 31.8) {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    const R = 500 * eout(ap(t, 27.2, .5)), cx = W / 2 + Math.sin(t * .9) * 18, cy = H * .38 + Math.cos(t * .7) * 10;
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.clip();
+    const sk = ctx.createLinearGradient(0, cy - R, 0, cy); sk.addColorStop(0, '#9fd2f2'); sk.addColorStop(1, '#e4f2f8'); ctx.fillStyle = sk; ctx.fillRect(0, cy - R, W, R + 40);
+    const hz = cy + 20; const sea = ctx.createLinearGradient(0, hz, 0, cy + R); sea.addColorStop(0, '#2a9ec8'); sea.addColorStop(1, '#5cc8e0'); ctx.fillStyle = sea; ctx.fillRect(0, hz, W, R);
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3; for (let i = 0; i < 14; i++) { const y = hz + 20 + i * i * 4, o = (t * 40 + i * 50) % 120; ctx.beginPath(); for (let x = -60 + o; x < W; x += 120) { ctx.moveTo(x, y); ctx.lineTo(x + 50, y); } ctx.stroke(); }
+    const ib = eout(ap(t, 28.0, 1.2)), bx = cx + 40, sc = lerp(.3, 1.3, ib);   // iceberg growing closer
+    ctx.save(); ctx.translate(bx, hz + 4); ctx.scale(sc, sc); ctx.fillStyle = '#f4fbff'; ctx.beginPath(); ctx.moveTo(-170, 0); ctx.lineTo(-110, -60); ctx.lineTo(-60, -50); ctx.lineTo(-10, -130); ctx.lineTo(40, -90); ctx.lineTo(80, -110); ctx.lineTo(130, -40); ctx.lineTo(180, 0); ctx.fill();
+    ctx.fillStyle = '#bfe0f2'; ctx.beginPath(); ctx.moveTo(-10, -130); ctx.lineTo(20, 0); ctx.lineTo(80, -110); ctx.lineTo(40, -90); ctx.fill(); ctx.fillStyle = 'rgba(160,220,240,.6)'; ctx.fillRect(-170, 0, 350, 14); ctx.restore();
+    ctx.restore();
+    const vg = ctx.createRadialGradient(cx, cy, R * .75, cx, cy, R); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.85)'); ctx.fillStyle = vg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    const bub = (s, t0) => popIn(t, t0, W * .64, H * .53, () => { ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 20; ctx.beginPath(); ctx.ellipse(0, 0, 330, 140, 0, 0, 7); ctx.moveTo(150, 100); ctx.lineTo(300, 210); ctx.lineTo(220, 70); ctx.fill(); ctx.shadowBlur = 0; txt(s, 0, 6, s.length > 5 ? 80 : 96, '#1f66d6', 'M', 'center', 0); }, 1, .35);
+    if (t < 30.5) bub('ЛЁД!', 29.0); else bub('ИСЛАНДИЯ!', 30.5);
+    return;
+  }
+  // 31.8 – 37.9 : Florida = "land of flowers" from Spanish explorers
+  if (t < 37.9) {
+    cam = camKeys([[31.6, -45, 38, 9.6], [34.4, -76, 28.5, 26, 1.6]], t); drawBase();
+    const ek = ap(t, 32.2, .4); glowFill(SH.ESP, '#ffd02a', ek * .9, 50);
+    const route = [[-9.5, 37.0], [-30, 33], [-55, 30.5], [-79.2, 27.4]];
+    const k = ease(ap(t, 32.4, 2.2)); if (t > 32.3) { const [x, y] = dashed(route, k, 'rgba(255,255,255,.85)', 5); ctx.save(); ctx.translate(x, y - 10); caravel(lerp(.9, 1.3, ap(t, 34.4, 1.6)), t); ctx.restore(); }
+    const fk = ap(t, 33.0, .5); if (fk > 0) { glowFill(SH.FLA, 'rgba(150,230,255,.85)', fk, 45); const [fx, fy] = PX(-81.6, 28.6);
+      ctx.save(); ctx.globalAlpha = fk; txt('Флорида', fx + (cam.s > 18 ? 300 : 120), fy - 40, 64, '#fff', 'MX'); txt('исп. La Florida', fx + (cam.s > 18 ? 300 : 120), fy + 26, 40, '#ffb44a', 'PSI'); ctx.restore(); }
+    if (t > 34.5) { const [fx, fy] = PX(-80, 31.5); ctx.save(); ctx.globalAlpha = ap(t, 34.6); txt('Земля цветов', fx + 160, fy - 170, 70, '#ffe14a', 'PSI'); ctx.restore(); }
+    if (t > 35.6) { const r = rnd(9); for (let i = 0; i < 26; i++) { const lo = -82.7 + r() * 3.0, la = 25.6 + r() * 4.6; const [x, y] = PX(lo, la); cpath(SH.FLA); if (!ctx.isPointInPath(x, y)) continue; popIn(t, 35.7 + i * .05, x, y, () => flower(1.4 + r() * .8, [0, 330, 45, 280, 55][i % 5], t * .3 + i)); } }
+    return;
+  }
+  // 37.9 – 44.2 : Iceland settled; Erik the Red exiled for his crimes
+  if (t < 44.2) {
+    cam = camKeys([[37.8, -19, 65.0, 60], [37.9, -19, 65.0, 62, .1]], t); drawBase();
+    const S = [[-21.9, 64.2], [-18.1, 65.7], [-14.5, 65.2], [-20.6, 63.9], [-16.2, 64.3], [-22.6, 65.6], [-19.6, 65.4], [-15.1, 66.0], [-17.6, 64.6], [-13.7, 64.6]];
+    S.forEach((p, i) => { const [x, y] = PX(...p); popIn(t, 38.8 + i * .12, x, y, () => settler(.9)); });
+    const kick = ap(t, 42.6, 1.4), [ex0, ey0] = PX(-20.5, 66.1);
+    const ex = ex0 - eout(kick) * 900, ey = ey0 - Math.sin(kick * Math.PI) * 320 - kick * 60;
+    if (t > 40.3) popIn(t, 40.4, ex, ey, () => { ctx.rotate(-kick * 6); erik(1.5, kick > 0 ? 'shock' : 'n'); });
+    if (t > 41.4 && t < 42.9) { ctx.save(); ctx.globalAlpha = ap(t, 41.4) * (1 - ap(t, 42.6, .3)); txt('Эрик Рыжий', ex0 + 150, ey0 - 330, 82, '#ecf53b', 'PSI'); ctx.restore(); arrowCurve(ex0 + 180, ey0 - 270, ex0 + 50, ey0 - 90, ap(t, 41.5, .4)); }
+    if (t > 42.2) popIn(t, 42.3, ex0 + 130 - eout(ap(t, 42.5, .2)) * 70, ey0 + 10, () => boot(1.6));
+    return;
+  }
+  // 44.2 – 52.9 : he heads west, finds a huge icy island; hard to attract settlers
+  if (t < 52.9) {
+    cam = camKeys([[44.1, -30, 64.5, 30], [44.2, -33, 64, 26, 2.5], [48.8, -41, 63.5, 34, 1.6]], t); drawBase();
+    const S = [[-21.9, 64.2], [-18.1, 65.7], [-14.5, 65.2], [-20.6, 63.9], [-16.2, 64.3], [-22.6, 65.6], [-19.6, 65.4], [-15.1, 66.0], [-17.6, 64.6], [-13.7, 64.6]];
+    S.forEach(p => { const [x, y] = PX(...p); ctx.save(); ctx.translate(x, y); settler(.55); ctx.restore(); });
+    const route = [[-24, 64.6], [-31, 64.3], [-38, 63.2], [-43.5, 61.8]];
+    const k = ease(ap(t, 44.4, 3.6)); const [x, y] = dashed(route, k, 'rgba(255,255,255,.6)', 4);
+    const alarm = t > 49.4;
+    ctx.save(); ctx.translate(x, y - 20); erik(1.35, alarm ? 'shock' : 'n'); ctx.restore();
+    if (t > 47.0 && t < 49) { const [gx, gy] = PX(-41, 66); ctx.save(); ctx.globalAlpha = ap(t, 47.0) * (1 - ap(t, 48.7)); txt('огромный ледяной остров', gx, gy - 120, 54, '#eaf6ff', 'MX'); ctx.restore(); }
+    if (alarm) { const q = ap(t, 49.4, .3); ctx.save(); ctx.globalAlpha = q; const g = ctx.createRadialGradient(x, y - 60, 10, x, y - 60, 260); g.addColorStop(0, 'rgba(255,40,40,.6)'); g.addColorStop(1, 'rgba(255,40,40,0)'); ctx.fillStyle = g; ctx.fillRect(x - 300, y - 360, 600, 600); ctx.restore();
+      popIn(t, 49.5, x + 70, y - 130, () => { txt('!', 0, 0, 170, '#fff', 'M', 'center', .6); ctx.globalCompositeOperation = 'source-atop'; }, 1, .35);
+      if (t > 50.2) popIn(t, 50.3, W / 2, H * .22, () => yellowBox('поселенцев не заманить', 0, 0, 56), 1, .35); }
+    return;
+  }
+  // 52.9 – 61.8 : the trick: names it Greenland, opposite of what it was; settlers follow
+  {
+    cam = camKeys([[52.8, -33, 70, 13.5], [52.9, -32, 70, 13.2, .1]], t); drawBase();
+    const [gx, gy] = PX(-41, 74), [ix, iy] = PX(-18.6, 66.4);
+    yellowBox('ГРЕНЛАНДИЯ', gx, gy, 80, ap(t, 53.4), -14, back((t - 53.4) / .4));
+    if (t > 54.6) glowWord('Зелёная земля', gx - 50, gy + 140, 72, 'green', ap(t, 54.7), -14);
+    yellowBox('ИСЛАНДИЯ', ix + 100, iy - 80, 54, ap(t, 53.9), 12, back((t - 53.9) / .4));
+    const [ex, ey] = PX(-44.5, 61.6); ctx.save(); ctx.translate(ex, ey - 20); erik(1.1, 'n'); ctx.restore();
+    if (t > 55.8) popIn(t, 55.9, W * .78, H * .3, () => emoji(t < 58.9 ? 'meh' : 'wow', 1.2), 1, .4);
+    const S = [[-21.9, 64.2], [-18.1, 65.7], [-14.5, 65.2], [-20.6, 63.9], [-16.2, 64.3], [-22.6, 65.6], [-19.6, 65.4], [-15.1, 66.0]];
+    S.forEach((p, i) => { const q = ease(ap(t, 59.1 + i * .17, 1.5)); const lo = lerp(p[0], -44 + (i % 4) * .9, q), la = lerp(p[1], 61.9 + Math.floor(i / 4) * .6, q) + Math.sin(q * Math.PI) * 1.2;
+      const [x, y] = PX(lo, la); ctx.save(); ctx.translate(x, y); settler(.55); ctx.restore(); });
+  }
+}
+function captions(t) {
+  if (t > CTA0 - .1) return;
+  let c = null; for (const x of CAPS) if (t >= x[0] - .05 && t < x[1] + .15) c = x;
+  if (!c) return; const a = clamp((t - c[0] + .05) / .08) * clamp((c[1] + .15 - t) / .1);
+  const y = (t > 27.2 && t < 31.8) ? H * .78 : H * .7;
+  ctx.save(); ctx.globalAlpha = a; txt(c[2], W / 2, y, 58, '#fff', 'MS', 'center', .9); ctx.restore();
+}
+
+// ---------- CTA ----------
+function pill(s, x, y, size, col, a = 1, sc = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.font = `900 ${size}px M`; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = size * .4; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * .28); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(s, 0, size * .04); ctx.restore();
+}
+function book() {
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 25; ctx.fillStyle = '#2f7de1'; ctx.beginPath(); ctx.roundRect(-70, -90, 140, 180, 14); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1d5fb8'; ctx.fillRect(-70, -90, 22, 180); ctx.fillStyle = '#f4f4f4'; ctx.fillRect(56, -82, 10, 164);
+  ctx.fillStyle = '#3fbf3a'; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '900 30px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ЕНТ', 10, 52);
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.moveTo(-28, -15); ctx.lineTo(48, -15); ctx.ellipse(10, -15, 16, 38, 0, 0, 7); ctx.stroke();
+}
+function cta(t) {
+  const a = clamp((t - CTA0) / .5); if (a <= 0) return;
+  ctx.fillStyle = `rgba(4,16,20,${.72 * a})`; ctx.fillRect(0, 0, W, H);
+  const p1 = ap(t, 61.85, .35), p2 = ap(t, 65.3, .35), p3 = ap(t, 67.9, .35);
+  ctx.save(); ctx.globalAlpha = a * p1; txt('Такие темы', W / 2, H * .13, 78); txt('часто попадаются на', W / 2, H * .13 + 90, 60); ctx.restore();
+  pill('ЕНТ по географии', W / 2, H * .13 + 220, 72, '#e8792a', a * ap(t, 63.6), back((t - 63.6) / .45));
+  ctx.save(); ctx.globalAlpha = a * p2; txt('Мы подготовили', W / 2, H * .4, 70); txt('гайд по географии', W / 2, H * .4 + 85, 70); ctx.restore();
+  { const q = ap(t, 66.2, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; const sc = back(q); ctx.translate(W / 2, H * .4 + 235); ctx.scale(sc, sc); book(); ctx.restore(); } }
+  ctx.save(); ctx.globalAlpha = a * p3; txt('Напиши в комментариях', W / 2, H * .6 + 40, 62); ctx.restore();
+  { const q = ap(t, 68.9, .3); if (q > 0) {
+    const pulse = 1 + .06 * Math.sin((t - 68.9) * 8) * ap(t, 69.3), sc = back((t - 68.9) / .45) * pulse;
+    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 230); ctx.scale(sc, sc);
+    ctx.font = '900 110px M'; const w = ctx.measureText('ГЕО').width + 130, h = 180;
+    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 44); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ГЕО', 0, 8); ctx.restore(); } }
+}
+
+function render(T) {
+  const t = T - OFF;
+  ctx = main.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'none';
+  shot(t);
+  vignette(.38);
+  captions(t);
+  cta(t);
+  if (t < -.05) { ctx.fillStyle = `rgba(0,0,0,${clamp(-t / .25)})`; ctx.fillRect(0, 0, W, H); }
+  if (T > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
+}
+window.ready = (async () => {
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps.json')).json();
+  await Promise.all([[SAT, 'sat.jpg'], [HI, 'hi.jpg'], [PAR, 'parch.jpg']].map(([im, s]) => new Promise(r => { im.onload = r; im.src = s; })));
+  await SAT.decode(); await HI.decode(); await PAR.decode();
+  SRC = { sat: { img: SAT, L0: -100, YT: SH.YT[0], S: 30 }, hi: { img: HI, L0: -56, YT: SH.YT[1], S: 80 }, par: { img: PAR, L0: -180, YT: 168.94807874816593, S: 14 } };
+  for (const f of ['900 40px M', '800 40px MX', '600 40px MS', '700 40px PSI']) await document.fonts.load(f);
+  makeCards();
+  render(0); return true;
+})();
+</script></body></html>
