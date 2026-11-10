@@ -1,0 +1,389 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Sabalak -> Abylai khan. Glow Sketch style: neon line drawings that draw themselves on, with bloom.
+// render(t) is deterministic; t = video seconds (voice starts at 0.3 s).
+const W = 1080, H = 1920, c = document.getElementById('c'), ctx = c.getContext('2d');
+const L = document.createElement('canvas'); L.width = W; L.height = H; const g = L.getContext('2d');      // glow line layer
+const B1 = document.createElement('canvas'); B1.width = 270; B1.height = 480; const b1 = B1.getContext('2d'); // wide bloom
+const B2 = document.createElement('canvas'); B2.width = 540; B2.height = 960; const b2 = B2.getContext('2d'); // tight bloom
+const S = [0, 5.55, 10.4, 14.8, 19.5, 23.4, 28.0, 32.0, 36.6], END = S[8];
+const COL = { hero: '#7FE9FF', sheep: '#CFE3FF', wood: '#FFCF7A', elder: '#FFE6A8', yurt: '#FFB25A', enemy: '#FF5E4D', horse: '#9FD8FF', horse2: '#FF9A7A', gold: '#FFC94F', white: '#F4FBFF', grass: '#4FA8C8', star: '#DDEBFF' };
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), lerp = (a, b, k) => a + (b - a) * k;
+const ease = x => (x = clamp(x), x * x * (3 - 2 * x)), eout = x => 1 - Math.pow(1 - clamp(x), 3), ein = x => Math.pow(clamp(x), 2);
+const win = (t, a, b, f = .3) => clamp((t - a) / f) * clamp((b - t) / f);
+function hsh(a, b = 0) { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); }
+let BOIL = 0, SID = 0, T = 0;
+
+// ---------- stroke helpers ----------
+function cr(P, n = 7) { // Catmull-Rom densify
+  if (P.length < 3) return P; const o = [];
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || P[i + 1];
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t, f = j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3);
+      o.push([f(0), f(1)]);
+    }
+  }
+  o.push(P[P.length - 1]); return o;
+}
+function ell(cx, cy, rx, ry, a0 = 0, a1 = Math.PI * 2, n = 44, bump = 0, bk = 8) {
+  const o = []; for (let i = 0; i <= n; i++) { const a = lerp(a0, a1, i / n), r = 1 + bump * Math.abs(Math.sin(bk * a)); o.push([cx + rx * r * Math.cos(a), cy + ry * r * Math.sin(a)]); } return o;
+}
+function line(P, col, w = 4, p = 1, a = 1) {
+  if (p <= 0 || a <= 0 || P.length < 2) return;
+  const m = g.getTransform(), sc = Math.hypot(m.a, m.b) || 1, J = 2.2 / sc, sid = SID++;
+  const ox = (hsh(sid, BOIL) - .5) * J * 2, oy = (hsh(sid + 50, BOIL) - .5) * J * 2;
+  let tot = 0; const ls = [0]; for (let i = 1; i < P.length; i++) { tot += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); ls.push(tot); }
+  const lim = tot * Math.min(1, p);
+  const pass = (dx, dy, lw, al) => {
+    g.beginPath();
+    for (let i = 0; i < P.length; i++) {
+      let x = P[i][0], y = P[i][1];
+      if (i > 0 && ls[i] > lim) { const k = (lim - ls[i - 1]) / (ls[i] - ls[i - 1] || 1); x = lerp(P[i - 1][0], x, k); y = lerp(P[i - 1][1], y, k); }
+      const n = Math.sin(i * .9 + BOIL * 1.7 + sid) * J * .6;
+      i ? g.lineTo(x + dx + n, y + dy - n) : g.moveTo(x + dx, y + dy);
+      if (ls[i] > lim) break;
+    }
+    g.globalAlpha = al; g.lineWidth = lw / sc; g.stroke();
+  };
+  g.strokeStyle = col; g.lineCap = g.lineJoin = 'round';
+  pass(ox, oy, w, a);
+  pass(-ox * 1.6 + J, -oy * 1.6, w * .45, a * .45);  // second sketchy pass
+  g.globalAlpha = 1;
+}
+function fillBlack(P) { g.beginPath(); P.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); g.fillStyle = '#000'; g.globalAlpha = 1; g.fill(); }
+function dot(x, y, r, col, a = 1) { g.globalAlpha = a; g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.globalAlpha = 1; }
+const st = (p, k, n = 6) => clamp(p * n - k);  // staggered part reveal
+
+// ---------- background ----------
+const STARS = Array.from({ length: 140 }, (_, i) => [hsh(i, 1) * W, hsh(i, 2) * 1250, .6 + hsh(i, 3) * 2.2, hsh(i, 4) * 6]);
+function bg(top = '#050B1C', bot = '#01030A') {
+  const gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, top); gr.addColorStop(1, bot); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+}
+function stars(a = 1, ymax = 1300) { for (const [x, y, r, ph] of STARS) if (y < ymax) dot(x, y, r, COL.star, a * (.35 + .35 * Math.sin(T * 1.3 + ph))); }
+function moon(x, y, r, p) { line(ell(x, y, r, r, -1.2, 2.1, 40), COL.white, 4, p); line(cr([[x + r * Math.cos(-1.2), y + r * Math.sin(-1.2)], [x + r * .2, y - r * .1], [x + r * Math.cos(2.1), y + r * Math.sin(2.1)]]), COL.white, 4, p); }
+function grass(y0, n, seed, p, col = COL.grass, sway = 1) {
+  for (let i = 0; i < n; i++) {
+    const x = hsh(i, seed) * W, y = y0 + hsh(i, seed + 1) * (H - y0), h = 18 + hsh(i, seed + 2) * 26 * (y / H + .3), w = Math.sin(T * 1.6 + x * .01) * 6 * sway;
+    line([[x - 8, y], [x - 10 + w, y - h * .8]], col, 2.5, p, .55); line([[x, y], [x + w * 1.2, y - h]], col, 2.5, p, .55); line([[x + 8, y], [x + 12 + w, y - h * .7]], col, 2.5, p, .55);
+  }
+}
+
+// ---------- characters ----------
+function hair(cx, cy, rx, ry, n, len, seed, col, w, p, wind = 0, front = 5) {
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI - .25 + (i / (n - 1)) * (Math.PI + .5), r0x = cx + rx * Math.cos(a), r0y = cy + ry * Math.sin(a);
+    const L1 = len * (.6 + .8 * hsh(i, seed)), out = a + (hsh(i, seed + 1) - .5) * .9, sw = Math.sin(T * 2.2 + i) * wind;
+    line(cr([[r0x, r0y], [r0x + Math.cos(out) * L1 * .5 + sw * .5, r0y + Math.sin(out) * L1 * .5], [r0x + Math.cos(out + .4) * L1 + sw, r0y + Math.sin(out + .4) * L1 + L1 * .25]], 4), col, w, st(p, i * .05, 1.6));
+  }
+  for (let i = 0; i < front; i++) { // strands falling over the forehead / eyes
+    const x0 = cx - rx * .7 + i * rx * 1.4 / (front - 1 || 1), sw = Math.sin(T * 2 + i * 1.7) * wind;
+    line(cr([[x0, cy - ry * .95], [x0 + rx * .18 + sw * .4, cy - ry * .5], [x0 + rx * .05 + sw, cy + ry * (.05 + .2 * hsh(i, seed + 3))]], 4), col, w, st(p, .3 + i * .05, 1.6));
+  }
+}
+function shepherd(x, y, s, p, o = {}) { // feet at (x,y), ~640 units tall, thin, torn chapan, crook staff
+  const C = o.col || COL.hero, wind = o.wind ?? 6;
+  g.save(); g.translate(x, y); g.scale(s, s);
+  fillBlack([[-62, -455], [-100, -130], [100, -112], [62, -455]]);
+  line([[150, 15], [133, -600]], COL.wood, 5, st(p, 0)); line(ell(109, -600, 24, 24, 0, -Math.PI, 20).concat([[84, -588]]), COL.wood, 5, st(p, .6));
+  line(cr([[-38, -128], [-42, -60], [-46, 0]]), C, 5, st(p, 1)); line([[-46, 0], [-78, 4]], C, 5, st(p, 1.4));
+  line(cr([[36, -120], [42, -60], [46, 0]]), C, 5, st(p, 1)); line([[46, 0], [78, 4]], C, 5, st(p, 1.4));
+  line(cr([[-62, -455], [-80, -380], [-88, -260], [-98, -130]]), C, 5, st(p, 1.5));
+  line([[-98, -130], [-80, -112], [-68, -128], [-50, -106], [-30, -126], [-10, -102], [12, -126], [30, -108], [48, -128], [66, -104], [84, -124], [100, -112]], C, 4.5, st(p, 2));
+  line(cr([[100, -112], [90, -250], [82, -380], [62, -455]]), C, 5, st(p, 1.5));
+  line(cr([[-62, -455], [-30, -470], [0, -468], [30, -470], [62, -455]]), C, 5, st(p, 2));
+  line([[-24, -466], [0, -400], [22, -466]], C, 4, st(p, 2.4)); line(cr([[0, -400], [6, -300], [-4, -122]]), C, 3.5, st(p, 2.6));
+  line(cr([[-86, -300], [0, -288], [86, -300]]), C, 4, st(p, 2.6));
+  line([[-72, -222], [-60, -210], [-68, -198], [-56, -186]], C, 3, st(p, 3)); line([[50, -172], [62, -160], [52, -148], [64, -138]], C, 3, st(p, 3));
+  line([[30, -372], [60, -376], [58, -348], [28, -346], [30, -372]], C, 3, st(p, 3));
+  line(cr([[-60, -450], [-90, -380], [-104, -300], [-96, -232]]), C, 5, st(p, 2.5)); line(ell(-96, -226, 13, 10), C, 4, st(p, 3));
+  line(cr([[60, -450], [100, -400], [120, -335], [132, -312]]), C, 5, st(p, 2.5)); line(ell(136, -306, 13, 13), C, 4, st(p, 3));
+  line([[-14, -490], [-14, -462]], C, 4, st(p, 3)); line([[14, -490], [14, -462]], C, 4, st(p, 3));
+  fillBlack(ell(0, -538, 40, 52)); line(ell(0, -538, 40, 52), C, 5, st(p, 3.3));
+  line([[-2, -530], [-8, -512], [2, -508]], C, 3, st(p, 4)); line([[-12, -496], [10, -496]], C, 3, st(p, 4));
+  hair(0, -548, 44, 50, 15, 58, 3, C, 4, st(p, 3.6, 3), wind);
+  g.restore();
+}
+function sheep(x, y, s, p, ph, f = 1) {
+  g.save(); g.translate(x, y); g.scale(s * f, s);
+  const body = ell(0, -62, 72, 40, 0, Math.PI * 2, 70, .09, 8), bob = 12 * Math.max(0, Math.sin(T * .9 + ph));
+  fillBlack(body); line(body, COL.sheep, 4, st(p, 0, 2));
+  for (const [a, b] of [[-42, -28], [-16, -24], [22, -24], [46, -28]]) line([[a, b], [a + (b > -26 ? 1 : -2), 0]], COL.sheep, 4, st(p, .6, 2));
+  line(ell(84, -70 + bob, 22, 15), COL.sheep, 4, st(p, .8, 2)); line([[74, -82 + bob], [60, -92 + bob]], COL.sheep, 3.5, st(p, 1, 2)); dot(90, -73 + bob, 3, COL.sheep, st(p, 1, 2));
+  g.restore();
+}
+function yurt(x, y, s, p, col = COL.yurt, a = 1) {
+  g.save(); g.translate(x, y); g.scale(s, s);
+  const out = [[-125, 0], [-125, -110], ...cr([[-125, -110], [-70, -170], [-28, -200]]).slice(1), [28, -200], ...cr([[28, -200], [70, -170], [125, -110]]).slice(1), [125, 0]];
+  fillBlack(out); line(out, col, 5, st(p, 0, 2), a); line([[-130, 0], [130, 0]], col, 4, st(p, .3, 2), a);
+  for (let i = -5; i < 5; i++) { line([[i * 25, -105], [i * 25 + 25, -8]], col, 2.5, st(p, .6, 2), a * .7); line([[i * 25 + 25, -105], [i * 25, -8]], col, 2.5, st(p, .6, 2), a * .7); }
+  line(cr([[-125, -110], [0, -96], [125, -110]]), col, 3.5, st(p, .5, 2), a);
+  line([[-24, 0], [-24, -78], [24, -78], [24, 0]], col, 4, st(p, .8, 2), a); line([[-28, -200], [-24, -214], [24, -214], [28, -200]], col, 4, st(p, .8, 2), a);
+  for (let i = -2; i <= 2; i++) line([[i * 10, -200], [i * 48, -112]], col, 2, st(p, 1, 2), a * .6);
+  g.restore();
+}
+function elderBack(x, y, s, p) { // Tole bi seen from behind (over-the-shoulder)
+  const C = COL.elder; g.save(); g.translate(x, y); g.scale(s, s);
+  const body = [...cr([[-30, -488], [-110, -460], [-150, -380], [-170, -100]]), [-170, 200], [170, 200], ...cr([[165, -100], [150, -390], [110, -462], [30, -488]])];
+  fillBlack(body); line(body.slice(0, 22), C, 5, st(p, 0)); line(body.slice(-22), C, 5, st(p, 0));
+  line(cr([[-40, -484], [0, -470], [40, -484]]), C, 4, st(p, .5));
+  // koshkar-muiz ornament on the back
+  const orn = d => cr([[0, -300], [d * 30, -340], [d * 70, -330], [d * 80, -290], [d * 55, -270], [d * 40, -292], [d * 55, -306]]);
+  line(orn(1), COL.gold, 4, st(p, 1.5)); line(orn(-1), COL.gold, 4, st(p, 1.5)); line([[0, -300], [0, -200]], COL.gold, 4, st(p, 1.8));
+  // head + hat
+  fillBlack(ell(0, -540, 48, 56)); line(cr([[-44, -556], [-48, -520], [-30, -486]]), C, 5, st(p, 1)); line(cr([[46, -556], [50, -520], [40, -496]]), C, 5, st(p, 1));
+  const hat = cr([[-46, -560], [-42, -610], [-10, -642], [30, -634], [48, -600], [48, -560]]); fillBlack(hat); line(hat, COL.white, 5, st(p, 1.3));
+  line(ell(0, -558, 60, 16, 0, Math.PI * 2, 60, .12, 14), COL.white, 4.5, st(p, 1.6));
+  // beard showing on the right of the face
+  for (let i = 0; i < 5; i++) line(cr([[38 + i * 4, -520 + i * 6], [62 + i * 5, -470], [58 + i * 6, -420 + i * 8], [70 + i * 4, -380 + i * 10]]), COL.white, 3.5, st(p, 2 + i * .15));
+  // staff
+  line([[205, 220], [195, -690]], COL.wood, 6, st(p, .8)); line(ell(195, -704, 14, 14), COL.wood, 5, st(p, 1.2));
+  line(cr([[150, -380], [180, -400], [198, -420]]), C, 5, st(p, 2));
+  g.restore();
+}
+function legs4(ph, A = .6) { // gallop legs (horse units)
+  const R = [[72, -128, 0], [52, -128, .5], [-70, -128, 2.6], [-88, -128, 3.1]], out = [];
+  for (const [x, y, o] of R) {
+    const th = A * Math.sin(ph + o), kn = [x + 58 * Math.sin(th), y + 58 * Math.cos(th)], b = th + (o > 2 ? -.6 : .6) * (.5 + .5 * Math.sin(ph + o + 1.2));
+    out.push([[x, y], kn, [kn[0] + 58 * Math.sin(b), kn[1] + 58 * Math.cos(b)]]);
+  }
+  return out;
+}
+function horse(p, ph, C) { // facing +x, hooves at y≈0
+  const body = cr([[-100, -170], [-60, -192], [20, -190], [80, -182], [106, -160], [100, -132], [60, -112], [-20, -108], [-80, -116], [-110, -140], [-100, -170]]);
+  for (const lg of legs4(ph).slice(2)) line(lg, C, 5, st(p, 1), .75);
+  fillBlack(body);
+  const neck = [...cr([[100, -150], [130, -200], [150, -250], [160, -272]]), ...cr([[160, -272], [190, -238], [215, -224], [224, -232], [210, -256], [180, -286], [150, -294]]), ...cr([[150, -294], [108, -244], [72, -186]])];
+  fillBlack(neck); line(body, C, 5, st(p, 0)); line(neck, C, 5, st(p, .5));
+  line([[150, -294], [148, -318], [162, -296]], C, 4, st(p, 1)); dot(182, -268, 4, C, st(p, 1));
+  for (let i = 0; i < 6; i++) { const q = i / 5, bx = lerp(150, 78, q), by = lerp(-294, -190, q), fl = Math.sin(T * 14 + i) * 8; line(cr([[bx, by], [bx - 28, by - 4 + fl], [bx - 48, by + 6 + fl]], 3), C, 3, st(p, 1.2)); }
+  for (let i = 0; i < 4; i++) { const fl = Math.sin(T * 12 + i * 1.3) * 10; line(cr([[-104, -162], [-150, -160 + i * 8 + fl], [-190, -140 + i * 14 + fl]], 4), C, 3.5, st(p, 1.2)); }
+  for (const lg of legs4(ph).slice(0, 2)) line(lg, C, 5, st(p, 1));
+}
+function rider(p, o) { // seat at (0,-190) of horse units, facing +x
+  const C = o.col, big = o.big;
+  line(cr([[0, -186], [32, -150], [24, -100]]), C, 5, st(p, 1));
+  const torso = [...cr([[-26, -192], [-30, -260], [-22, -322]]), ...cr([[22, -322], [32, -260], [26, -192]])];
+  fillBlack(torso); line(torso.slice(0, 15), C, 5, st(p, 1.5)); line(torso.slice(15), C, 5, st(p, 1.5)); line([[-22, -322], [22, -322]], C, 5, st(p, 1.8));
+  if (big) { for (let r = 0; r < 4; r++) for (let k = 0; k < 3; k++) line(ell(-14 + k * 14, -300 + r * 26, 8, 8, 0, Math.PI, 8), C, 2.5, st(p, 2.2), .8); line(ell(-24, -318, 20, 14), C, 4, st(p, 2)); }
+  fillBlack(ell(8, -356, 24, 28)); line(ell(8, -356, 24, 28), C, 5, st(p, 2));
+  if (big) { const hm = cr([[-18, -362], [-16, -386], [8, -404], [32, -386], [34, -362]]); line(hm, C, 5, st(p, 2.4)); line([[8, -404], [8, -446]], C, 4, st(p, 2.6)); line([[28, -370], [30, -340]], C, 4, st(p, 2.6)); }
+  else hair(8, -360, 26, 30, 10, 34, 9, C, 3.5, st(p, 2.4, 3), 10, 0);
+  line(cr([[16, -312], [52, -272], [86, -262]]), C, 5, st(p, 2.6));
+  const sa = o.spear ?? -.08, sx = Math.cos(sa), sy = Math.sin(sa);
+  line([[86 - 150 * sx, -262 - 150 * sy], [86 + 200 * sx, -262 + 200 * sy]], COL.wood, 5, st(p, 3));
+  const tx = 86 + 200 * sx, ty = -262 + 200 * sy; line([[tx - 8 * sy, ty + 8 * sx], [tx + 34 * sx, ty + 34 * sy], [tx + 8 * sy, ty - 8 * sx]], COL.white, 4, st(p, 3.4));
+}
+function seated(x, y, s, p, C = COL.hero) { // front view, cross-legged
+  g.save(); g.translate(x, y); g.scale(s, s);
+  const legsP = cr([[-120, -10], [-70, -40], [0, -30], [70, -40], [120, -10], [60, 10], [0, 0], [-60, 10], [-120, -10]]);
+  fillBlack(legsP); line(legsP, C, 5, st(p, 0));
+  const tor = [[-60, -40], [-72, -170], [-40, -200], [40, -200], [72, -170], [60, -40]]; fillBlack(tor); line(cr(tor, 4), C, 5, st(p, 1));
+  line([[-22, -198], [0, -150], [22, -198]], C, 4, st(p, 1.5)); line(cr([[-62, -110], [0, -100], [62, -110]]), COL.gold, 4, st(p, 1.6));
+  line(cr([[-72, -170], [-100, -100], [-80, -40]]), C, 5, st(p, 1.6)); line(cr([[72, -170], [100, -100], [80, -40]]), C, 5, st(p, 1.6));
+  fillBlack(ell(0, -248, 34, 42)); line(ell(0, -248, 34, 42), C, 5, st(p, 2));
+  hair(0, -258, 38, 42, 13, 44, 21, C, 4, st(p, 2.4, 3), 4, 4);
+  g.restore();
+}
+function bearer(x, y, s, p, handY, C = COL.white, a = .9) {
+  g.save(); g.translate(x, y); g.scale(s, s);
+  const robe = [[-50, 0], [-36, -150], [-22, -190], [22, -190], [36, -150], [50, 0]]; fillBlack(robe); line(robe, C, 4.5, st(p, 0), a);
+  line(ell(0, -222, 22, 26), C, 4.5, st(p, .8), a); line(ell(0, -244, 26, 10, Math.PI, Math.PI * 2, 16), C, 4, st(p, 1), a);
+  const hy = (handY - y) / s; line(cr([[-26, -184], [-46, (hy - 184) / 2 - 20], [-34, hy]]), C, 4.5, st(p, 1.3), a); line(cr([[26, -184], [46, (hy - 184) / 2 - 20], [34, hy]]), C, 4.5, st(p, 1.3), a);
+  g.restore();
+}
+
+// ---------- captions (main ctx, clean Montserrat) ----------
+function txt(s, x, y, size, col, font = 'M', al = 'center') { ctx.font = `${font === 'M' ? 900 : 800} ${size}px ${font}`; ctx.textAlign = al; ctx.textBaseline = 'middle'; ctx.fillStyle = col; ctx.fillText(s, x, y); }
+function fit(s, size, maxw, font = 'M') { ctx.font = `900 ${size}px ${font}`; const w = ctx.measureText(s).width; return w > maxw ? size * maxw / w : size; }
+function caption(lines, t0, t1, y = 330) { // lines: [[text, size, color]]
+  const a = win(T, t0, t1, .35); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; const dy = (1 - eout((T - t0) / .5)) * 40;
+  ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 4;
+  let yy = y + dy; for (const [s, sz, col] of lines) { const f = fit(s, sz, 960); ctx.shadowColor = col === '#fff' ? 'rgba(0,0,0,.85)' : 'rgba(255,170,40,.55)'; txt(s, W / 2, yy, f, col); yy += f * 1.18; }
+  ctx.restore();
+}
+function clues(n, a) { // three clue rings
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  for (let i = 0; i < 3; i++) { const x = W / 2 + (i - 1) * 64, y = 175; ctx.beginPath(); ctx.arc(x, y, 18, 0, 7); ctx.lineWidth = 5; ctx.strokeStyle = COL.gold; ctx.shadowColor = COL.gold; ctx.shadowBlur = 18; ctx.stroke(); if (i < n) { ctx.fillStyle = COL.gold; ctx.fill(); } }
+  ctx.restore();
+}
+
+// ---------- scenes ----------
+const FLOCK = [[120, 1415, .5, 1, 1], [440, 1410, .45, 2, -1], [660, 1405, .42, 3, 1], [960, 1425, .52, 4, -1], [240, 1560, .8, 5, 1], [860, 1575, .85, 6, -1], [330, 1715, 1.0, 7, -1], [770, 1735, 1.02, 8, 1]];
+function steppe(u, p, abylai = 0) {
+  stars(1); moon(860, 650, 64, p);
+  line([[0, 1352], ...cr([[0, 1352], [300, 1340], [620, 1356], [1080, 1344]], 10)], COL.grass, 4, p, .8);
+  line(cr([[0, 1300], [180, 1262], [380, 1296], [560, 1270], [760, 1300], [940, 1250], [1080, 1290]], 10), COL.grass, 3, p, .35);
+  grass(1360, 46, 11, p);
+  for (const [x, y, s, ph, f] of FLOCK.slice(0, 4)) sheep(x, y, s, st(p, .5 + ph * .1, 2), ph, f);
+  shepherd(540, 1540, 1.12, p);
+  for (const [x, y, s, ph, f] of FLOCK.slice(4)) sheep(x, y, s, st(p, .5 + ph * .1, 2), ph, f);
+}
+function scene1(u) { // 0 – 5.55: night steppe, slow push in
+  const k = 1 + .12 * ease(u / 5.5); g.translate(540, 1250); g.scale(k, k); g.translate(-540, -1250);
+  steppe(u, clamp(u / 2.6));
+}
+function scene2(u) { // close-up: messy hair covers the eyes
+  const C = COL.hero, p = clamp(u / 1.6); g.translate(540, 1080); g.scale(1.25, 1.25);
+  const face = cr([[-220, -80], [-215, 80], [-170, 220], [-80, 300], [0, 318], [80, 300], [170, 220], [215, 80], [220, -80]]);
+  line(face, C, 5, st(p, 0, 3), .9); line(cr([[-220, -20], [-250, 10], [-240, 80], [-212, 100]]), C, 4, st(p, .5, 3), .8); line(cr([[220, -20], [250, 10], [240, 80], [212, 100]]), C, 4, st(p, .5, 3), .8);
+  line(cr([[-80, 300], [-90, 420], [-200, 470]]), C, 4, st(p, .8, 3), .7); line(cr([[80, 300], [90, 420], [200, 470]]), C, 4, st(p, .8, 3), .7);
+  // eyes (under the hair) - a glint when «шын атын жасырды»
+  const glint = Math.exp(-Math.pow((u - 3.35) / .25, 2));
+  for (const d of [-1, 1]) { line(cr([[d * 150, -10], [d * 95, -42], [d * 40, -10]]), C, 4, st(p, 1, 3), .8); line(cr([[d * 150, -10], [d * 95, 14], [d * 40, -10]]), C, 4, st(p, 1, 3), .8); dot(d * 95, -12, 14, C, st(p, 1.2, 3) * (.45 + .55 * glint)); if (glint > .05) dot(d * 95, -12, 34, '#fff', glint * .55); line(cr([[d * 165, -70], [d * 100, -92], [d * 40, -70]]), C, 5, st(p, 1, 3), .8); }
+  line(cr([[0, -10], [-12, 90], [-26, 122], [0, 134], [24, 122]]), C, 4, st(p, 1.3, 3), .8); line(cr([[-60, 202], [0, 212], [60, 202]]), C, 4.5, st(p, 1.5, 3), .8);
+  // hair: big messy mass + strands over eyes
+  const wind = 14;
+  for (let i = 0; i < 26; i++) { const a = -Math.PI - .15 + i / 25 * (Math.PI + .3), rx = 240, ry = 300, x0 = rx * Math.cos(a), y0 = -60 + ry * Math.sin(a), Ln = 90 + 80 * hsh(i, 5), sw = Math.sin(T * 1.8 + i) * wind; line(cr([[x0, y0], [x0 * 1.15 + sw * .5, y0 - Ln * .4], [x0 * 1.3 + sw, y0 - Ln * .2 + 40 * hsh(i, 6)]], 4), C, 5, st(p, .4 + i * .02, 2)); }
+  for (let i = 0; i < 16; i++) { const x0 = -210 + i * 28, sw = Math.sin(T * 1.5 + i * 1.3) * wind, yE = 20 + 70 * hsh(i, 8); line(cr([[x0, -330 + 30 * hsh(i, 9)], [x0 + 30 + sw * .5, -160], [x0 + 10 + sw, -60], [x0 + 26 + sw * 1.2, yE]], 5), C, 5.5, st(p, .9 + i * .03, 2)); }
+}
+function scene3(u) { // over Tole bi's shoulder towards the shepherd
+  const p = clamp(u / 1.8), dx = -20 * ease(u / 4.4); g.translate(dx, 0);
+  stars(.8); moon(920, 640, 46, p);
+  line(cr([[0, 1330], [400, 1316], [1080, 1326]], 10), COL.grass, 4, p, .7); grass(1340, 30, 23, p, COL.grass, .6);
+  for (const [x, y, s, f] of [[650, 1395, .3, 1], [930, 1400, .32, -1], [700, 1470, .38, -1], [900, 1480, .4, 1]]) sheep(x, y, s, st(p, .6, 2), x, f);
+  shepherd(800, 1460, .42, st(p, .4, 1.6));
+  yurt(330, 1335, 1.05, st(p, .2, 1.6));
+  const lead = clamp((u - 1.2) / 1.0); line([[300, 960], [770, 1210]], COL.gold, 2, lead, .25 * win(u, 1.2, 4.2, .5));  // gaze
+  elderBack(190, 2030, 1.75, clamp(u / 1.6));
+}
+function scene4(u) { // side view joust: hero vs giant Sharysh
+  const uc = 3.6, shake = u > uc && u < uc + .35 ? (1 - (u - uc) / .35) * 16 : 0;
+  g.translate(Math.sin(u * 90) * shake, Math.cos(u * 77) * shake);
+  const p = clamp(u / 1.2);
+  stars(.6, 900);
+  line(cr([[0, 1240], [200, 1180], [420, 1220], [650, 1160], [880, 1210], [1080, 1170]], 10), COL.grass, 3, p, .35);
+  line([[-50, 1450], [1130, 1450]], COL.grass, 4, p, .8); grass(1460, 34, 31, p, COL.grass, .4);
+  // hero (left -> right)
+  const xh = lerp(-260, 470, u / uc) + Math.max(0, u - uc) * 30 - Math.max(0, u - uc) * 0;
+  g.save(); g.translate(xh, 1450); g.scale(.95, .95); g.translate(0, -8 * Math.abs(Math.sin(u * 9))); horse(clamp(u / .9), u * 18, COL.horse); rider(clamp(u / .9), { col: COL.hero, spear: -.06 }); g.restore();
+  // Sharysh (right -> left), falls after the hit
+  const xs = lerp(1340, 640, u / uc), xsh = u < uc ? xs : 640 - (u - uc) * 520;
+  g.save(); g.translate(xsh, 1450); g.scale(-1.25, 1.25); g.translate(0, -8 * Math.abs(Math.sin(u * 9 + 1))); horse(clamp(u / .9), u * 18 + 1, COL.horse2);
+  if (u < uc) rider(clamp(u / .9), { col: COL.enemy, big: 1, spear: -.12 }); g.restore();
+  if (u >= uc) { const f = u - uc, k = eout(f / .9); g.save(); g.translate(640 + 220 * k, 1450 - 190 * 1.25 * (1 - k) - 60 * Math.sin(Math.PI * clamp(f / .9)) - 20); g.scale(-1.25, 1.25); g.rotate(-1.5 * k); g.translate(0, 190); rider(1, { col: COL.enemy, big: 1, spear: -.12 - 1.2 * k }); g.restore(); }
+  // impact flash + sparks
+  if (u > uc - .05) {
+    const f = u - uc, cx = 620, cy = 1130;
+    for (let i = 0; i < 18; i++) { const a = hsh(i, 41) * 6.28, r0 = 30 + f * 500, r1 = r0 + 60 + 80 * hsh(i, 42); line([[cx + Math.cos(a) * r0, cy + Math.sin(a) * r0], [cx + Math.cos(a) * r1, cy + Math.sin(a) * r1]], i % 2 ? COL.gold : COL.white, 5, 1, clamp(1 - f / .8)); }
+    dot(cx, cy, 40 + f * 260, '#fff', clamp(.9 - f * 1.4));
+  }
+  // dust
+  for (let i = 0; i < 24; i++) { const x = (hsh(i, 51) * 1300 - u * 200 * (i % 2 ? 1 : -1) % 1300 + 1300) % 1300 - 110, y = 1430 - hsh(i, 52) * 60; dot(x, y, 3 + hsh(i, 53) * 4, COL.wood, .25); }
+}
+function scene5(u) { // low angle: hero raises the spear, the war cry (blurred letters)
+  const C = COL.hero, p = clamp(u / 1.4); g.translate(0, 70 * (1 - ease(u / 3.9)));
+  stars(.9, 1100);
+  for (let i = 0; i < 6; i++) line(cr([[-50 + i * 200, 1880], [40 + i * 200, 1820 - hsh(i, 61) * 60], [130 + i * 200, 1880]]), COL.grass, 3, p, .3);
+  const tor = [[330, 1960], ...cr([[330, 1960], [350, 1500], [330, 1180], [360, 1010]]), [720, 1010], ...cr([[720, 1010], [750, 1180], [730, 1500], [750, 1960]])];
+  fillBlack(tor); line(tor, C, 6, st(p, 0, 3));
+  line(cr([[400, 1010], [540, 1220], [680, 1010]]), C, 5, st(p, .5, 3)); line(cr([[340, 1480], [540, 1500], [740, 1480]]), COL.gold, 6, st(p, .7, 3));
+  line(cr([[540, 1220], [550, 1480], [540, 1960]]), C, 4, st(p, .8, 3), .7);
+  // left arm: fist forward / right arm raises the spear
+  line(cr([[362, 1030], [270, 1180], [250, 1360], [300, 1440]]), C, 6, st(p, .8, 3)); line(ell(304, 1450, 34, 30), C, 5, st(p, 1, 3));
+  const lift = ease((u - .3) / 1.2), hx = lerp(860, 800, lift), hy = lerp(860, 520, lift);
+  line(cr([[715, 1030], [850, 900], [lerp(900, 870, lift), lerp(800, 700, lift)], [hx, hy]]), C, 6, st(p, .8, 3)); line(ell(hx, hy, 32, 32), C, 5, st(p, 1, 3));
+  const a = lerp(-1.2, -1.35, lift), sx = Math.cos(a), sy = Math.sin(a);
+  line([[hx - 520 * sx, hy - 520 * sy], [hx + 420 * sx, hy + 420 * sy]], COL.wood, 6, st(p, 1, 3)); const tx = hx + 420 * sx, ty = hy + 420 * sy;
+  line([[tx - 16 * sy, ty + 16 * sx], [tx + 70 * sx, ty + 70 * sy], [tx + 16 * sy, ty - 16 * sx], [tx - 16 * sy, ty + 16 * sx]], COL.white, 5, st(p, 1.3, 3));
+  for (let i = 0; i < 3; i++) { const fl = Math.sin(T * 9 + i) * 18; line(cr([[tx - 30 * sx, ty - 30 * sy], [tx - 10 * sx - 90 - i * 10, ty - 30 * sy + 20 + fl + i * 18], [tx - 170 - i * 20, ty + 60 + fl * 1.4 + i * 26]], 4), COL.enemy, 4, st(p, 1.5, 3), .9); }
+  // neck + head tilted up, mouth open
+  line([[500, 1012], [505, 930]], C, 5, st(p, 1, 3)); line([[580, 1012], [575, 930]], C, 5, st(p, 1, 3));
+  fillBlack(ell(540, 860, 82, 96)); line(ell(540, 860, 82, 96), C, 6, st(p, 1.2, 3));
+  line(ell(540, 900, 20, 26 + 6 * Math.sin(T * 20) * clamp(u - 1)), C, 5, st(p, 1.5, 3));
+  for (const d of [-1, 1]) line(cr([[540 + d * 52, 830], [540 + d * 30, 818], [540 + d * 10, 830]]), C, 4, st(p, 1.5, 3));
+  hair(540, 840, 86, 98, 16, 80, 13, C, 5, st(p, 1.3, 3), 16, 0);
+  // war-cry waves with blurry letters
+  if (u > 1.0) {
+    const LET = 'АБЫЛАЙ'; g.save(); g.font = '900 64px M'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let k = 0; k < 6; k++) {
+      const r = ((u - 1) * 260 + k * 150) % 900 + 80, al = clamp(1 - r / 900) * clamp((u - 1) * 2);
+      line(ell(540, 900, r, r * .8, -Math.PI * .92, -Math.PI * .08, 50), COL.gold, 5, 1, al * .8);
+      g.filter = 'blur(7px)';
+      for (let j = 0; j < 6; j++) { const aa = -Math.PI * .8 + j * Math.PI * .12 + k * .2, ch = LET[(j + k) % 6]; g.globalAlpha = al * .7; g.fillStyle = COL.gold; g.fillText(ch, 540 + Math.cos(aa) * r, 900 + Math.sin(aa) * r * .8); }
+      g.filter = 'none';
+    }
+    g.restore(); g.globalAlpha = 1;
+  }
+}
+function ceremony(u, rot, p, lift, textA = 0) {
+  stars(.9, 1100);
+  line(ell(540, 1420, 450, 95), COL.grass, 3, p, .5);
+  const Y = [1.05, 3.14, 5.24].map(a => a + rot), proj = a => ({ x: 540 + 470 * Math.sin(a), y: 1400 + 80 * Math.cos(a), s: .8 + .3 * Math.cos(a), z: Math.cos(a) });
+  const back = Y.map(proj).filter(q => q.z < 0), front = Y.map(proj).filter(q => q.z >= 0);
+  for (const q of back) yurt(q.x, q.y, q.s, st(p, .3, 2), COL.yurt, .55 + .3 * (q.z + 1));
+  // group: 4 bearers, felt, hero
+  const h = 150 * ease(lift) + 8 * Math.sin(u * 3) * clamp(lift * 3), fy = 1270 - h;
+  const B = [.8, 2.35, 3.9, 5.5].map(a => a + rot * .5).map(a => ({ x: 540 + 190 * Math.sin(a), y: 1440 + 40 * Math.cos(a), z: Math.cos(a), sx: Math.sin(a) }));
+  for (const b of B.filter(b => b.z < 0)) bearer(b.x, b.y, .9, st(p, .5, 2), fy + 10, COL.white, .6);
+  const felt = [[340, fy + 10], [740, fy + 10], [690, fy - 40], [390, fy - 40]]; fillBlack(felt); line(felt.concat([felt[0]]), '#FFFFFF', 7, st(p, .8, 2));
+  for (let i = 1; i < 4; i++) line([[340 + i * 100, fy + 10], [390 + i * 75, fy - 40]], '#DDEBFF', 2.5, st(p, 1, 2), .5);
+  seated(540, fy - 18, 1.0, st(p, 1, 2));
+  for (const b of B.filter(b => b.z >= 0)) bearer(b.x, b.y, 1.05, st(p, .5, 2), fy + 10);
+  for (const q of front) yurt(q.x, q.y, q.s, st(p, .3, 2), COL.yurt, .55 + .3 * (q.z + 1));
+  for (let i = 0; i < 30; i++) { const yy = 1500 - ((u * 120 + hsh(i, 71) * 900) % 900), xx = hsh(i, 72) * W + Math.sin(u + i) * 20; dot(xx, yy, 2 + hsh(i, 73) * 3, COL.gold, .5 * clamp((yy - 600) / 400)); }
+  return fy;
+}
+function scene6(u) { ceremony(u, -.3 + u * .12, clamp(u / 1.8), clamp((u - .6) / 2)); }
+function abylaiText(p, a, y = 620, size = 190) {
+  g.save(); g.font = `900 ${size}px M`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const w = g.measureText('АБЫЛАЙ').width; g.beginPath(); g.rect(540 - w / 2 - 20, y - size, (w + 40) * clamp(p), size * 2); g.clip();
+  g.lineJoin = 'round'; g.globalAlpha = a; g.strokeStyle = COL.gold; g.lineWidth = 7; g.strokeText('АБЫЛАЙ', 540 + (hsh(1, BOIL) - .5) * 2, y);
+  g.globalAlpha = a * .35; g.fillStyle = COL.gold; g.fillText('АБЫЛАЙ', 540, y); g.restore(); g.globalAlpha = 1;
+}
+function scene7(u) { // the name lights up over the khan; zoom to the text
+  const k = 1 + .22 * ease(u / 4); g.translate(540, 660); g.scale(k, k); g.translate(-540, -660);
+  ceremony(4 + u * .3, -.3 + (4 + u * .3) * .12, 1, 1);
+  for (let i = 0; i < 16; i++) { const a = i / 16 * 6.28 + u * .15; line([[540 + Math.cos(a) * 330, 640 + Math.sin(a) * 200], [540 + Math.cos(a) * 470, 640 + Math.sin(a) * 280]], COL.gold, 3, clamp((u - .3) * 2), .35); }
+  abylaiText(eout((u - .15) / .9), 1, 640, 150);
+}
+function sceneEnd(u) { // back to the steppe; «Абылай» glows softly above the shepherd
+  steppe(u + 6, clamp(u / 1.2));
+  abylaiText(eout((u - .6) / 1.2), .55 + .25 * Math.sin(T * 2.2), 505, 105);
+}
+
+// ---------- render ----------
+function render(t) {
+  T = t; BOIL = Math.floor(t * 8); SID = 0;
+  let i = 0; while (i < S.length - 2 && t >= S[i + 1]) i++; const u = t - S[i];
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1; g.filter = 'none';
+  [scene1, scene2, scene3, scene4, scene5, scene6, scene7, sceneEnd][i](u);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  // composite with bloom
+  bg(i === 3 ? '#0B0A1C' : '#050B1C', '#01030A');
+  b1.clearRect(0, 0, 270, 480); b1.filter = 'blur(6px)'; b1.drawImage(L, 0, 0, 270, 480); b1.filter = 'none';
+  b2.clearRect(0, 0, 540, 960); b2.filter = 'blur(3px)'; b2.drawImage(L, 0, 0, 540, 960); b2.filter = 'none';
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 1; ctx.drawImage(B1, 0, 0, W, H); ctx.drawImage(B1, 0, 0, W, H); ctx.globalAlpha = .9; ctx.drawImage(B2, 0, 0, W, H); ctx.globalAlpha = 1; ctx.drawImage(L, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  // vignette
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  // captions
+  const G = COL.gold, Wt = '#fff';
+  caption([['БҰЛ КІМ?', 150, Wt]], .5, S[1] - .1);
+  caption([['САБАЛАҚ', 120, G], ['= ҰЙПАЛАҚ', 96, Wt]], S[1] + .3, S[2], 300);
+  caption([['1-БЕЛГІ', 70, G], ['ТӨЛЕ БИ', 120, Wt]], S[2] + .15, S[3], 300);
+  caption([['2-БЕЛГІ', 70, G], ['ЖЕКПЕ-ЖЕК', 120, Wt]], S[3] + .15, S[4], 300);
+  caption([['3-БЕЛГІ', 70, G], ['ҰРАН', 130, Wt]], S[4] + .15, S[5], 300);
+  clues(u < .4 ? i - 2 : i - 1, i >= 2 && i <= 4 ? win(T, S[2] + .1, S[5] - .1, .3) : 0);
+  caption([['1771', 150, G], ['ҮШ ЖҮЗДІҢ ХАНЫ', 92, Wt]], S[5] + .4, S[6] - .1, 300);
+  caption([['АБЫЛАЙ ХАН', 130, Wt]], S[6] + 1.0, S[7], 1640);
+  caption([['«25» ДЕП ЖАЗ', 130, G], ['— ТАРИХ ГАЙДЫ', 80, Wt]], S[7] + 1.0, END + 1, 230);
+  if (T > S[7] + 1.6) { // CTA box
+    const a = clamp((T - S[7] - 1.6) / .4), dy = (1 - eout((T - S[7] - 1.6) / .5)) * 40; ctx.save(); ctx.globalAlpha = a;
+    const bx = 90, by = 605 + dy, bw = 900, bh = 200; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 30); ctx.fillStyle = 'rgba(4,10,24,.82)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = G; ctx.shadowColor = G; ctx.shadowBlur = 20; ctx.stroke(); ctx.shadowBlur = 0;
+    txt('Комментарийге «25» деп жаз —', W / 2, by + 62, 46, Wt, 'MX'); txt('ҰБТ-ға арналған тарих гайдын', W / 2, by + 112, 46, G, 'MX'); txt('директке ал', W / 2, by + 160, 46, Wt, 'MX'); ctx.restore();
+  }
+  // transitions: fade to dark (1→2, 5→6, 7→end), flash (6→7), fade in at start, out at end
+  const dark = Math.max(win(T, S[1] - .3, S[1] + .3, .3), win(T, S[5] - .3, S[5] + .3, .3), win(T, S[7] - .3, S[7] + .3, .3), clamp(1 - T / .4), clamp((T - END + .4) / .4));
+  if (dark > 0) { ctx.fillStyle = `rgba(0,0,0,${dark})`; ctx.fillRect(0, 0, W, H); }
+  const fl = clamp(1 - Math.abs(T - S[6]) / .25); if (fl > 0) { ctx.fillStyle = `rgba(255,240,200,${fl * .9})`; ctx.fillRect(0, 0, W, H); }
+}
+window.ready = (async () => { await document.fonts.load('900 40px M'); await document.fonts.load('800 40px MX'); render(0); return true; })();
+</script></body></html>
