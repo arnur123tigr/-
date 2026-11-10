@@ -1,0 +1,506 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:R;src:url(fonts/Rubik-Medium.ttf)}
+@font-face{font-family:RB;src:url(fonts/Rubik-ExtraBold.ttf)}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// "Шоқан Қашғарда" — Minimal Line style (thin white lines on black).
+// render(t) is deterministic: record.js calls it for every frame.
+const C = document.getElementById('c'), X = C.getContext('2d'), W = 1080, H = 1920, PI = Math.PI;
+let TL, SC = {};
+window.ready = (async () => {
+  TL = await (await fetch('timeline.json')).json();
+  TL.scenes.forEach(s => SC[s.id] = s);
+  await document.fonts.load('80px R'); await document.fonts.load('80px RB');
+  render(0);
+})();
+
+// ---------- math ----------
+const cl = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const ease = u => { u = cl(u); return u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; };
+const eo = u => 1 - Math.pow(1 - cl(u), 3);
+const ei = u => Math.pow(cl(u), 2);
+const seg = (t, a, b) => cl((t - a) / (b - a));
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const back = u => { u = cl(u); const c = 1.9; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+
+// ---------- line engine (optional "boiling" jitter, used for erasing) ----------
+let JIT = 0, JSTEP = 0;
+function jp(x, y) {
+  if (!JIT) return [x, y];
+  const k = JSTEP;
+  const a = Math.sin(x * .045 + y * .031 + k * 2.7) + Math.sin(x * .013 - y * .052 + k * 1.3);
+  const b = Math.cos(x * .037 - y * .041 + k * 3.1) + Math.sin(x * .061 + y * .009 - k * 1.9);
+  return [x + JIT * a * .5, y + JIT * b * .5];
+}
+function subdiv(pts, closed) {
+  const out = [], n = pts.length, m = closed ? n : n - 1;
+  for (let i = 0; i < m; i++) {
+    const p = pts[i], q = pts[(i + 1) % n], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const s = JIT ? Math.max(1, Math.ceil(L / 14)) : 1;
+    for (let k = 0; k < s; k++) out.push([p[0] + (q[0] - p[0]) * k / s, p[1] + (q[1] - p[1]) * k / s]);
+  }
+  out.push(closed ? pts[0] : pts[n - 1]);
+  return out;
+}
+function poly(pts, o = {}) {
+  let closed = !!o.closed, fill = o.fill, prog = o.prog ?? 1;
+  if (prog <= 0 || pts.length < 2) return;
+  let P = subdiv(pts, closed).map(p => jp(p[0], p[1]));
+  if (prog < 1) {
+    if (closed) P.push(P[0]);
+    const L = [0]; for (let i = 1; i < P.length; i++) L.push(L[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    const tg = L[L.length - 1] * prog, Q = [P[0]];
+    for (let i = 1; i < P.length; i++) {
+      if (L[i] <= tg) Q.push(P[i]);
+      else { const u = (tg - L[i - 1]) / (L[i] - L[i - 1] || 1); Q.push([lerp(P[i - 1][0], P[i][0], u), lerp(P[i - 1][1], P[i][1], u)]); break; }
+    }
+    P = Q; closed = false; fill = false;
+  }
+  X.beginPath(); X.moveTo(P[0][0], P[0][1]);
+  for (let i = 1; i < P.length; i++) X.lineTo(P[i][0], P[i][1]);
+  if (closed) X.closePath();
+  if (fill) { X.save(); X.shadowBlur = 0; X.fillStyle = fill === true ? '#000' : fill; X.fill(); X.restore(); }
+  if (o.stroke !== false) X.stroke();
+}
+const arcPts = (cx, cy, rx, ry, a0 = 0, a1 = 2 * PI, n = 40) => { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); } return o; };
+const circle = (cx, cy, r, o = {}) => poly(arcPts(cx, cy, r, r, 0, 2 * PI, 48).slice(0, -1), { closed: true, ...o });
+const ellipse = (cx, cy, rx, ry, o = {}) => poly(arcPts(cx, cy, rx, ry, 0, 2 * PI, 48).slice(0, -1), { closed: true, ...o });
+const line = (x1, y1, x2, y2, o = {}) => poly([[x1, y1], [x2, y2]], o);
+function rrPts(x, y, w, h, r) {
+  const p = [], c = (cx, cy, a0) => { for (let i = 0; i <= 6; i++) { const a = a0 + i / 6 * PI / 2; p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  c(x + w - r, y + r, -PI / 2); c(x + w - r, y + h - r, 0); c(x + r, y + h - r, PI / 2); c(x + r, y + r, PI); return p;
+}
+const rrect = (x, y, w, h, r, o = {}) => poly(rrPts(x, y, w, h, r), { closed: true, ...o });
+function dot(x, y, r, a = 1) { const [px, py] = jp(x, y); X.save(); X.fillStyle = `rgba(255,255,255,${a})`; X.beginPath(); X.arc(px, py, r, 0, 2 * PI); X.fill(); X.restore(); }
+function ink(a = 1, w = 5, glow = 10, col = '255,255,255') {
+  X.strokeStyle = `rgba(${col},${a})`; X.lineWidth = w; X.lineCap = 'round'; X.lineJoin = 'round';
+  X.shadowColor = `rgba(${col},${Math.min(1, a) * .75})`; X.shadowBlur = glow;
+}
+function cam(z, cx, cy) { X.translate(W / 2, H / 2); X.scale(z, z); X.translate(-cx, -cy); }
+function fadeBlack(a) { if (a <= 0) return; X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.shadowBlur = 0; X.fillStyle = `rgba(0,0,0,${cl(a)})`; X.fillRect(0, 0, W, H); X.restore(); }
+
+// ---------- text ----------
+function title(str, t0, t, y = 250, size = 80) {
+  const u = eo(seg(t, t0, t0 + .4)); if (u <= 0) return;
+  X.save(); X.font = `${size}px R`;
+  let w = X.measureText(str).width; if (w > 960) { size *= 960 / w; X.font = `${size}px R`; w = 960; }
+  X.textAlign = 'center'; X.textBaseline = 'middle'; X.globalAlpha = u;
+  X.fillStyle = '#fff'; X.shadowColor = 'rgba(255,255,255,.55)'; X.shadowBlur = 14;
+  X.fillText(str, W / 2, y + (1 - u) * 26);
+  ink(.7, 3, 6); const hw = (w / 2 + 10) * eo(seg(t, t0 + .15, t0 + .7));
+  if (hw > 1) line(W / 2 - hw, y + size * .72, W / 2 + hw, y + size * .72);
+  X.restore();
+}
+function label(str, x, y, size = 40, a = 1, font = 'R', col = '255,255,255') {
+  if (a <= 0) return;
+  X.save(); X.font = `${size}px ${font}`; X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillStyle = `rgba(${col},${a})`; X.shadowColor = `rgba(${col},${.5 * a})`; X.shadowBlur = 10;
+  X.fillText(str, x, y, 980); X.restore();
+}
+function book(x, y, s, a = 1) {
+  X.save(); X.translate(x, y); X.scale(s, s); X.globalAlpha *= a;
+  poly([[0, -50], ...arcPts(-50, -50, 50, 14, 0, -PI, 10).slice(1), [-100, 60], ...arcPts(-50, 60, 50, 14, PI, 2 * PI, 10).slice(1), [0, 60]], { closed: true, fill: true });
+  poly([[0, -50], ...arcPts(50, -50, 50, 14, PI, 2 * PI, 10).slice(1), [100, 60], ...arcPts(50, 60, 50, 14, 0, -PI, 10).slice(1), [0, 60]], { closed: true, fill: true });
+  X.save(); ink(.55, 3, 3); for (let i = 0; i < 3; i++) { line(-80, -20 + i * 24, -20, -16 + i * 24); line(20, -16 + i * 24, 80, -20 + i * 24); } X.restore();
+  X.restore();
+}
+
+// ---------- characters ----------
+const mixP = (A, B, u) => A.map((p, i) => [lerp(p[0], B[i][0], u), lerp(p[1], B[i][1], u)]);
+const COAT_U = [[-58, -372], [58, -372], [64, -200], [84, -92], [-84, -92], [-64, -200]];
+const COAT_C = [[-70, -372], [70, -372], [98, -200], [126, -22], [-126, -22], [-98, -200]];
+const HAIR = [
+  arcPts(0, -444, 54, 55, PI * 1.02, PI * 1.98, 16),
+  [[-12, -500], [-30, -484], [-46, -462]],
+  [[-12, -500], [12, -492], [36, -476], [50, -458]],
+  [[-4, -500], [22, -497], [46, -482]],
+  [[-54, -450], [-54, -426]], [[54, -450], [54, -426]]
+];
+// erase helper: draws a stroke group that dissolves (jitter + fade + dust) as e goes 0 -> 1
+function dissolve(e, seed, t, fn, box) {
+  if (e >= 1) return;
+  X.save(); JIT = 26 * e * e; JSTEP = Math.floor(t * 12) + seed; X.globalAlpha *= 1 - e; fn(); JIT = 0; X.restore();
+  if (e > 0 && box) for (let k = 0; k < box[4]; k++) {
+    const px = box[0] + hash(k + seed * 31) * box[2], py = box[1] + hash(k + seed * 31 + 9) * box[3] - e * (60 + hash(k) * 160);
+    dot(px, py, 2.5 + hash(k + 3) * 2.5, (1 - e) * .9);
+  }
+}
+// Shokan, front view, (x,y) = feet. o: s, m (uniform 0 -> merchant chapan 1), hair (array of erase 0..1 or number), t
+function shokan(x, y, o = {}) {
+  const s = o.s || 1, m = o.m || 0, t = o.t || 0;
+  const hr = Array.isArray(o.hair) ? o.hair : HAIR.map(() => o.hair ?? 0);
+  X.save(); X.translate(x, y); X.scale(s, s);
+  line(-28, -100, -32, 0); line(28, -100, 32, 0); line(-32, 0, -54, 0); line(32, 0, 54, 0);
+  // arms behind the coat edge
+  const ae = lerp(-82, -104, m), ay = lerp(-150, -132, m);
+  poly([[-58, -362], [lerp(-88, -112, m), -250], [ae, ay]]); poly([[58, -362], [lerp(88, 112, m), -250], [-ae, ay]]);
+  if (m > .3) { X.save(); X.globalAlpha *= cl((m - .3) / .5); line(ae - 22, ay - 8, ae + 18, ay + 4); line(-ae + 22, ay - 8, -ae - 18, ay + 4); X.restore(); }
+  circle(ae, ay + 6, 9, { fill: true }); circle(-ae, ay + 6, 9, { fill: true });
+  poly(mixP(COAT_U, COAT_C, m), { closed: true, fill: true });
+  if (m < 1) { // officer's uniform details
+    X.save(); X.globalAlpha *= 1 - m;
+    line(0, -372, 0, -200); line(0, -200, 0, -92);
+    for (const yy of [-345, -305, -265, -225]) { dot(-17, yy, 4.5); dot(17, yy, 4.5); }
+    line(-64, -200, 64, -200); rrect(-14, -210, 28, 20, 4);
+    for (const sx of [-1, 1]) {
+      poly([[sx * 34, -382], [sx * 80, -378], [sx * 82, -360], [sx * 36, -364]], { closed: true, fill: true });
+      X.save(); X.lineWidth *= .5; for (let k = 0; k < 5; k++) { const fx = sx * (54 + k * 6.5); line(fx, -362, fx + sx * 1.5, -342); } X.restore();
+    }
+    poly([[-26, -372], [-26, -394], [26, -394], [26, -372]], { closed: true, fill: true });
+    X.restore();
+  }
+  if (m > 0) { // merchant's chapan: wrap, sash, stripes
+    X.save(); X.globalAlpha *= m;
+    poly([[-30, -372], [-6, -300], [22, -206]]); poly([[22, -190], [26, -22]]);
+    poly([[-14, -372], [6, -304], [34, -212]]);
+    poly([[-98, -214], [98, -214], [98, -192], [-98, -192]], { closed: true, fill: true });
+    poly([[60, -192], [54, -130]]); poly([[72, -192], [76, -136]]);
+    X.save(); ink(.35 * Math.min(1, X.globalAlpha * 2), 2.5, 2);
+    for (const k of [-.62, -.32, .55, .8]) { line(k * 92, -360, k * 120, -40); }
+    X.restore();
+    X.restore();
+  }
+  // head
+  if (m < 1) poly([[0, -394], [0, -392]]); line(0, -372, 0, -390);
+  circle(0, -442, 52, { fill: true });
+  dot(-18, -444, 3.6); dot(18, -444, 3.6);
+  X.save(); X.lineWidth *= .7;
+  line(-28, -462, -10, -462); line(10, -462, 28, -462);
+  poly([[-2, -440], [-6, -424], [2, -421]]);
+  poly([[-20, -417], [-6, -422], [0, -419], [6, -422], [20, -417], [6, -414], [0, -416], [-6, -414]], { closed: true, fill: '#fff' }); line(-9, -402, 9, -402);   // moustache + mouth
+  X.restore();
+  HAIR.forEach((h, i) => dissolve(hr[i], i * 7 + 3, t, () => poly(h), i ? null : [-56, -510, 112, 50, 22]));
+  const bald = 1 - Math.max(...hr.map(v => 1 - v));
+  if (bald > 0) { X.save(); X.globalAlpha *= bald; X.lineWidth *= .6; poly(arcPts(-14, -472, 20, 12, PI * 1.15, PI * 1.6, 6)); X.restore(); }
+  X.restore();
+}
+// Shokan walking, side view (facing right), merchant chapan, bald. ph = walk phase
+function walker(x, y, s, ph) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  for (const k of [0, PI]) {
+    const a = Math.sin(ph + k) * .38;
+    const kx = Math.sin(a) * 60, ky = -110 + Math.cos(a) * 60, fx = kx + Math.sin(a - .15 * (Math.sin(ph + k) < 0)) * 55;
+    poly([[0, -110], [kx, ky], [fx, 0], [fx + 26, 0]]);
+  }
+  poly([[-32, -372], [30, -372], [54, -40], [-50, -40]], { closed: true, fill: true });
+  poly([[-36, -214], [40, -214]]); poly([[8, -372], [18, -214]]);
+  const sw = Math.sin(ph) * .35;
+  poly([[6, -360], [6 + Math.sin(sw) * 70, -360 + Math.cos(sw) * 80], [8 + Math.sin(sw + .3) * 140, -360 + Math.cos(sw + .3) * 150]]);
+  line(0, -372, 2, -390);
+  circle(6, -442, 50, { fill: true });
+  dot(30, -446, 3.5); poly([[54, -446], [62, -430], [52, -426]]); poly([[36, -414], [50, -412]]);
+  X.save(); X.lineWidth *= .6; poly(arcPts(-8, -472, 20, 12, PI * 1.15, PI * 1.6, 6)); X.restore();
+  X.restore();
+  return [x + (8 + Math.sin(sw + .3) * 140) * s, y + (-360 + Math.cos(sw + .3) * 150) * s];
+}
+// camel, side view facing right, (x,y) feet line. returns tail & head anchor points
+function camel(x, y, s, ph, cargo = true) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  const legs = [[-95, 0], [-70, PI], [85, PI * .5], [110, PI * 1.5]];
+  for (const [lx, p] of legs) {
+    const a = Math.sin(ph + p) * .3;
+    const kx = lx + Math.sin(a) * 50, ky = -200 + Math.cos(a) * 100;
+    poly([[lx, -200], [kx, ky], [kx + Math.sin(a * 1.4) * 40, 0], [kx + Math.sin(a * 1.4) * 40 + 18, 0]]);
+  }
+  poly([[-140, -230], [-110, -270], [-60, -340], [-10, -350], [30, -310], [80, -290], [120, -270], [140, -240], [120, -196], [-120, -196]], { closed: true, fill: true });
+  poly([[120, -270], [160, -300], [182, -372], [206, -394], [244, -388], [252, -370], [214, -360], [196, -296], [150, -214], [128, -204]], { closed: true, fill: true });
+  dot(222, -382, 3.4); line(240, -372, 250, -370);
+  poly([[-140, -232], [-158, -190], [-150, -160]]);
+  if (cargo) {
+    poly([[-80, -330], [20, -330], [26, -282], [-86, -282]], { closed: true, fill: true });
+    X.save(); X.lineWidth *= .6; line(-60, -330, -66, -282); line(0, -330, 4, -282); X.restore();
+  }
+  X.restore();
+  return { tail: [x - 150 * s, y - 175 * s], head: [x + 236 * s, y - 366 * s] };
+}
+// student in a hoodie behind a desk, front view. (x, d) = centre of the desk top. o: s, phone (1 up .. 0 on desk), open (book), glow
+function student(x, d, o = {}) {
+  const s = o.s || 1, ph = o.phone ?? 1, op = o.open ?? 0, t = o.t || 0;
+  X.save(); X.translate(x, d); X.scale(s, s);
+  // phone light
+  const px = lerp(0, 150, 1 - ph), py = lerp(-178, -10, 1 - ph);
+  if (ph > 0) { const g = X.createRadialGradient(0, -230, 10, 0, -230, 260); g.addColorStop(0, `rgba(190,215,255,${.22 * ph})`); g.addColorStop(1, 'rgba(190,215,255,0)'); X.fillStyle = g; X.fillRect(-300, -520, 600, 560); }
+  poly([[-72, -228], [72, -228], [100, 0], [-100, 0]], { closed: true, fill: true });
+  poly([[-48, -88], [48, -88], [60, -26], [-60, -26]]);
+  // hood behind head
+  poly([[-66, -228], ...arcPts(0, -310, 80, 92, PI * .78, PI * 2.22, 26).slice(1, -1), [66, -228]], { closed: true, fill: true });
+  circle(0, -305, 48, { fill: true });
+  X.save(); X.lineWidth *= .7;
+  for (let k = 0; k < 5; k++) line(-30 + k * 14, -346 + Math.abs(k - 2) * 2, -36 + k * 14, -330 + Math.abs(k - 2) * 2);
+  X.restore();
+  const look = ph > .5 ? 5 : 0;
+  dot(-16, -302 + look, 3.4); dot(16, -302 + look, 3.4);
+  X.save(); X.lineWidth *= .7; poly(arcPts(0, -284, 10, 5, .15 * PI, .85 * PI, 6)); X.restore();
+  line(-14, -232, -18, -186); line(14, -232, 18, -186); dot(-18, -184, 4); dot(18, -184, 4);
+  // arms
+  const lh = [lerp(-26, -70, 1 - ph), lerp(-170, -12, 1 - ph)], rh = [lerp(26, 70, 1 - ph), lerp(-170, -12, 1 - ph)];
+  poly([[-70, -218], [lerp(-104, -96, 1 - ph), lerp(-112, -80, 1 - ph)], lh]); poly([[70, -218], [lerp(104, 96, 1 - ph), lerp(-112, -80, 1 - ph)], rh]);
+  // desk
+  poly([[-280, 0], [280, 0], [280, 28], [-280, 28]], { closed: true, fill: true });
+  line(-250, 28, -250, 170); line(250, 28, 250, 170);
+  // phone
+  if (ph > .02) { rrect(px - 24, py - 42, 48, 84, 9, { fill: `rgba(200,220,255,${.35 * ph})` }); }
+  else { poly([[110, -4], [176, -4], [190, -16], [124, -16]], { closed: true, fill: true }); }
+  circle(lh[0], lh[1], 9, { fill: true }); circle(rh[0], rh[1], 9, { fill: true });
+  if (op > 0) { X.save(); const k = back(op); X.translate(0, -44); X.scale(k * .72, k * .6); book(0, 0, 1); X.restore(); }
+  X.restore();
+}
+function bookClosed(x, y, s, prog = 1) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  poly([[150, -200], [172, -178], [172, 222], [-128, 222], [-150, 200]], { prog });
+  rrect(-150, -200, 300, 400, 12, { fill: true, prog });
+  if (prog >= 1) {
+    line(-122, -200, -122, 200);
+    X.save(); X.lineWidth *= .7;
+    line(-70, -110, 110, -110); line(-70, -84, 110, -84);
+    poly([[20, -10], [56, 26], [20, 62], [-16, 26]], { closed: true }); circle(20, 26, 12);
+    line(-70, 140, 110, 140);
+    for (let k = 0; k < 4; k++) line(160 - k * 0, -160 + k * 100, 160, -150 + k * 100);
+    X.restore();
+  }
+  X.restore();
+}
+function stack(x, y, n, s = 1) {          // pile of written sheets, bottom at y
+  X.save(); X.translate(x, y); X.scale(s, s);
+  for (let i = 0; i < n; i++) {
+    const yy = -i * 7, dx = (hash(i * 3) - .5) * 14;
+    poly([[-80 + dx, yy], [80 + dx, yy], [92 + dx, yy - 12], [-68 + dx, yy - 12]], { closed: true, fill: true });
+  }
+  X.restore();
+}
+function lamp(x, y, t, a = 1) {           // oil lamp (шырақ) with a flickering flame and warm glow
+  const fl = .85 + .1 * Math.sin(t * 23) + .06 * Math.sin(t * 37 + 1);
+  const g = X.createRadialGradient(x, y - 70, 6, x, y - 70, 520 * fl);
+  g.addColorStop(0, `rgba(255,236,190,${.30 * a})`); g.addColorStop(.35, `rgba(255,220,160,${.10 * a})`); g.addColorStop(1, 'rgba(255,220,160,0)');
+  X.save(); X.fillStyle = g; X.fillRect(x - 600, y - 640, 1200, 1200); X.restore();
+  poly([[x - 60, y - 30], ...arcPts(x, y - 30, 60, 30, 0, PI, 12).slice(1), [x + 60, y - 30]], { closed: true, fill: true });
+  poly([[x + 60, y - 34], [x + 96, y - 46], [x + 96, y - 38]]);
+  line(x, y - 30, x, y - 52);
+  X.save(); ink(a, 4, 26, '255,240,205');
+  const h = 54 * fl, sw = Math.sin(t * 9) * 4;
+  poly([[x, y - 52], [x - 15, y - 70], [x + sw, y - 52 - h], [x + 15, y - 70]], { closed: true, fill: `rgba(255,240,205,${.75 * a})` });
+  X.restore();
+}
+
+// ---------- scenes ----------
+// S1: split screen — Shokan (23) | student (17)
+function S1(t, s) {
+  const dur = s.end - s.start, v = s.vanish, e = seg(t, v, v + .55);
+  const fi = eo(seg(t, 0, .45));
+  X.save(); X.globalAlpha = fi;
+  ink(.55, 3, 5); line(540, 560 + 600 * eo(seg(t, v, v + .5)), 540, 1760 - 600 * eo(seg(t, v, v + .5)));
+  ink(1, 5, 12); shokan(270, 1740, { s: 1.12, t });
+  label('23', 270, 860, 210, 1, 'RB');
+  dissolve(e, 5, t, () => { ink(1, 5, 12); student(810, 1450, { s: .98, t }); label('17', 810, 860, 210, 1, 'RB'); }, [640, 520, 340, 1000, 46]);
+  X.restore();
+  title('Ол 23-те. Сен 17-десің', .15, t);
+}
+// S2: route line over mountains to Kashgar; closed gate + cross
+const ROUTE = [[260, 1330], [560, 1190], [820, 1270], [1080, 1060], [1340, 1130], [1600, 920], [1880, 990], [2200, 860]];
+function catmull(P, n = 14) {
+  const o = [];
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const u = k / n, u2 = u * u, u3 = u2 * u;
+      o.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * u + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * u2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * u3)));
+    }
+  }
+  o.push(P[P.length - 1]); return o;
+}
+const RP = catmull(ROUTE);
+const RL = [0]; for (let i = 1; i < RP.length; i++) RL.push(RL[i - 1] + Math.hypot(RP[i][0] - RP[i - 1][0], RP[i][1] - RP[i - 1][1]));
+function routeAt(u) {
+  const tg = RL[RL.length - 1] * u; let i = 1; while (i < RL.length - 1 && RL[i] < tg) i++;
+  const k = (tg - RL[i - 1]) / (RL[i] - RL[i - 1] || 1); return [lerp(RP[i - 1][0], RP[i][0], k), lerp(RP[i - 1][1], RP[i][1], k)];
+}
+const routeY = x => { for (let i = 1; i < RP.length; i++) if (RP[i][0] >= x) return lerp(RP[i - 1][1], RP[i][1], (x - RP[i - 1][0]) / (RP[i][0] - RP[i - 1][0] || 1)); return RP[RP.length - 1][1]; };
+const PEAKS = [];
+for (let x = 120, i = 0; x < 2500; x += 95 + hash(i * 7) * 60, i++) {
+  PEAKS.push([x, routeY(Math.min(x, 2200)) - 110 - hash(i) * 70, 120 + hash(i + 1) * 170, 70 + hash(i + 2) * 40]);
+  PEAKS.push([x + 40, routeY(Math.min(x, 2200)) + 260 + hash(i + 3) * 80, 100 + hash(i + 4) * 130, 60 + hash(i + 5) * 40]);
+}
+function gate(x, y, s, prog) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  const P = (pts, o = {}) => poly(pts, { ...o, prog });
+  P([[-150, 0], [-150, -230], [-136, -230], [-136, -248], [-120, -248], [-120, -230], [-104, -230], [-104, -248], [-90, -248], [-90, 0]], { closed: true, fill: prog >= 1 });
+  P([[150, 0], [150, -230], [136, -230], [136, -248], [120, -248], [120, -230], [104, -230], [104, -248], [90, -248], [90, 0]], { closed: true, fill: prog >= 1 });
+  P([[-90, 0], [-90, -120], ...arcPts(0, -120, 90, 70, PI, 2 * PI, 14).slice(1, -1), [90, -120], [90, 0]], { closed: true, fill: prog >= 1 });
+  P([[-70, 0], [-70, -110], ...arcPts(0, -110, 70, 55, PI, 2 * PI, 12).slice(1, -1), [70, -110], [70, 0]]);
+  P([[0, -165], [0, 0]]);
+  if (prog >= 1) { X.save(); X.lineWidth *= .6; for (const k of [-46, -22, 22, 46]) line(k, -140 + Math.abs(k) * .6, k, -6); dot(-10, -60, 4); dot(10, -60, 4); X.restore(); }
+  X.restore();
+}
+function S2(t, s) {
+  const dur = s.end - s.start, ru = ease(seg(t, .15, s.city));
+  const hd = routeAt(Math.max(.001, ru));
+  const z = lerp(1, 1.18, ease(seg(t, s.city, dur)));
+  const cx = cl(hd[0] + 60, 540, 1990), cy = hd[1] + 60;
+  X.save(); cam(z, cx, cy);
+  PEAKS.forEach(([x, b, h, w], i) => {
+    const pu = eo(seg(hd[0] - x, -650, -250)) ; if (pu <= 0) return;
+    ink(.55 + .25 * hash(i), 4, 6);
+    poly([[x - w * 1.6, b], [x, b - h], [x + w * 1.6, b]], { prog: pu, closed: pu >= 1, fill: pu >= 1 });
+    if (pu >= 1) { X.save(); ink(.4, 3, 3); poly([[x - w * .45, b - h * .72], [x - w * .18, b - h * .64], [x, b - h * .76], [x + w * .22, b - h * .62], [x + w * .45, b - h * .72]]); X.restore(); }
+  });
+  ink(.9, 3, 4); dot(RP[0][0], RP[0][1], 10);
+  ink(1, 7, 20); poly(RP, { prog: ru });
+  if (ru < 1) dot(hd[0], hd[1], 12);
+  // Kashgar
+  const cu = seg(t, s.city - .2, s.city + .3);
+  if (cu > 0) {
+    const [kx, ky] = ROUTE[ROUTE.length - 1];
+    ink(1, 5, 18); circle(kx, ky, 22 * back(cu), { fill: '#fff' });
+    const rr = seg((t - s.city) % 1.4, 0, 1.4); X.save(); ink(.6 * (1 - rr), 3, 10); circle(kx, ky, 26 + rr * 70); X.restore();
+    label('Қашғар', kx + 40, ky - 95, 64, eo(cu), 'RB');
+  }
+  const gu = eo(seg(t, s.gate, s.gate + .6));
+  if (gu > 0) { ink(1, 5, 14); gate(1990, 1000, .62, gu); }
+  const xu = seg(t, s.cross, s.cross + .45);
+  if (xu > 0) { ink(1, 10, 26); line(1885, 790, 2095, 1020, { prog: eo(seg(xu, 0, .5)) }); line(2095, 790, 1885, 1020, { prog: eo(seg(xu, .5, 1)) }); }
+  X.restore();
+  title('Қашғар жабық', .3, t);
+}
+// S3: close-up; hair erased, uniform becomes a merchant's chapan, name "Әлімбай"
+function S3(t, s) {
+  const dur = s.end - s.start, z = lerp(1.35, 1.6, ease(seg(t, 0, dur)));
+  X.save(); cam(z, 540, lerp(1300, 1230, ease(seg(t, 0, dur))));
+  const hair = HAIR.map((_, i) => seg(t, s.shave + i * .09, s.shave + i * .09 + .5));
+  const m = ease(seg(t, s.morph, s.morph + 1.0));
+  ink(1, 5, 12); shokan(540, 1800, { s: 1.6, m, hair, t });
+  const nu = eo(seg(t, s.name, s.name + .5));
+  if (nu > 0) {
+    X.save(); X.globalAlpha = nu; ink(.8, 3, 8);
+    X.setLineDash([14, 12]); rrect(370, 900, 340, 100, 24); X.setLineDash([]);
+    X.restore();
+    label('Әлімбай', 540, 952 - (1 - nu) * 20, 62, nu, 'RB');
+  }
+  X.restore();
+  title('Саудагер Әлімбай', .2, t);
+}
+// S4: caravan of camels; a taut thin line hangs above Shokan
+function S4(t, s) {
+  const dur = s.end - s.start, v = 150, base = -200 + v * t, ph = t * 4.4, S = .85;
+  X.save(); cam(1, base + 760, 1250);
+  ink(.3, 3, 2);
+  for (let k = -1; k < 6; k++) { const x0 = Math.floor((base - 600) / 700) * 700 + k * 700 + (base * .35 % 700); poly(arcPts(x0, 1560, 420, 70, PI, 2 * PI, 16)); }
+  ink(.7, 4, 6); line(base - 900, 1600, base + 2000, 1600);
+  ink(1, 4.5, 10);
+  const c3 = camel(base, 1600, S, ph + 2), c2 = camel(base + 380, 1600, S, ph + 1), c1 = camel(base + 760, 1600, S, ph);
+  const hand = walker(base + 1110, 1600, .78, ph * 1.15);
+  X.save(); ink(.7, 2.5, 4);
+  for (const [a, b] of [[c3.head, c2.tail], [c2.head, c1.tail], [c1.head, hand]]) poly([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 26], b]);
+  X.restore();
+  X.restore();
+  // taut string
+  let A = 0; for (const tw of s.twang) if (t > tw) A = 30 * Math.exp(-(t - tw) * 3.2) * Math.sin((t - tw) * 70);
+  const tense = .6 + .4 * Math.min(1, Math.abs(A) / 10);
+  ink(tense, 2.5, 14);
+  const sp = []; for (let i = 0; i <= 40; i++) { const u = i / 40; sp.push([60 + 960 * u, 760 + A * Math.sin(PI * u)]); } poly(sp);
+  ink(1, 4, 8); circle(60, 760, 9, { fill: true }); circle(1020, 760, 9, { fill: true });
+  title('Әшкереленсе — өлім', .2, t);
+  fadeBlack(seg(t, dur - .45, dur - .05));
+}
+// S5: night, oil lamp, writing fast; stack of sheets grows
+function S5(t, s) {
+  const dur = s.end - s.start, z = lerp(1.3, 1.45, ease(seg(t, 0, dur)));
+  X.save(); cam(z, 580, lerp(1130, 1160, ease(seg(t, 0, dur))));
+  for (let k = 0; k < 60; k++) dot(hash(k) * 1080, 620 + hash(k + 100) * 380, 1.2 + hash(k + 200) * 1.8, .25 + .5 * hash(k + 300) * (.6 + .4 * Math.sin(t * 2 + k)));
+  ink(.9, 4, 14); poly([...arcPts(850, 720, 40, 40, -PI * .6, PI * .6, 16), ...arcPts(863, 720, 31, 35, PI * .55, -PI * .55, 16)], { closed: true, fill: 'rgba(255,255,255,.12)' });
+  const D = 1300;
+  lamp(300, D - 2, t);
+  ink(1, 5, 12);
+  // seated Shokan behind a low table
+  X.save(); X.translate(560, D);
+  poly([[-74, -230], [74, -230], [112, 0], [-112, 0]], { closed: true, fill: true });
+  poly([[-30, -230], [-4, -150], [24, -60]]);
+  poly([[-112, -100], [112, -100], [112, -80], [-112, -80]], { closed: true, fill: true });
+  line(0, -230, 0, -246);
+  circle(0, -298, 52, { fill: true });
+  X.save(); X.lineWidth *= .7; poly(arcPts(-18, -294, 8, 5, .1 * PI, .9 * PI, 5)); poly(arcPts(18, -294, 8, 5, .1 * PI, .9 * PI, 5));
+  poly([[-2, -292], [-6, -276], [2, -273]]); poly([[-20, -262], [-8, -268], [0, -264], [8, -268], [20, -262]]); poly(arcPts(-14, -328, 20, 12, PI * 1.15, PI * 1.6, 6)); X.restore();
+  const wx = -10 + ((t * 2.6) % 1) * 90, wy = -14 + Math.sin(t * 34) * 5;
+  poly([[-74, -220], [-104, -110], [-60, -14]]); circle(-60, -12, 9, { fill: true });
+  poly([[74, -220], [100, -110], [wx + 10, wy]]); circle(wx + 10, wy, 9, { fill: true });
+  X.save(); X.lineWidth *= .8; line(wx + 8, wy - 2, wx + 28, wy - 66); X.restore();
+  X.restore();
+  // table + page
+  ink(1, 5, 12);
+  poly([[230, D], [900, D], [900, D + 30], [230, D + 30]], { closed: true, fill: true });
+  line(260, D + 30, 260, D + 130); line(870, D + 30, 870, D + 130);
+  poly([[480, D - 4], [650, D - 4], [668, D - 30], [496, D - 30]], { closed: true, fill: true });
+  const n = Math.min(26, Math.floor(t / .2));
+  X.save(); ink(.6, 2.5, 3); const pl = (t / .2) % 1; for (let i = 0; i < 3; i++) if (pl > i / 3) line(506 + i * 3, D - 24 + i * 7, lerp(506, 650, cl((pl - i / 3) * 3)) - i * 3, D - 24 + i * 7); X.restore();
+  ink(1, 4, 10); stack(790, D - 4, n, .9);
+  if (t > .2) { const fu = eo(((t / .2) % 1) / .5); if (fu < 1) { X.save(); ink(1 - fu, 3, 8); poly([[lerp(570, 790, fu) - 60, D - 40 - n * 6.3 - Math.sin(fu * PI) * 60], [lerp(570, 790, fu) + 60, D - 40 - n * 6.3 - Math.sin(fu * PI) * 60]]); X.restore(); } }
+  ['тарих', 'салт', 'қалалар'].forEach((w, i) => {
+    const u = seg(t, s.words[i] - .1, s.words[i] + .5); if (u <= 0) return;
+    label(w, 580 + (i - 1) * 190, D - 390 - eo(u) * 50, 40, eo(u) * .95);
+  });
+  X.restore();
+  title('Жасырын жазбалар', .2, t);
+}
+// S6: the stack becomes a book; titles in many languages light up around it
+const LANGS = [['Altyshahr', -270, -300], ['Кашгария', 270, -330], ['Kaschgarien', -290, 30], ['La Kachgarie', 290, 0], ['Алтышар', -250, 360], ['Kashgaria', 260, 380], ['Қашғария', 0, -470]];
+function S6(t, s) {
+  const dur = s.end - s.start, z = lerp(1.55, 1.0, ease(seg(t, 0, dur - .3)));
+  X.save(); cam(z, 540, 1060);
+  const bu = seg(t, s.book, s.book + .8);
+  ink(1, 5, 12);
+  if (bu < .5) { X.save(); X.globalAlpha = 1 - bu * 2; stack(540, 1180, Math.round(26 * (1 - bu * 1.6)), 1.4); X.restore(); }
+  if (bu > .2) { ink(1, 5, 14); bookClosed(540, 1060, .78, eo(seg(bu, .2, 1))); }
+  if (bu >= 1) { const g = X.createRadialGradient(540, 1060, 20, 540, 1060, 520); g.addColorStop(0, 'rgba(255,255,255,.10)'); g.addColorStop(1, 'rgba(255,255,255,0)'); X.fillStyle = g; X.fillRect(0, 500, 1080, 1100); }
+  LANGS.forEach(([w, dx, dy], i) => {
+    const t0 = s.langs + i * .28, u = seg(t, t0, t0 + .3); if (u <= 0) return;
+    const fl = u < 1 ? (hash(Math.floor(t * 40) + i * 9) > .4 ? 1 : .3) : 1;
+    label(w, 540 + dx, 1060 + dy, 44, u * fl * .9);
+  });
+  X.restore();
+  title('Оны Еуропа оқыды', .25, t);
+  fadeBlack(seg(t, dur - .4, dur - .05));
+}
+// S7: Shokan's line fades away; only the book and "29" remain
+function S7(t, s) {
+  const dur = s.end - s.start;
+  ink(.45, 3, 4); line(60, 1700, 1020, 1700);
+  ink(1, 5, 14); bookClosed(770, 1475, .52);
+  const e = ease(seg(t, .35, 2.2));
+  dissolve(e, 11, t, () => { ink(1, 5, 12); shokan(330, 1700, { s: .9, t }); }, [230, 1250, 200, 450, 40]);
+  const u = seg(t, s.y29, s.y29 + .45);
+  if (u > 0) { X.save(); X.translate(540, 820); const k = back(u); X.scale(k, k); label('29', 0, 0, 240, 1, 'RB'); X.restore(); }
+  title('29 жыл ғұмыр кешті', .2, t);
+  fadeBlack(1 - seg(t, 0, .3));
+}
+// END: the student again — puts the phone down, opens the textbook; CTA
+function END(t, s) {
+  const phone = 1 - ease(seg(t, s.phone, s.phone + .6)), op = seg(t, s.open, s.open + .45);
+  ink(1, 5, 12); student(540, 1090, { s: 1.2, phone, open: op, t });
+  title('25 деп жаз — тарих гайды', s.cta, t);
+  const a = eo(seg(t, s.cta + .1, s.cta + .5));
+  if (a > 0) {
+    X.save(); X.globalAlpha = a; ink(1, 5, 12);
+    poly([...rrPts(130, 1290, 820, 170, 40)], { closed: true, fill: true });
+    poly([[260, 1460], [230, 1530], [330, 1460]], { fill: true });
+    X.restore();
+    label('Комментарий', 360, 1375, 44, .5 * a);
+    const pu = seg(t, s.n25, s.n25 + .35);
+    if (pu > 0) { X.save(); X.translate(790, 1375); const sc = back(pu); X.scale(sc, sc); label('25', 0, 0, 110, 1, 'RB'); X.restore(); }
+    const la = .95 * eo(seg(t, s.lines, s.lines + .4));
+    label('Комментарийге «25» деп жаз —', 540, 1650, 44, la);
+    label('ҰБТ-ға арналған тарих гайдын директке ал', 540, 1710, 44, la);
+  }
+  fadeBlack(1 - seg(t, 0, .35));
+}
+const FN = { s1: S1, s2: S2, s3: S3, s4: S4, s5: S5, s6: S6, s7: S7, end: END };
+function render(t) {
+  X.setTransform(1, 0, 0, 1, 0, 0); X.shadowBlur = 0; X.globalAlpha = 1;
+  X.fillStyle = '#000'; X.fillRect(0, 0, W, H);
+  let s = TL.scenes.find(s => t >= s.start && t < s.end) || TL.scenes[TL.scenes.length - 1];
+  X.save(); FN[s.id](t - s.start, s); X.restore();
+}
+window.render = render;
+</script></body></html>
