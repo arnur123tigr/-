@@ -1,0 +1,283 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// "Настоящий размер Африки" — remake of a geography reel (parchment map, glowing countries, true-size comparisons).
+// render(T) is deterministic, T = video seconds; t = voice time (T - OFF).
+const W = 1080, H = 1920, OFF = 0.3, END = 55.7;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const MAP = new Image(), WORLD = new Image(); let SH = null, WPX = null;
+const PS = 14, YTOP = 168.94807874816593;            // parch.jpg: px per degree, Mercator y of its top edge
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const win = (t, a, b, f = .35) => clamp((t - a) / f) * clamp((b - t) / f);
+const lerp = (a, b, k) => a + (b - a) * k;
+const my = lat => Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85, 85) * D2R / 2)) / D2R;
+const imy = y => (2 * Math.atan(Math.exp(y * D2R)) - Math.PI / 2) / D2R;
+
+// ---------- camera keys: [voice time, lon, lat, px/deg] ----------
+const CAM = [[-1, 18, 9, 11.8], [0.3, 19, 4, 14.5], [14.0, -14, 41, 9.4], [18.5, 2, 7, 13], [22.2, 6, -1, 21],
+  [27.6, 82, 33, 8.2], [32.95, 20, 3, 12.6], [44.9, 20, 4, 11.5]];
+let cam = { lon: 18, y: my(9), s: 11.8 };
+function camAt(t) {
+  let i = 0; while (i < CAM.length - 1 && t >= CAM[i + 1][0]) i++;
+  const A = CAM[i], from = i === 0 ? A : CAM[i - 1], k = ease((t - A[0]) / 1.2);
+  const s = Math.exp(lerp(Math.log(from[3]), Math.log(A[3]), k)) * (1 + (t - A[0]) * 0.01);
+  return { lon: lerp(from[1], A[1], k), y: lerp(my(from[2]), my(A[2]), k), s };
+}
+const PX = (lon, lat) => [W / 2 + (lon - cam.lon) * cam.s, H / 2 - (my(lat) - cam.y) * cam.s];
+
+// ---------- sphere helpers: move a shape on the globe (keeps its true size), then project to Mercator ----------
+const vec = (lo, la) => [Math.cos(la * D2R) * Math.cos(lo * D2R), Math.cos(la * D2R) * Math.sin(lo * D2R), Math.sin(la * D2R)];
+const ll = v => [Math.atan2(v[1], v[0]) / D2R, Math.asin(clamp(v[2], -1, 1)) / D2R];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function rot(v, ax, an) { // Rodrigues, ax unit
+  const c = Math.cos(an), s = Math.sin(an), d = dot(ax, v), x = cross(ax, v);
+  return [v[0] * c + x[0] * s + ax[0] * d * (1 - c), v[1] * c + x[1] * s + ax[1] * d * (1 - c), v[2] * c + x[2] * s + ax[2] * d * (1 - c)];
+}
+const norm3 = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+// returns a projector-transformed ring set: shape centred at c0 moved to c1 (k = progress) and turned by th degrees
+function moved(rings, c0, c1, th, k) {
+  const a = vec(...c0), b = vec(...c1), ax = norm3(cross(a, b)), ang = Math.acos(clamp(dot(a, b), -1, 1)) * k;
+  const cen = ang > 1e-6 ? rot(a, ax, ang) : a, cl = ll(cen)[0];
+  // keep the shape north-up during transport (a long great-circle move would otherwise turn it), then turn it by th (clockwise)
+  let pn = vec(c0[0], c0[1] + .5); if (ang > 1e-6) pn = rot(pn, ax, ang);
+  const ee = norm3(cross([0, 0, 1], cen)), nn = cross(cen, ee), dd = [pn[0] - cen[0], pn[1] - cen[1], pn[2] - cen[2]];
+  const tr = Math.atan2(dot(dd, ee), dot(dd, nn)) - th * D2R * k;
+  return rings.map(r => r.map(([lo, la]) => {
+    let v = vec(lo, la); if (ang > 1e-6) v = rot(v, ax, ang); if (tr) v = rot(v, cen, tr);
+    let [x, y] = ll(v); x = cl + ((x - cl + 540) % 360 - 180); return [x, y];
+  }));
+}
+
+// ---------- drawing helpers ----------
+function txt(s, x, y, size, col = '#fff', font = 'M', glow = null, align = 'center') {
+  ctx.font = `${font === 'M' ? 900 : 800} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = size * .5; ctx.fillStyle = col; ctx.fillText(s, x, y); }
+  ctx.shadowColor = 'rgba(0,0,0,.75)'; ctx.shadowBlur = size * .25; ctx.shadowOffsetY = size * .05; ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+}
+function cpath(rings, P = PX) { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => { const [x, y] = P(lo, la); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); } }
+// glowing filled country like the original: saturated fill, soft outer glow, bright rim
+function glow(rings, a, rgb, fillA = .9, rim = 'rgba(255,255,255,.55)') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.lineJoin = 'round';
+  cpath(rings); ctx.shadowColor = `rgba(${rgb},1)`; ctx.shadowBlur = 45; ctx.fillStyle = `rgba(${rgb},${fillA})`; ctx.fill();
+  ctx.shadowBlur = 0; ctx.save(); ctx.clip();
+  ctx.globalAlpha = a * .35; ctx.drawImage(GRAIN, 0, 0); ctx.globalAlpha = a;          // keep a bit of map texture
+  ctx.shadowColor = `rgba(${rgb},1)`; ctx.shadowBlur = 30; ctx.lineWidth = 26; ctx.strokeStyle = `rgba(255,255,255,.18)`; ctx.stroke(); ctx.restore();
+  ctx.lineWidth = 3.5; ctx.strokeStyle = rim; ctx.shadowColor = `rgba(${rgb},1)`; ctx.shadowBlur = 12; ctx.stroke(); ctx.restore();
+}
+function label(s, lon, lat, a, size = 52) { if (a <= 0) return; const [x, y] = PX(lon, lat); ctx.save(); ctx.globalAlpha = a; txt(s, x, y, size, '#fff', 'MX'); ctx.restore(); }
+const COL = { AFR: '38,190,30', GRL: '25,110,255', COD: '255,120,10', RUS: '70,215,255', CHN: '255,60,25', USA: '25,115,255', IND: '255,230,0', JPN: '255,230,0', EUR: '255,80,225' };
+
+let GRAIN;
+function makeGrain() {  // dark noisy overlay used inside highlighted shapes
+  GRAIN = document.createElement('canvas'); GRAIN.width = W; GRAIN.height = H; const g = GRAIN.getContext('2d'), id = g.createImageData(W, H);
+  let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < W * H; i++) { const v = 90 + r() * 70; id.data[i * 4] = v; id.data[i * 4 + 1] = v; id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 70; }
+  g.putImageData(id, 0, 0);
+}
+function drawMap() {
+  ctx.fillStyle = '#1d2618'; ctx.fillRect(0, 0, W, H);
+  const sx = (cam.lon - W / 2 / cam.s + 180) * PS, sy = (YTOP - (cam.y + H / 2 / cam.s)) * PS, sw = W / cam.s * PS, sh = H / cam.s * PS;
+  const x0 = Math.max(0, sx), y0 = Math.max(0, sy), x1 = Math.min(MAP.width, sx + sw), y1 = Math.min(MAP.height, sy + sh);
+  if (x1 > x0 && y1 > y0) ctx.drawImage(MAP, x0, y0, x1 - x0, y1 - y0, (x0 - sx) / sw * W, (y0 - sy) / sh * H, (x1 - x0) / sw * W, (y1 - y0) / sh * H);
+}
+function vignette(k = .6) {
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * .25, W / 2, H / 2, H * .72); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// ---------- scene 1: Africa intro with outline tracing ----------
+function intro(t) {
+  const a = win(t, -2, 4.45, .3); if (a <= 0) return;
+  glow(SH.AFR, a * clamp((t + .1) / .5), COL.AFR);
+  const k = clamp((t - .5) / 3.2);     // traced bright outline
+  if (k > 0 && t < 4.45) {
+    const ring = SH.AFR[0], n = Math.floor(ring.length * ease(k)); ctx.save(); ctx.globalAlpha = a * (1 - clamp((t - 3.9) / .5)); ctx.lineJoin = ctx.lineCap = 'round';
+    for (const [w, c, b] of [[16, 'rgba(255,255,140,.45)', 30], [6, '#fffbd0', 12], [2.5, '#ffffff', 0]]) {
+      ctx.beginPath(); for (let i = 0; i < n; i++) { const [x, y] = PX(...ring[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.lineWidth = w; ctx.strokeStyle = c; ctx.shadowColor = '#fff36a'; ctx.shadowBlur = b; ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.save(); const sc = back((t - .1) / .5); const [x, y] = PX(18, 8); ctx.globalAlpha = a * clamp(t / .3); ctx.translate(x, y); ctx.scale(sc, sc); txt('Африка', 0, 0, 92, '#fff', 'MX'); ctx.restore();
+}
+
+// ---------- scene 2: globe -> gores -> Mercator (satellite texture, per-pixel) ----------
+const OW = 540, OH = 540; let OC, OX, OID;
+function sample(lon, lat) { let x = Math.floor(((lon + 180) % 360 + 360) % 360 / 360 * 2048), y = Math.floor((90 - lat) / 180 * 1024); if (y > 1023) y = 1023; if (y < 0) y = 0; return (y * 2048 + x) * 4; }
+function globe(t, cx, cy, R, lon0, lat0, a) {
+  const d = OID.data; d.fill(0); const cphi = Math.cos(lat0 * D2R), sphi = Math.sin(lat0 * D2R);
+  const r2 = R / 2; // offscreen at half resolution
+  for (let py = 0; py < OH; py++) { const v = -(py - OH / 2) / r2; if (Math.abs(v) > 1) continue;
+    for (let px = 0; px < OW; px++) { const u = (px - OW / 2) / r2, q = u * u + v * v; if (q > 1) continue;
+      const z = Math.sqrt(1 - q), y2 = v * cphi + z * sphi, z2 = -v * sphi + z * cphi;
+      const lat = Math.asin(y2) / D2R, lon = lon0 + Math.atan2(u, z2) / D2R, s = sample(lon, lat), sh = .25 + .75 * Math.pow(z, .6), o = (py * OW + px) * 4;
+      d[o] = WPX[s] * sh; d[o + 1] = WPX[s + 1] * sh; d[o + 2] = WPX[s + 2] * sh; d[o + 3] = 255 * clamp((1 - q) * 40); } }
+  OX.putImageData(OID, 0, 0); ctx.save(); ctx.globalAlpha = a; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(OC, cx - OW, cy - OH, OW * 2, OH * 2);
+  // atmosphere rim
+  const g = ctx.createRadialGradient(cx, cy, R * .96, cx, cy, R * 1.08); g.addColorStop(0, 'rgba(120,180,255,.35)'); g.addColorStop(1, 'rgba(120,180,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 1.1, 0, 7); ctx.fill(); ctx.restore();
+}
+// flat layout: gm = 0 -> 8 sinusoidal gores, 1 -> Mercator; hs = horizontal squeeze of gores
+function flat(cx, cy, Wf, gm, hs, a, grid) {
+  const d = OID.data; d.fill(0); const k = Wf / 2 / 360, ymax = my(80);   // half-res px per degree
+  for (let py = 0; py < OH; py++) { const Y = (OH / 2 - py) / k; const latG = Y, latM = imy(clamp(Y, -ymax, ymax));
+    if (gm < 1 && Math.abs(Y) > lerp(90, ymax, gm)) continue; if (Math.abs(Y) > lerp(90, ymax, gm)) continue;
+    const lat = lerp(latG, latM, gm), wf = lerp(Math.cos(lat * D2R), 1, gm);
+    for (let px = 0; px < OW; px++) { const X = (px - OW / 2) / k / hs; if (Math.abs(X) > 180) continue;
+      const gi = Math.min(7, Math.floor((X + 180) / 45)), lc = -180 + 22.5 + 45 * gi, dx = X - lc;
+      if (Math.abs(dx) > 22.5 * wf + .01) continue; const lon = lc + dx / Math.max(wf, 1e-3), s = sample(lon, lat), o = (py * OW + px) * 4;
+      let r = WPX[s], g = WPX[s + 1], b = WPX[s + 2];
+      if (grid > 0 && (Math.abs(((lon + 180) % 15 + 15) % 15) < .35 || Math.abs(((lat + 90) % 15 + 15) % 15) < .35)) { r = lerp(r, 255, .35 * grid); g = lerp(g, 255, .35 * grid); b = lerp(b, 255, .35 * grid); }
+      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255; } }
+  OX.putImageData(OID, 0, 0); ctx.save(); ctx.globalAlpha = a; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(OC, cx - OW, cy - OH, OW * 2, OH * 2); ctx.restore();
+}
+function mercator(t) {
+  const a = win(t, 4.3, 10.95, .25); if (a <= 0) return;
+  ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, W, H);
+  // starfield
+  ctx.save(); ctx.globalAlpha = a * .6; ctx.fillStyle = '#fff'; let s = 5; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 90; i++) { const x = r() * W, y = r() * H, z = r() * 2.2; ctx.fillRect(x, y, z, z); } ctx.restore();
+  const gA = a * (1 - clamp((t - 6.45) / .35));
+  if (gA > 0) { const R = 360 * eout((t - 4.3) / .8) * (1 - .15 * clamp((t - 6.2) / .5)); globe(t, W / 2, H * .52, R, 70 - (t - 4.3) * 38, 18, gA); }
+  const fA = a * clamp((t - 6.35) / .35);
+  if (fA > 0) { const hs = lerp(.3, 1, eout((t - 6.35) / .9)), gm = ease((t - 8.0) / 1.5), Wf = lerp(1040, 1300, gm) * (1 + clamp(t - 9.5, 0, 2) * .03);
+    flat(W / 2, H * .52, Wf, gm, hs, fA, clamp((t - 8.6) / .8)); }
+  const ta = a * clamp((t - 4.75) / .3); if (ta > 0) { ctx.save(); ctx.globalAlpha = ta; txt('Проекция Меркатора', W / 2, 240, 76, '#fff', 'M', 'rgba(255,255,255,.35)'); ctx.restore(); }
+}
+
+// ---------- scene 3: white panel — Mercator vs true size ----------
+function truesize(t) {
+  const a = win(t, 10.85, 14.05, .25); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.font = '800 66px MX'; ctx.fillStyle = '#21391f'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Проекция Меркатора', W / 2, 520); ctx.fillText('vs. реальный размер', W / 2, 605);
+  const Wp = 1000, k = Wp / 360, cx = W / 2, cy = 700 + 360, top = my(84);
+  ctx.fillStyle = '#e9e9e9'; ctx.fillRect(cx - Wp / 2 - 20, 690, Wp + 40, 720);
+  const q = ease((t - 11.6) / 1.6) * (1 - .15 * Math.sin(clamp((t - 13.2) / .8) * Math.PI));
+  ctx.fillStyle = '#4e4e4e'; ctx.strokeStyle = '#e9e9e9'; ctx.lineWidth = 1;
+  const y0 = 705;
+  for (const c of SH.w110) {
+    if (c.c[1] < -60) continue;
+    const latc = c.c[1], ax = norm3(cross(vec(c.c[0], latc), [0, 0, 1])), ang = -latc * D2R * q;   // slide toward the equator on the sphere
+    const dy = my(latc) - my(latc * (1 - q));
+    ctx.beginPath(); c.r.forEach(([lo, la], i) => { let v = vec(lo, la); if (Math.abs(latc) > .5) v = rot(v, ax, ang); let [x, y] = ll(v); x = c.c[0] + ((x - c.c[0] + 540) % 360 - 180);
+      const X = cx + x * k, Y = y0 + (top - (my(y) + dy)) * k; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  ctx.fillStyle = '#999'; ctx.font = '500 16px sans-serif'; ['180°', '120°W', '60°W', '0°', '60°E', '120°E', '180°'].forEach((s, i) => ctx.fillText(s, cx - Wp / 2 + i * Wp / 6, 1395));
+  ctx.restore();
+}
+
+// ---------- scenes 4-6: Greenland vs Africa, then vs DR Congo ----------
+const GT1 = [-27, 5], GT2 = [-5, -3];
+function greenland(t) {
+  const a = win(t, 13.95, 27.75, .3); if (a <= 0) return;
+  glow(SH.AFR, a, COL.AFR);
+  label('Африка', 20, 9, a * win(t, 14, 27.7, .3) * (t > 22.1 ? 1 - .5 * clamp((t - 25.7) / .3) : 1), t > 22 ? 84 : 58);
+  // Greenland: real place -> true size next to Africa -> beside DR Congo
+  let rings, cen;
+  if (t < 18.9) { rings = SH.GRL; cen = SH.c_GRL; }
+  else if (t < 22.3) { const k = ease((t - 18.9) / 1.6); rings = moved(SH.GRL, SH.c_GRL, GT1, 0, k); cen = ll(rot(vec(...SH.c_GRL), norm3(cross(vec(...SH.c_GRL), vec(...GT1))), Math.acos(dot(vec(...SH.c_GRL), vec(...GT1))) * k)); }
+  else { const k = ease((t - 22.3) / 1.0), base = moved(SH.GRL, SH.c_GRL, GT1, 0, 1); rings = moved(base, GT1, GT2, 0, k); cen = [lerp(GT1[0], GT2[0], k), lerp(GT1[1], GT2[1], k)]; }
+  glow(rings, a * clamp((t - 14.4) / .4), COL.GRL, .92);
+  const la = a * clamp((t - 15.3) / .3);
+  if (t < 19.2) label('Гренландия', SH.c_GRL[0] + 4, SH.c_GRL[1] - 3, la * (1 - clamp((t - 18.9) / .3)), 50);
+  // "14x =" next to Africa
+  const k14 = a * clamp((t - 20.6) / .3) * (1 - clamp((t - 22.2) / .3));
+  if (k14 > 0) { const [x, y] = PX(...GT1); ctx.save(); ctx.globalAlpha = k14; const sc = back((t - 20.6) / .45);
+    ctx.translate(x, y); ctx.scale(sc, sc); txt('14×', 0, 0, 52, '#fff', 'M', 'rgba(40,120,255,1)'); ctx.restore();
+    const [ex, ey] = PX(GT1[0] + 10, GT1[1]); ctx.save(); ctx.globalAlpha = k14; txt('=', ex, ey, 110, '#fff', 'M'); ctx.restore(); }
+  // DR Congo
+  const ck = a * clamp((t - 24.5) / .4);
+  glow(SH.COD, ck, COL.COD, .95, 'rgba(255,240,120,.9)');
+  if (ck > 0) { label('ДР Конго', SH.c_COD[0] + 1, SH.c_COD[1] + 1, a * clamp((t - 25.9) / .3), 46);
+    const [x, y] = PX(3.6, -3); ctx.save(); ctx.globalAlpha = a * clamp((t - 23.6) / .25); txt('<', x, y, 130, '#fff', 'M', 'rgba(255,255,255,.6)'); ctx.restore(); }
+}
+
+// ---------- scenes 7-8: Russia ----------
+const RT = [20, 9], RTH = 0;
+function russia(t) {
+  const a = win(t, 27.6, 38.4, .35); if (a <= 0) return;
+  if (t < 36.9) glow(SH.AFR, a, COL.AFR);
+  label('Африка', 20, 9, a * win(t, 27.8, 33.4, .3), 46);
+  const k = ease((t - 33.4) / 1.8);
+  const rings = k > 0 ? moved(SH.RUS, SH.c_RUS, RT, RTH, k) : SH.RUS;
+  glow(rings, a * clamp((t - 27.9) / .4), COL.RUS, k > 0 ? lerp(.55, .62, k) : .55, 'rgba(210,250,255,.9)');
+  label('Россия', 97, 63, a * clamp((t - 28.3) / .3) * (1 - clamp((t - 33.3) / .3)), 54);
+  if (k > .9) { ctx.save(); ctx.globalAlpha = a * clamp((t - 35.3) / .3); txt('Россия', W / 2, PX(20, 10)[1], 60, '#fff', 'MX'); ctx.restore(); }
+}
+
+// ---------- scene 9: USA, China, India, Japan, Europe all inside Africa ----------
+const FIT = [ // key, start time, target centre, rotation (deg, clockwise)
+  ['USA', 38.15, [23, -15], 80], ['CHN', 39.2, [7, 18], -5], ['IND', 39.85, [41, 3], 0], ['JPN', 40.35, [48.5, -18], 10], ['EUR', 41.3, [25, 21], 0]];
+function fitAll(t) {
+  glow(SH.AFR, clamp((t - 36.75) / .4), COL.AFR);
+  const a = win(t, 36.75, 46.2, .4); if (a <= 0) return;
+  label('Африка', 20, 9, a * clamp((t - 36.9) / .3) * (1 - clamp((t - 38.2) / .4)), 84);
+  for (const [key, t0, c1, th] of FIT) {
+    const k = ease((t - t0) / .95); if (t < t0) continue;
+    glow(moved(SH[key], SH['c_' + key], c1, th, k), a * clamp((t - t0) / .2), COL[key], .82, 'rgba(255,255,255,.7)');
+  }
+}
+
+// ---------- scene 10: ENT call to action ----------
+function pill(s, x, y, size, col, a = 1, sc = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.font = `900 ${size}px M`; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = size * .4; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * .28); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(s, 0, size * .04); ctx.restore();
+}
+function cta(t) {
+  const a = clamp((t - 44.85) / .5); if (a <= 0) return;
+  ctx.fillStyle = `rgba(6,10,4,${.62 * a})`; ctx.fillRect(0, 0, W, H);
+  const p1 = clamp((t - 45.0) / .35), p2 = clamp((t - 48.9) / .35), p3 = clamp((t - 51.4) / .35);
+  ctx.save(); ctx.globalAlpha = a * p1; txt('Такие вопросы', W / 2, H * .13, 78); txt('часто попадаются на', W / 2, H * .13 + 90, 60); ctx.restore();
+  pill('ЕНТ по географии', W / 2, H * .13 + 220, 72, '#e8792a', a * clamp((t - 47.4) / .3), back((t - 47.4) / .45));
+  ctx.save(); ctx.globalAlpha = a * p2; txt('Мы подготовили', W / 2, H * .4, 70); txt('гайд по географии', W / 2, H * .4 + 85, 70); ctx.restore();
+  { const q = clamp((t - 49.6) / .4); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; const sc = back(q); ctx.translate(W / 2, H * .4 + 235); ctx.scale(sc, sc); book(); ctx.restore(); } }
+  ctx.save(); ctx.globalAlpha = a * p3; txt('Напиши в комментариях', W / 2, H * .6 + 40, 62); ctx.restore();
+  { const q = clamp((t - 52.5) / .3); if (q > 0) {
+    const pulse = 1 + .06 * Math.sin((t - 52.5) * 8) * clamp((t - 52.9) / .3), sc = back((t - 52.5) / .45) * pulse;
+    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 230); ctx.scale(sc, sc);
+    ctx.font = '900 110px M'; const w = ctx.measureText('ГЕО').width + 130, h = 180;
+    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 44); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ГЕО', 0, 8); ctx.restore(); } }
+}
+function book() {   // simple guide book icon
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 25; ctx.fillStyle = '#2f7de1'; ctx.beginPath(); ctx.roundRect(-70, -90, 140, 180, 14); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1d5fb8'; ctx.fillRect(-70, -90, 22, 180); ctx.fillStyle = '#f4f4f4'; ctx.fillRect(56, -82, 10, 164);
+  ctx.fillStyle = '#3fbf3a'; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '900 30px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ЕНТ', 10, 52);
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.moveTo(-28, -15); ctx.lineTo(48, -15); ctx.ellipse(10, -15, 16, 38, 0, 0, 7); ctx.stroke();
+}
+
+// ---------- main render ----------
+function render(T) {
+  const t = T - OFF;
+  cam = camAt(t);
+  drawMap();
+  intro(t); greenland(t); russia(t); fitAll(t);
+  vignette(.62);
+  mercator(t); truesize(t);
+  cta(t);
+  if (t < -.05) { ctx.fillStyle = `rgba(0,0,0,${clamp(-t / .25)})`; ctx.fillRect(0, 0, W, H); }
+  if (T > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
+}
+window.ready = (async () => {
+  SH = await (await fetch('shapes.json')).json();
+  await Promise.all([[MAP, 'parch.jpg'], [WORLD, 'world.jpg']].map(([im, s]) => new Promise(r => { im.onload = r; im.src = s; })));
+  await MAP.decode();
+  const wc = document.createElement('canvas'); wc.width = 2048; wc.height = 1024; const wx = wc.getContext('2d'); wx.drawImage(WORLD, 0, 0); WPX = wx.getImageData(0, 0, 2048, 1024).data;
+  OC = document.createElement('canvas'); OC.width = OW; OC.height = OH; OX = OC.getContext('2d'); OID = OX.createImageData(OW, OH);
+  makeGrain();
+  await document.fonts.load('900 40px M'); await document.fonts.load('800 40px MX');
+  render(0); return true;
+})();
+</script></body></html>
