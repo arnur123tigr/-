@@ -1,0 +1,10 @@
+{"voiceover":"vo_kk.mp3","vo_offset":0.3,"scenes":[
+{"id":"s1","start":0,"end":5.6,"vanish":4.95},
+{"id":"s2","start":5.6,"end":11.2,"city":2.5,"gate":3.0,"cross":3.7},
+{"id":"s3","start":11.2,"end":15.0,"shave":0.9,"morph":1.5,"name":1.6},
+{"id":"s4","start":15.0,"end":20.1,"twang":[0.45,1.3,3.2]},
+{"id":"s5","start":20.1,"end":25.9,"words":[3.56,4.22,4.94]},
+{"id":"s6","start":25.9,"end":29.4,"book":0.15,"langs":0.9},
+{"id":"s7","start":29.4,"end":32.3,"y29":1.0},
+{"id":"end","start":32.3,"end":37.5,"phone":0.25,"open":0.9,"cta":1.35,"n25":1.6,"lines":2.8}
+]}
