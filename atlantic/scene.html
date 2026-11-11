@@ -1,0 +1,348 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:MS;src:url(fonts/Montserrat-SemiBold.ttf);font-weight:600}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// "Почему самолёты над Атлантикой летят по одной узкой полосе" — Russian remake of a geography reel:
+// satellite map + flight-radar dark map, North Atlantic Tracks, jet stream, glowing planes.
+// render(T) is deterministic, T = video seconds; t = voice time (T - OFF).
+const W = 1080, H = 1920, OFF = 0.3, END = 67.6, CTA0 = 56.3;
+const main = document.getElementById('c'); let ctx = main.getContext('2d');
+const SAT = new Image(), DARK = new Image(); let GL = null, CAPS = [], SRC;
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const ap = (t, t0, d = .3) => clamp((t - t0) / d);
+const my = lat => Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85, 85) * D2R / 2)) / D2R;
+function rnd(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+let cam = { lon: 0, y: 0, s: 10 };
+const PX = (lon, lat) => [W / 2 + (lon - cam.lon) * cam.s, H / 2 - (my(lat) - cam.y) * cam.s];
+function camKeys(K, t) {          // K: [[t, lon, lat, px/deg, dur], ...] eased moves, slow drift-in
+  let i = 0; while (i < K.length - 1 && t >= K[i + 1][0]) i++;
+  const A = K[i], F = i === 0 ? A : K[i - 1], d = A[4] || 1.1, k = ease((t - A[0]) / d);
+  const s = Math.exp(lerp(Math.log(F[3]), Math.log(A[3]), k)) * (1 + Math.max(0, t - A[0]) * .01);
+  return { lon: lerp(F[1], A[1], k), y: lerp(my(F[2]), my(A[2]), k), s };
+}
+function blit(S) {
+  const im = S.img, sx = (cam.lon - W / 2 / cam.s - S.L0) * S.S, sy = (S.YT - (cam.y + H / 2 / cam.s)) * S.S, sw = W / cam.s * S.S, sh = H / cam.s * S.S;
+  const x0 = Math.max(0, sx), y0 = Math.max(0, sy), x1 = Math.min(im.width, sx + sw), y1 = Math.min(im.height, sy + sh);
+  if (x1 > x0 && y1 > y0) ctx.drawImage(im, x0, y0, x1 - x0, y1 - y0, (x0 - sx) / sw * W, (y0 - sy) / sh * H, (x1 - x0) / sw * W, (y1 - y0) / sh * H);
+}
+function base(src) { ctx.fillStyle = src === 'dark' ? '#3a3c3f' : '#0d3a44'; ctx.fillRect(0, 0, W, H); blit(SRC[src]); }
+function txt(s, x, y, size, col = '#fff', font = 'M', align = 'center', sh = .75) {
+  const wt = { M: 900, MX: 800, MS: 600 }[font];
+  ctx.font = `${wt} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = `rgba(0,0,0,${sh})`; ctx.shadowBlur = size * .25; ctx.shadowOffsetY = size * .05; ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+}
+function popIn(t, t0, x, y, fn, sc = 1, d = .4) {
+  const q = clamp((t - t0) / .2); if (q <= 0) return; ctx.save(); ctx.globalAlpha *= q; ctx.translate(x, y); const b = back((t - t0) / d) * sc; ctx.scale(b, b); fn(); ctx.restore();
+}
+function vignette(k = .4) { const g = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+function glowText(s, x, y, size, col, a = 1, spacing = 0) {   // neon text (cyan "invisible highway", "jet stream")
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a; ctx.font = `900 ${size}px M`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (spacing) ctx.letterSpacing = spacing + 'px';
+  ctx.shadowColor = col; ctx.shadowBlur = size * .8; ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.shadowBlur = size * .3; ctx.fillText(s, x, y);
+  ctx.shadowBlur = 0; ctx.fillStyle = '#f4ffff'; ctx.fillText(s, x, y); ctx.restore();
+}
+
+// ---------- planes ----------
+function planePath(s) {           // top view, nose to +x
+  ctx.beginPath(); ctx.moveTo(1 * s, 0); ctx.quadraticCurveTo(.9 * s, -.09 * s, .6 * s, -.09 * s); ctx.lineTo(.12 * s, -.1 * s); ctx.lineTo(-.25 * s, -.85 * s); ctx.lineTo(-.42 * s, -.85 * s); ctx.lineTo(-.22 * s, -.1 * s);
+  ctx.lineTo(-.7 * s, -.08 * s); ctx.lineTo(-.86 * s, -.36 * s); ctx.lineTo(-.97 * s, -.36 * s); ctx.lineTo(-.9 * s, 0);
+  ctx.lineTo(-.97 * s, .36 * s); ctx.lineTo(-.86 * s, .36 * s); ctx.lineTo(-.7 * s, .08 * s); ctx.lineTo(-.22 * s, .1 * s); ctx.lineTo(-.42 * s, .85 * s); ctx.lineTo(-.25 * s, .85 * s); ctx.lineTo(.12 * s, .1 * s); ctx.lineTo(.6 * s, .09 * s); ctx.quadraticCurveTo(.9 * s, .09 * s, 1 * s, 0); ctx.closePath();
+}
+function plane(x, y, ang, s, col = '#fff', shadow = true) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+  if (shadow) { ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = s * .3; ctx.shadowOffsetY = s * .25; }
+  planePath(s); ctx.fillStyle = col; ctx.fill(); ctx.restore();
+}
+function glowPlane(x, y, s, a = 1) {   // neon cyan plane, side-ish view (dark scene)
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.shadowColor = '#5fe8ff'; ctx.shadowBlur = 28; ctx.fillStyle = '#c8f6ff';
+  ctx.beginPath(); ctx.moveTo(-s, -.05 * s); ctx.quadraticCurveTo(-s * .2, -.18 * s, s * .85, -.12 * s); ctx.quadraticCurveTo(s * 1.05, -.05 * s, s * .85, .06 * s); ctx.lineTo(-s * .9, .1 * s); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-s * .1, 0); ctx.lineTo(s * .25, 0); ctx.lineTo(-s * .25, s * .42); ctx.lineTo(-s * .42, s * .42); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-s * .78, -.05 * s); ctx.lineTo(-s * .95, -.45 * s); ctx.lineTo(-s * 1.05, -.45 * s); ctx.lineTo(-s, 0); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// NAT-style track k as a lat function of lon (bulges north mid-ocean)
+const TR0 = -58, TR1 = -10;
+const trackLat = (k, lon, sh = 0) => 46.5 + k * 1.5 + sh + 5.5 * Math.sin(Math.PI * clamp((lon - TR0) / (TR1 - TR0)));
+function trackPts(k, sh = 0, a = TR0, b = TR1) { const P = []; for (let i = 0; i <= 40; i++) { const lo = lerp(a, b, i / 40); P.push([lo, trackLat(k, lo, sh)]); } return P; }
+function heading(lo0, la0, lo1, la1) { const [x0, y0] = PX(lo0, la0), [x1, y1] = PX(lo1, la1); return Math.atan2(y1 - y0, x1 - x0); }
+// corridor traffic: planes moving east along the tracks (and a few west on the northern ones)
+function corridor(t, n, size, col, jitter = 0, seed = 7, a = 1) {
+  if (a <= 0) return; const r = rnd(seed); ctx.save(); ctx.globalAlpha *= a;
+  for (let i = 0; i < n; i++) {
+    const k = Math.floor(r() * 7) - .5, ph = r(), sp = .012 + r() * .006, west = r() < .18, jl = (r() - .5) * jitter, jo = (r() - .5) * jitter;
+    let u = (ph + t * sp) % 1; if (west) u = 1 - u;
+    const lo = lerp(TR0 - 4, TR1 + 4, u) + jo, la = trackLat(west ? k + 3 : k, lo) + jl, d = west ? -.3 : .3;
+    const [x, y] = PX(lo, la); if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+    plane(x, y, heading(lo - d, trackLat(west ? k + 3 : k, lo - d) + jl, lo + d, trackLat(west ? k + 3 : k, lo + d) + jl), size, col, col === '#fff');
+  }
+  ctx.restore();
+}
+// background radar traffic (dark map): dense over USA / Europe, sparse elsewhere
+let BG = null;
+function makeBG() {
+  const r = rnd(11); BG = [];
+  const box = (n, lo0, lo1, la0, la1) => { for (let i = 0; i < n; i++) BG.push([lerp(lo0, lo1, r()), lerp(la0, la1, r()), r() * 6.28, .3 + r() * .7]); };
+  box(300, -122, -72, 27, 48); box(60, -100, -70, 45, 54); box(280, -9, 32, 37, 59); box(60, -10, 40, 25, 37); box(90, 30, 60, 20, 45);
+  box(70, -80, -35, -35, 10); box(40, -100, -80, 15, 25); box(60, -15, 45, -30, 15); box(40, -160, -130, 20, 60); box(30, -60, -20, 10, 30);
+}
+function bgTraffic(t, size, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a;
+  for (const [lo, la, h, sp] of BG) {
+    const L = lo + Math.cos(h) * sp * t * .4, B = la + Math.sin(h) * sp * t * .3, [x, y] = PX(L, B);
+    if (x < -30 || x > W + 30 || y < -30 || y > H + 30) continue; plane(x, y, -h, size, '#f2c62a', false);
+  }
+  ctx.restore();
+}
+function polyline(P, k = 1, col = '#fff', w = 6, dash = null, glow = 0) {   // lon/lat polyline drawn up to fraction k, returns tip & angle
+  const n = Math.max(1, Math.floor((P.length - 1) * k)); if (k <= 0) return null;
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (dash) ctx.setLineDash(dash); if (glow) { ctx.shadowColor = col; ctx.shadowBlur = glow; }
+  ctx.beginPath(); let last, prev; for (let i = 0; i <= n; i++) { const p = PX(...P[i]); i ? ctx.lineTo(...p) : ctx.moveTo(...p); prev = last; last = p; } ctx.stroke(); ctx.restore();
+  return { x: last[0], y: last[1], a: prev ? Math.atan2(last[1] - prev[1], last[0] - prev[0]) : 0 };
+}
+function arrowHead(x, y, a, s, col) { ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.beginPath(); ctx.moveTo(s, 0); ctx.lineTo(-s * .6, -s * .75); ctx.lineTo(-s * .6, s * .75); ctx.closePath(); ctx.fill(); ctx.restore(); }
+// jet stream ribbon: translucent white band with moving chevrons, lat centre function f(lon)
+function jetStream(t, f, a = 1, k = 1, wDeg = 4.5, lo0 = -85, lo1 = 5) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a;
+  const lo2 = lerp(lo0, lo1, clamp(k)); const top = [], bot = [];
+  for (let i = 0; i <= 50; i++) { const lo = lerp(lo0, lo2, i / 50); top.push(PX(lo, f(lo) + wDeg / 2)); bot.push(PX(lo, f(lo) - wDeg / 2)); }
+  const g = ctx.createLinearGradient(PX(lo0, 0)[0], 0, PX(lo1, 0)[0], 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.15, 'rgba(230,248,255,.35)'); g.addColorStop(.85, 'rgba(230,248,255,.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.beginPath(); top.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(...bot[i]); ctx.closePath(); ctx.fillStyle = g; ctx.shadowColor = 'rgba(200,240,255,.8)'; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0;
+  const step = 6, off = (t * 9) % step;
+  for (let lo = lo0 + off; lo < lo2 - 2; lo += step) {
+    const fa = Math.min(clamp((lo - lo0) / 12), clamp((lo1 - lo) / 12)); if (fa <= 0) continue;
+    const [x, y] = PX(lo, f(lo)), [x2, y2] = PX(lo + .5, f(lo + .5)), ang = Math.atan2(y2 - y, x2 - x), s = wDeg * cam.s * .32;
+    ctx.save(); ctx.globalAlpha *= fa; ctx.translate(x, y); ctx.rotate(ang); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = s * .35; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-s * .5, -s); ctx.lineTo(s * .5, 0); ctx.lineTo(-s * .5, s); ctx.stroke(); ctx.restore();
+  }
+  ctx.restore();
+}
+const JET = lo => 44 + 5 * Math.sin((lo + 85) / 90 * Math.PI);
+
+// ---------- globe ----------
+function globe(t, cx, cy, R, lon0, lat0, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a;
+  const sl = Math.sin(lat0 * D2R), cl = Math.cos(lat0 * D2R);
+  const proj = (lo, la) => { const p = la * D2R, l = (lo - lon0) * D2R, cc = sl * Math.sin(p) + cl * Math.cos(p) * Math.cos(l); let x = Math.cos(p) * Math.sin(l), y = cl * Math.sin(p) - sl * Math.cos(p) * Math.cos(l); if (cc < 0) { const m = Math.hypot(x, y) || 1; x /= m; y /= m; } return [cx + R * x, cy - R * y, cc]; };
+  ctx.shadowColor = 'rgba(80,200,255,.55)'; ctx.shadowBlur = 90; const og = ctx.createRadialGradient(cx - R * .35, cy - R * .35, R * .1, cx, cy, R); og.addColorStop(0, '#2f7fb0'); og.addColorStop(1, '#0b2a4a');
+  ctx.fillStyle = og; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.clip();
+  for (const ring of GL.land) { let vis = false; const P = ring.map(([lo, la]) => { const p = proj(lo, la); if (p[2] > 0) vis = true; return p; }); if (!vis) continue;
+    ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    const lg = ctx.createLinearGradient(cx, cy - R, cx, cy + R); lg.addColorStop(0, '#e8eef0'); lg.addColorStop(.18, '#6f8a52'); lg.addColorStop(.55, '#a08a5a'); lg.addColorStop(1, '#5f7a3e'); ctx.fillStyle = lg; ctx.fill(); }
+  const sh = ctx.createRadialGradient(cx - R * .4, cy - R * .4, R * .2, cx, cy, R * 1.02); sh.addColorStop(0, 'rgba(255,255,255,.12)'); sh.addColorStop(.7, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,20,.55)'); ctx.fillStyle = sh; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+  ctx.restore(); ctx.restore(); return proj;
+}
+const v3 = (lo, la) => [Math.cos(la * D2R) * Math.cos(lo * D2R), Math.cos(la * D2R) * Math.sin(lo * D2R), Math.sin(la * D2R)];
+function gcPts(A, B, n = 60) {   // great-circle points between [lon,lat] A and B
+  const a = v3(...A), b = v3(...B), om = Math.acos(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]), P = [];
+  for (let i = 0; i <= n; i++) { const f = i / n, s1 = Math.sin((1 - f) * om) / Math.sin(om), s2 = Math.sin(f * om) / Math.sin(om); const v = [0, 1, 2].map(j => s1 * a[j] + s2 * b[j]); P.push([Math.atan2(v[1], v[0]) / D2R, Math.asin(v[2]) / D2R]); }
+  return P;
+}
+function stars() { const r = rnd(3); ctx.fillStyle = '#fff'; for (let i = 0; i < 160; i++) { ctx.globalAlpha = .2 + r() * .6; ctx.beginPath(); ctx.arc(r() * W, r() * H, r() * 2.2, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; }
+
+// ---------- small props ----------
+function gauge(k) {     // fuel gauge, needle from red (E) to green (F) as k goes 0..1
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 120, Math.PI, 0); ctx.lineTo(120, 20); ctx.lineTo(-120, 20); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  const cols = ['#e2342a', '#f08a24', '#f2d12e', '#8fd13a', '#2fb84a']; for (let i = 0; i < 5; i++) { ctx.strokeStyle = cols[i]; ctx.lineWidth = 26; ctx.beginPath(); ctx.arc(0, 0, 92, Math.PI + i * Math.PI / 5 + .03, Math.PI + (i + 1) * Math.PI / 5 - .03); ctx.stroke(); }
+  ctx.fillStyle = '#333'; ctx.font = '900 30px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⛽', 0, -40);
+  const an = Math.PI + (.12 + .76 * k) * Math.PI; ctx.strokeStyle = '#222'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(an) * 80, Math.sin(an) * 80); ctx.stroke();
+  ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(0, 0, 14, 0, 7); ctx.fill(); ctx.restore();
+}
+function badge(s, col, size = 80) {   // glowing rounded tag (7ч / 8ч)
+  ctx.font = `900 ${size}px M`; const w = ctx.measureText(s).width + size * .6, h = size * 1.25;
+  ctx.shadowColor = col; ctx.shadowBlur = 40; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * .3); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, 0, size * .05);
+}
+function controller() {    // dispatcher with headset (white silhouette)
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(0, -40, 46, 0, 7); ctx.fill(); ctx.beginPath(); ctx.moveTo(-80, 90); ctx.quadraticCurveTo(-80, 10, 0, 10); ctx.quadraticCurveTo(80, 10, 80, 90); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#1e2a38'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(0, -42, 54, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  ctx.fillStyle = '#1e2a38'; ctx.beginPath(); ctx.roundRect(-64, -58, 20, 36, 8); ctx.roundRect(44, -58, 20, 36, 8); ctx.fill();
+  ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-54, -24); ctx.quadraticCurveTo(-50, 2, -18, 0); ctx.stroke(); ctx.beginPath(); ctx.arc(-14, 0, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = '#28c8f0'; ctx.beginPath(); ctx.arc(-38, -36, 44, -1.4, .3); ctx.restore();
+}
+function bubble(lines, size = 34) {   // white speech bubble, tail down-left
+  ctx.font = `800 ${size}px MX`; const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + size * 1.2, h = lines.length * size * 1.25 + size * .8;
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 18; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(-w / 2, -h, w, h, 26); ctx.moveTo(-w / 2 + 40, -2); ctx.lineTo(-w / 2 + 20, 40); ctx.lineTo(-w / 2 + 90, -2); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1b2430'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; lines.forEach((l, i) => ctx.fillText(l, 0, -h + size * .4 + size * 1.25 * (i + .5)));
+}
+function qmark(s, rot) { ctx.save(); ctx.rotate(rot); ctx.font = `900 ${s}px M`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = s * .08; ctx.strokeStyle = '#111'; ctx.strokeText('?', 0, 0); ctx.fillStyle = '#fff'; ctx.fillText('?', 0, 0); ctx.restore(); }
+function ellipseMark(cx, cy, rx, ry, rot, k, col = '#f2e62a') { if (k <= 0) return; ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, rot, -Math.PI * .6, -Math.PI * .6 + Math.PI * 2.05 * k); ctx.stroke(); ctx.restore(); }
+const AREAS = [   // oceanic control areas (rough outlines)
+  { n: ['Гандер'], c: '#3fe06a', P: [[-65, 45], [-51, 45], [-45, 51], [-30, 51], [-30, 61], [-40, 65], [-56, 63], [-65, 58]] },
+  { n: ['Шанвик'], c: '#3fb8ff', P: [[-30, 45], [-15, 45], [-8, 51], [-8, 57], [-10, 61], [-30, 61]] },
+  { n: ['Нью-Йорк'], c: '#ff4a4a', P: [[-65, 45], [-51, 45], [-45, 51], [-40, 44], [-40, 22], [-60, 22], [-67, 30], [-70, 38]] },
+  { n: ['Санта-', 'Мария'], c: '#f2e62a', P: [[-40, 44], [-30, 45], [-15, 45], [-15, 42], [-20, 30], [-25, 22], [-40, 22]] },
+];
+function areas(t, t0, a = 1) {
+  if (a <= 0) return;
+  AREAS.forEach((A, i) => { const q = ap(t, t0 + i * .35, .4); if (q <= 0) return; ctx.save(); ctx.globalAlpha *= a * q;
+    ctx.beginPath(); A.P.forEach((p, j) => { const [x, y] = PX(...p); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath();
+    ctx.fillStyle = A.c + '38'; ctx.fill(); ctx.strokeStyle = A.c; ctx.lineWidth = 5; ctx.shadowColor = A.c; ctx.shadowBlur = 25; ctx.stroke(); ctx.shadowBlur = 0;
+    let sx = 0, sy = 0; A.P.forEach(p => { const [x, y] = PX(...p); sx += x; sy += y; }); sx /= A.P.length; sy /= A.P.length;
+    A.n.forEach((s, j) => txt(s, sx, sy + (j - (A.n.length - 1) / 2) * 44, 40, '#fff', 'MX')); ctx.restore(); });
+}
+function dataRain(t, t0, a) {   // floating numbers = "lots of data"
+  if (a <= 0) return; const r = rnd(21); ctx.save(); ctx.globalAlpha *= a; ctx.font = '800 30px MX'; ctx.textAlign = 'center';
+  for (let i = 0; i < 46; i++) { const x = r() * W, y0 = r() * H, sp = 40 + r() * 80, s = ['36000 ft', 'M0.84', '250 kt', '-56°C', 'FL350', '52N 030W', '+18', 'W 120kt', '0.82'][i % 9];
+    const y = (y0 - (t - t0) * sp + H * 2) % H; ctx.fillStyle = i % 3 ? 'rgba(160,255,200,.75)' : 'rgba(255,255,255,.7)'; ctx.fillText(s, x, y); }
+  ctx.restore();
+}
+
+// ---------- shots (t = voice time) ----------
+const CUTS = [0, 4.72, 13.06, 16.92, 24.42, 27.34, 31.52, 35.38, 37.88, 40.22, 43.16, 52.34, CTA0];
+function punch(t) { let c = 0; for (const x of CUTS) if (t >= x) c = x; return 1 + .07 * (1 - eout((t - c) / .45)); }
+function shot(t) {
+  const P = punch(t); ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(P, P); ctx.translate(-W / 2, -H / 2);
+  if (t < 4.72) {                          // 1. satellite: the narrow band of planes, yellow ellipse
+    cam = camKeys([[-1, -38, 50, 13.5], [1.6, -33, 51, 17, 2.5]], t); base('sat');
+    ctx.save(); ctx.globalAlpha = .55 * (1 - ap(t, 2.4, .6)); const [ox, oy] = PX(-46, 41); txt('Атлантический', ox, oy, 54, '#bfe6ee', 'MX'); txt('океан', ox, oy + 62, 54, '#bfe6ee', 'MX'); ctx.restore();
+    corridor(t, 110, 14, '#fff', .5, 7);
+    const [ex, ey] = PX(-34, 55.5); ellipseMark(ex, ey, 400, 170, -.04, ease((t - 2.6) / .7));
+  } else if (t < 13.06) {                  // 2. flight-radar dark map, "invisible highway", magnifier
+    const zk = ease((t - 9.6) / 1.4);
+    cam = camKeys([[4.72, -45, 30, 7.4], [7.6, -38, 40, 9.5, 2.5], [9.6, -33, 51, 18, 1.4]], t); base('dark');
+    bgTraffic(t, 7 + zk * 5); corridor(t, 520, 7 + zk * 6, '#f2c62a', .7, 9);
+    const [hx, hy] = PX(-33, 54); glowText('Невидимое шоссе?', hx, hy - 150, 64, '#3fe8ff', ap(t, 7.95, .4) * (1 - ap(t, 9.6, .3)));
+    if (t > 9.9) { const q = eout((t - 9.9) / .45), R = 270 * q; ctx.save(); ctx.beginPath(); ctx.arc(W / 2, H * .47, R, 0, 7); ctx.clip();
+      const c0 = cam; cam = { lon: -33, y: my(53.5), s: 48 }; base('dark'); corridor(t, 360, 20, '#f2c62a', 0, 9); cam = c0; ctx.restore();
+      ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 12; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.beginPath(); ctx.arc(W / 2, H * .47, R, 0, 7); ctx.stroke(); ctx.restore();
+      [[-170, -310, -.3, 150], [0, -360, .1, 190], [170, -300, .35, 150]].forEach(([dx, dy, r, s], i) => popIn(t, 11.95 + i * .15, W / 2 + dx, H * .47 + dy, () => qmark(s, r)));
+    }
+  } else if (t < 16.92) {                  // 3. globe: shortest way USA -> Europe (great circle)
+    ctx.fillStyle = '#04101e'; ctx.fillRect(0, 0, W, H); stars();
+    const lon0 = -40 + (t - 13.06) * 2.5, R = 470 * (0.9 + .1 * eout((t - 13.06) / .6));
+    const proj = globe(t, W / 2, H * .47, R, lon0, 38);
+    const G = gcPts([-74, 40.7], [-0.1, 51.5]), k = ease((t - 14.2) / 2);
+    if (k > 0) { ctx.save(); ctx.strokeStyle = '#f2e62a'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.shadowColor = '#f2e62a'; ctx.shadowBlur = 25; ctx.beginPath();
+      const n = Math.max(1, Math.floor(G.length * k) - 1); for (let i = 0; i <= n; i++) { const [x, y] = proj(...G[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); ctx.restore();
+      const [x1, y1] = proj(...G[n]), [x0, y0] = proj(...G[Math.max(0, n - 1)]); plane(x1, y1, Math.atan2(y1 - y0, x1 - x0), 34, '#fff'); }
+    for (const [lo, la, s] of [[-74, 40.7, 'США'], [-0.1, 51.5, 'Европа']]) { const [x, y, c] = proj(lo, la); if (c <= 0) continue; ctx.fillStyle = '#ff3b3b'; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill(); popIn(t, s === 'США' ? 15.24 : 16.1, x, y - 50, () => txt(s, 0, 0, 52)); }
+  } else if (t < 24.42) {                  // 4. jet stream ribbon over the Atlantic, west -> east
+    cam = camKeys([[16.92, -42, 48, 12.5], [21.0, -38, 47, 14, 3]], t); base('sat');
+    jetStream(t, JET, 1, ease((t - 18.9) / 1.4));
+    const [jx, jy] = PX(-40, 58); glowText('Струйное течение', jx, jy - 40, 70, '#3fe8ff', ap(t, 19.8, .4), 2);
+    if (t > 22.9) { const yb = PX(-40, JET(-40))[1] + 150; popIn(t, 23.0, 150, yb, () => badge('Запад', '#2a6ee0', 50)); popIn(t, 23.6, W - 150, yb, () => badge('Восток', '#2a6ee0', 50)); }
+    corridor(t, 26, 15, '#fff', 1.2, 7, ap(t, 17.5, .5));
+  } else if (t < 27.34) {                  // 5. fuel saving & shorter flight
+    cam = camKeys([[24.42, -45, 52, 18]], t); base('sat'); jetStream(t, lo => 47 + .1 * (lo + 45), 1, 1, 5, -80, 0);
+    const fx = lerp(W * .1, W * .8, ease((t - 24.42) / 2.9)); plane(fx, H * .5, -.04, 70, '#fff');
+    popIn(t, 24.6, W / 2, H * .33, () => gauge(ease((t - 24.9) / 1.2)), 1.5);
+    popIn(t, 26.2, W / 2, H * .6, () => txt('Быстрее · Спокойнее', 0, 0, 58, '#fff', 'M'));
+  } else if (t < 31.52) {                  // 6. eastbound 7h vs westbound 8h
+    cam = camKeys([[27.34, -40, 47, 12.2]], t); base('sat');
+    const E = []; for (let i = 0; i <= 40; i++) { const lo = lerp(-74, -2, i / 40); E.push([lo, 41 + 10 * Math.sin(Math.PI * i / 40) + 1 * i / 40]); }
+    const Wr = []; for (let i = 0; i <= 40; i++) { const lo = lerp(-2, -74, i / 40); Wr.push([lo, 52 + 13 * Math.sin(Math.PI * i / 40) - 11 * i / 40]); }
+    const e = polyline(E, ease((t - 28.0) / 1.6), '#38f05a', 8, [26, 18], 18); if (e) plane(e.x, e.y, e.a, 34, '#fff');
+    const w = polyline(Wr, ease((t - 29.4) / 1.9), '#ff3a4a', 8, [26, 18], 18); if (w) plane(w.x, w.y, w.a, 34, '#fff');
+    const [gx, gy] = PX(-38, 46), [rx, ry] = PX(-38, 67.5);
+    popIn(t, 29.68, gx, gy, () => badge('7ч', '#22c444')); popIn(t, 30.66, rx, ry, () => badge('8ч', '#e8304a'));
+  } else if (t < 35.38) {                  // 7. no radar coverage over the ocean
+    cam = camKeys([[31.52, -36, 50, 15]], t); base('dark'); bgTraffic(t, 11); corridor(t, 520, 12, '#f2c62a', .7, 9);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const [lo, la] of [[-56, 48], [-63, 44], [-22, 64.5], [-8, 54], [-5, 50], [-26, 38], [-52, 64]]) { const [x, y] = PX(lo, la), R = 11 * cam.s * (1 + .06 * Math.sin(t * 4 + lo)); const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, 'rgba(60,255,90,.45)'); g.addColorStop(1, 'rgba(60,255,90,0)'); ctx.fillStyle = g; ctx.globalAlpha = ap(t, 32.4, .5); ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill(); }
+    ctx.restore();
+    const q = ap(t, 34.08, .4); if (q > 0) { const [x, y] = PX(-36, 49); ctx.save(); ctx.globalAlpha = q * .55; const g = ctx.createRadialGradient(x, y, 0, x, y, 420); g.addColorStop(0, 'rgba(255,40,60,.85)'); g.addColorStop(1, 'rgba(255,40,60,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 420, 0, 7); ctx.fill(); ctx.restore();
+      popIn(t, 34.1, x, y, () => { txt('Зона', 0, -45, 74, '#ffd0d4'); txt('без радаров', 0, 40, 74, '#ffd0d4'); }); }
+  } else if (t < 37.88) {                  // 8. NAT title
+    cam = camKeys([[35.38, -40, 48, 12.5]], t); base('sat'); corridor(t, 30, 14, '#fff', 1.2, 7);
+    popIn(t, 35.5, W / 2, H * .42, () => { ctx.font = '900 260px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 16; ctx.strokeStyle = '#111'; ctx.strokeText('NAT', 0, 0); ctx.fillStyle = '#f2e62a'; ctx.fillText('NAT', 0, 0); });
+    popIn(t, 36.1, W / 2, H * .42 + 170, () => { txt('Североатлантические', 0, 0, 62, '#f2e62a', 'M', 'center', .9); txt('треки', 0, 72, 62, '#f2e62a', 'M', 'center', .9); });
+  } else if (t < 40.22) {                  // 9. jet stream keeps shifting
+    cam = camKeys([[37.88, -40, 48, 12.5]], t); base('sat');
+    const sh = 7 * Math.sin((t - 37.88) * 2.2); jetStream(t, lo => JET(lo) + sh * Math.sin((lo + 85) / 40), 1, 1, 5);
+    const [x, y] = PX(-40, 64); glowText('Каждый день по-новому', x, y, 52, '#3fe8ff', ap(t, 38.6, .4));
+  } else if (t < 43.16) {                  // 10. oceanic control areas + data
+    cam = camKeys([[40.22, -38, 47, 12.8]], t); base('sat'); areas(t, 40.4); dataRain(t, 41.9, ap(t, 41.9, .5) * .9);
+  } else if (t < 52.34) {                  // 11-13. tracks, pilots request entry, controller assigns
+    cam = camKeys([[43.16, -36, 52, 13.5], [45.6, -52, 53, 21, 1.4], [48.8, -48, 52, 17, 1.4]], t); base('sat');
+    for (let k = 0; k < 6; k++) { const g = polyline(trackPts(k), ease((t - 43.6 - k * .12) / 1.6), '#3bf05a', 7, null, 16); if (g && ease((t - 43.6 - k * .12) / 1.6) > .02) { const P = trackPts(k)[0], [x, y] = PX(...P); arrowHead(x + 18, y, heading(P[0], P[1], P[0] + .5, trackLat(k, P[0] + .5)), 22, '#3bf05a'); } }
+    for (let k = 0; k < 3; k++) polyline(trackPts(k + 6.4), ease((t - 44.4 - k * .12) / 1.6), '#ff3a4a', 7, null, 14);
+    // planes approaching the entry points
+    for (let i = 0; i < 6; i++) { const k = i, P0 = [-72 + (i % 3) * 3, 40 + i * 2.6], P1 = [TR0, trackLat(k, TR0)], f = ease((t - 45.8 - i * .25) / 2.2) * .82 + ease((t - 50.26 - i * .2) / 1.3) * .18;
+      const lo = lerp(P0[0], P1[0], f), la = lerp(P0[1], P1[1], f); const [x, y] = PX(lo, la); plane(x, y, heading(P0[0], P0[1], P1[0], P1[1]), 26, '#fff'); }
+    const [bx, by] = PX(-66, 47.2); popIn(t, 47.04, bx + 30, by - 50, () => bubble(['Запрос', 'на вход в трек'], 44), 1);
+    if (t > 48.7) { const [cx, cy] = PX(-45, 46); popIn(t, 48.95, cx, cy, () => controller(), 1.1); }
+  } else if (t < CTA0) {                  // 14. dark screen, neon planes arranged by speed / altitude / distance
+    ctx.fillStyle = '#04121a'; ctx.fillRect(0, 0, W, H);
+    const g = ctx.createRadialGradient(W / 2, H * .45, 50, W / 2, H * .45, H * .7); g.addColorStop(0, 'rgba(30,90,110,.5)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const r = rnd(5), ks = ease((t - 52.64) / .8), ka = ease((t - 53.34) / .8), kd = ease((t - 53.96) / .8);
+    for (let i = 0; i < 15; i++) { const row = i % 3, col = Math.floor(i / 3), x0 = 140 + r() * 800, y0 = 500 + r() * 800;
+      const x1 = 140 + col * 200, y1 = 560 + row * 300;
+      const x = lerp(x0, lerp(x0, x1, .5), ks) * (1 - kd) + x1 * kd, y = lerp(y0, y1, ka);
+      glowPlane(x + 20 + Math.sin(t * 2 + i) * 6, y, 62); }
+    [['Скорость', 52.64], ['Высота', 53.34], ['Дистанция', 53.96]].forEach(([s, t0], i) => popIn(t, t0, W / 2 + (i - 1) * 330, H * .2, () => badge(s, '#1aa3c8', 48)));
+    if (t > 54.8) popIn(t, 54.85, W / 2, H * .78, () => badge('✓ Безопасно', '#22c444', 64));
+  } else { cam = camKeys([[CTA0, -38, 50, 13.5]], t); base('sat'); corridor(t, 46, 15, '#fff', 1.2, 7); }
+  ctx.restore();
+}
+
+// ---------- captions ----------
+function captions(t) {
+  if (t > CTA0 - .1) return;
+  let c = null; for (const x of CAPS) if (t >= x[0] - .05 && t < x[1] + .15) c = x;
+  if (!c) return; const a = clamp((t - c[0] + .05) / .08) * clamp((c[1] + .15 - t) / .1);
+  ctx.save(); ctx.globalAlpha = a; txt(c[2], W / 2, H * .7, 58, '#fff', 'MS', 'center', .9); ctx.restore();
+}
+// ---------- CTA ----------
+function pill(s, x, y, size, col, a = 1, sc = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.font = `900 ${size}px M`; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = size * .4; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * .28); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(s, 0, size * .04); ctx.restore();
+}
+function book() {
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 25; ctx.fillStyle = '#2f7de1'; ctx.beginPath(); ctx.roundRect(-70, -90, 140, 180, 14); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1d5fb8'; ctx.fillRect(-70, -90, 22, 180); ctx.fillStyle = '#f4f4f4'; ctx.fillRect(56, -82, 10, 164);
+  ctx.fillStyle = '#3fbf3a'; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '900 30px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ЕНТ', 10, 52);
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(10, -15, 38, 0, 7); ctx.moveTo(-28, -15); ctx.lineTo(48, -15); ctx.ellipse(10, -15, 16, 38, 0, 0, 7); ctx.stroke();
+}
+function cta(t) {
+  const a = clamp((t - CTA0) / .5); if (a <= 0) return;
+  ctx.fillStyle = `rgba(4,16,20,${.72 * a})`; ctx.fillRect(0, 0, W, H);
+  const p1 = ap(t, 57.3, .35), p2 = ap(t, 60.45, .35), p3 = ap(t, 63.0, .35);
+  ctx.save(); ctx.globalAlpha = a * p1; txt('Такие темы', W / 2, H * .13, 78); txt('часто попадаются на', W / 2, H * .13 + 90, 60); ctx.restore();
+  pill('ЕНТ по географии', W / 2, H * .13 + 220, 72, '#e8792a', a * ap(t, 59.0), back((t - 59.0) / .45));
+  ctx.save(); ctx.globalAlpha = a * p2; txt('Мы подготовили', W / 2, H * .4, 70); txt('гайд по географии', W / 2, H * .4 + 85, 70); ctx.restore();
+  { const q = ap(t, 61.4, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; const sc = back(q); ctx.translate(W / 2, H * .4 + 235); ctx.scale(sc, sc); book(); ctx.restore(); } }
+  ctx.save(); ctx.globalAlpha = a * p3; txt('Напиши в комментариях', W / 2, H * .6 + 40, 62); ctx.restore();
+  { const q = ap(t, 64.1, .3); if (q > 0) {
+    const pulse = 1 + .06 * Math.sin((t - 64.1) * 8) * ap(t, 64.5), sc = back((t - 64.1) / .45) * pulse;
+    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 230); ctx.scale(sc, sc);
+    ctx.font = '900 110px M'; const w = ctx.measureText('ГЕО').width + 130, h = 180;
+    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 44); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ГЕО', 0, 8); ctx.restore(); } }
+}
+
+function render(T) {
+  const t = T - OFF;
+  ctx = main.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'none';
+  shot(t);
+  vignette(.38);
+  captions(t);
+  cta(t);
+  if (t < -.05) { ctx.fillStyle = `rgba(0,0,0,${clamp(-t / .25)})`; ctx.fillRect(0, 0, W, H); }
+  if (T > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
+}
+window.ready = (async () => {
+  GL = await (await fetch('globe.json')).json(); CAPS = await (await fetch('caps.json')).json();
+  await Promise.all([[SAT, 'sat.jpg'], [DARK, 'dark.jpg']].map(([im, s]) => new Promise(r => { im.onload = r; im.src = s; })));
+  await SAT.decode(); await DARK.decode();
+  SRC = { sat: { img: SAT, L0: -100, YT: 168.94807874816593, S: 30 }, dark: { img: DARK, L0: -170, YT: GL.YT, S: 12 } };
+  for (const f of ['900 40px M', '800 40px MX', '600 40px MS']) await document.fonts.load(f);
+  makeBG(); render(0); return true;
+})();
+</script></body></html>
