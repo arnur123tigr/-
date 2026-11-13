@@ -1,5 +1,5 @@
 #!/bin/bash
-# Kazakh version: python3 make_kk.py (free Edge voice kk-KZ-DauletNeural) -> vo_kk_raw.wav + tmap_kk.json, then this script.
+# Kazakh version: VO = one ElevenLabs take (Ерсұлтан) cut per shot by align_kk.py (or free Edge voice via make_kk.py) -> vo_kk_raw.wav + tmap_kk.json, then this script.
 # Animation is time-remapped per shot to the Kazakh voice (scene.html?lang=kk loads kk.js + tmap_kk.json).
 set -e; cd "$(dirname "$0")"
 ffmpeg -v error -y -i vo_kk_raw.wav -ar 48000 -af "highpass=f=60,equalizer=f=3000:t=q:w=1.2:g=1.5" vo_kk.wav
@@ -14,5 +14,5 @@ mix(){ # $1 = music volume, $2 = output
     -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k -ac 2 -t $DUR -movflags +faststart "$2"
   echo "done $2"
 }
-mix 0.10 jasalash_kk.mp4
+[ "$NO_MUSIC_ONLY" = 1 ] || mix 0.10 jasalash_kk.mp4
 mix 0 jasalash_kk_no_music.mp4
