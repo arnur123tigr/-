@@ -4,7 +4,7 @@ const root = __dirname; const srv = http.createServer((q, r) => { fs.readFile(pa
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 540, height: 960 } });
   p.on('pageerror', e => console.log('ERR', e.message)); p.on('console', m => console.log('LOG', m.text()));
-  await p.goto(`http://localhost:${srv.address().port}/scene.html`); await p.evaluate(() => window.ready);
+  await p.goto(`http://localhost:${srv.address().port}/scene.html${process.env.LANG_Q ? "?lang=" + process.env.LANG_Q : ""}`); await p.evaluate(() => window.ready);
   for (const t of process.argv.slice(2)) { await p.evaluate(t => render(+t), t); await p.screenshot({ path: path.join(process.env.OUT || root, `snap_${String(t).padStart(6, '0')}.png`) }); }
   await b.close(); srv.close();
 })();

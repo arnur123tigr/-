@@ -8,6 +8,8 @@
 const W = 1080, H = 1920, PH = 1135;          // PH = picture area height
 const c = document.getElementById('c'), x = c.getContext('2d');
 const OR = '#f4a83a', RED = '#e5483c', GRN = '#3fbf7f', SKIN = '#f3e6cc', BG = '#0f0d0c';
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const L = s => (LANG === 'kk' && window.KK && window.KK[s] != null) ? window.KK[s] : s;
 const FC = '"Roboto Condensed"', FM = '"JetBrains Mono"';
 let MAP = null;
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
@@ -18,7 +20,7 @@ const back = k => { k = clamp(k); const s = 1.7; return 1 + (s + 1) * Math.pow(k
 const rnd = s => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
 function font(sz, w = 800, f = FC) { x.font = `${w} ${sz}px ${f}`; }
-function txt(s, X, Y, sz, col, w = 800, al = 'center', f = FC) { font(sz, w, f); x.fillStyle = col; x.textAlign = al; x.textBaseline = 'alphabetic'; x.fillText(s, X, Y); }
+function txt(s, X, Y, sz, col, w = 800, al = 'center', f = FC, mw) { s = L(s); font(sz, w, f); x.fillStyle = col; x.textAlign = al; x.textBaseline = 'alphabetic'; if (mw) x.fillText(s, X, Y, mw); else x.fillText(s, X, Y); }
 function glow(X, Y, r, col, a) { const g = x.createRadialGradient(X, Y, 0, X, Y, r); g.addColorStop(0, col.replace('A', a)); g.addColorStop(1, col.replace('A', 0)); x.fillStyle = g; x.fillRect(X - r, Y - r, 2 * r, 2 * r); }
 
 // ------------------------------------------------------------------ timeline
@@ -195,7 +197,7 @@ const SHO = (o = {}) => Object.assign({ coat: '#252a3c', shirt: '#eee', mouth: '
 const TYN = (o = {}) => Object.assign({ cap: '#3a3430', mus: 1, coat: '#4a5a3a' }, o);
 
 function bubble(X, Y, lines, a = 1, tailX = null, tailY = null, sz = 30) {
-  if (a <= 0) return; x.save(); x.globalAlpha = a;
+  if (a <= 0) return; lines = L(lines); x.save(); x.globalAlpha = a;
   font(sz, 700); const ls = lines.split('|'); const w = Math.max(...ls.map(l => x.measureText(l).width)) + 44, h = ls.length * sz * 1.18 + 30;
   x.fillStyle = '#fbf6ee'; rr(X - w / 2, Y - h, w, h, 18); x.fill();
   if (tailX != null) { x.beginPath(); x.moveTo(X - 14, Y - 2); x.lineTo(tailX, tailY); x.lineTo(X + 14, Y - 2); x.fill(); }
@@ -203,7 +205,7 @@ function bubble(X, Y, lines, a = 1, tailX = null, tailY = null, sz = 30) {
   x.restore();
 }
 function label(X, Y, s, a = 1, col = '#fff', sz = 26) {
-  if (a <= 0) return; x.save(); x.globalAlpha = a; font(sz, 700, FM); const w = x.measureText(s).width + 40;
+  if (a <= 0) return; s = L(s); x.save(); x.globalAlpha = a; font(sz, 700, FM); const w = x.measureText(s).width + 40;
   x.fillStyle = 'rgba(15,13,12,.92)'; rr(X - w / 2, Y - 30, w, 54, 10); x.fill(); x.strokeStyle = col; x.lineWidth = 3; x.stroke();
   txt(s, X, Y + 6, sz, col, 700, 'center', FM); x.restore();
 }
@@ -604,7 +606,7 @@ function sceneBook(t, lt) {
   x.fillStyle = '#efe0bc'; x.beginPath(); x.arc(5, -160, 80, 0, 7); x.fill();
   x.save(); x.beginPath(); x.arc(5, -160, 80, 0, 7); x.clip(); person(5, 189, 1.05, BUK({ coat: '#3a2a20' })); x.restore();
   x.strokeStyle = '#e0b84a'; x.lineWidth = 4; x.beginPath(); x.arc(5, -160, 80, 0, 7); x.stroke();
-  txt('ИСТОРИЯ', 5, 30, 56, '#f2d47a', 800); txt('РЕСПУБЛИКИ АЛАШ', 5, 80, 36, '#f2d47a', 700); txt('1917 — 2026', 5, 160, 40, '#fff', 800); x.restore();
+  txt('ИСТОРИЯ', 5, 30, 56, '#f2d47a', 800); txt('РЕСПУБЛИКИ АЛАШ', 5, 80, 36, '#f2d47a', 700, 'center', FC, 410); txt('1917 — 2026', 5, 160, 40, '#fff', 800); x.restore();
   person(120, 1070, .8, ALI({ pose: 'stand', armR: 'phone', look: .7 }));
   fade(1060, PH);
 }
@@ -631,7 +633,7 @@ function sceneCTA(t, lt, sh) {
 // ------------------------------------------------------------------ HUD / captions
 function tag(X, Y, kind, title, sub, a, bar, t) {
   const col = kind === 'o' ? OR : kind === 'r' ? RED : GRN;
-  x.save(); x.globalAlpha = a; font(24, 700, FM); title = title.replace('#', String(9 - Math.floor(t) % 10));
+  title = L(title); sub = L(sub); x.save(); x.globalAlpha = a; font(24, 700, FM); title = title.replace('#', String(9 - Math.floor(t) % 10));
   const w = Math.max(x.measureText(title).width, 160) + 44;
   x.fillStyle = 'rgba(15,12,10,.88)'; rr(X, Y, w, 82, 8); x.fill(); x.strokeStyle = col; x.lineWidth = 3.5; x.stroke();
   txt(title, X + 22, Y + 36, 24, col, 700, 'left', FM); txt(sub, X + 22, Y + 62, 15, 'rgba(240,230,220,.55)', 500, 'left', FM);
@@ -655,9 +657,9 @@ function hud(t, sh) {
   x.restore();
 }
 function caption(t, sh) {
-  if (!sh.cap) return;
+  const cap = LANG === 'kk' && window.KKCAP ? window.KKCAP[sh.i] : sh.cap; if (!cap) return;
   const lt = t - sh.a, a = eout(lt / .25), dy = (1 - a) * 22;
-  const lines = sh.cap.split('|'), sz = sh.small ? 52 : 84, lh = sz * 1.03;
+  const lines = cap.split('|'), sz = sh.small ? 52 : 84, lh = sz * 1.03;
   const y0 = 1270 - (lines.length - 1) * lh / 2 + sz * .35;
   x.save(); x.globalAlpha = a; x.shadowColor = 'rgba(0,0,0,.6)'; x.shadowBlur = 14;
   let col = '#fff'; // state persists across lines
@@ -698,5 +700,5 @@ window.render = function (t) {
   if (sh.card && sh.sc === 'steppe') card(lt, '1930–1937', ['В 1930–1933 годах голод (Ашаршылык)', 'унёс около 1,5 млн жизней.', 'В 1937-м расстреляны Букейханов', 'и Байтурсынов, в 1935-м в лагере', 'умер Дулатов.'], .3);
   hud(t, sh); caption(t, sh); pill();
 };
-window.ready = (async () => { MAP = await (await fetch('map.json')).json(); const T = 'АБВӘӨҚҢҰҮ abc 012 —«»'; for (const f of ['400 40px "Roboto Condensed"', '500 40px "Roboto Condensed"', '700 40px "Roboto Condensed"', '800 40px "Roboto Condensed"', '900 40px "Roboto Condensed"', '500 20px "JetBrains Mono"', '700 20px "JetBrains Mono"']) await document.fonts.load(f, T); await document.fonts.ready; render(0); return true; })();
+window.ready = (async () => { if (LANG === 'kk') await new Promise(r => { const sc = document.createElement('script'); sc.src = 'kk.js'; sc.onload = r; document.head.appendChild(sc); }); MAP = await (await fetch('map.json')).json(); const T = 'АБВӘӨҚҢҰҮ abc 012 —«»'; for (const f of ['400 40px "Roboto Condensed"', '500 40px "Roboto Condensed"', '700 40px "Roboto Condensed"', '800 40px "Roboto Condensed"', '900 40px "Roboto Condensed"', '500 20px "JetBrains Mono"', '700 20px "JetBrains Mono"']) await document.fonts.load(f, T); await document.fonts.ready; render(0); return true; })();
 </script></body></html>

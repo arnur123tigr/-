@@ -8,7 +8,7 @@ const srv = http.createServer((q, r) => { const f = path.join(root, decodeURICom
   const dur = tl.scenes[tl.scenes.length - 1].end, N = Math.round(dur * fps);
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 540, height: 960 } });
   p.on('pageerror', e => console.log('ERR', e.message));
-  await p.goto(`http://localhost:${srv.address().port}/scene.html`); await p.evaluate(() => window.ready);
+  await p.goto(`http://localhost:${srv.address().port}/scene.html${process.env.LANG_Q ? "?lang=" + process.env.LANG_Q : ""}`); await p.evaluate(() => window.ready);
   const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', path.join(root, out)], { stdio: ['pipe', 'inherit', 'inherit'] });
   for (let i = 0; i < N; i++) {
     const url = await p.evaluate(t => { render(t); return document.getElementById('c').toDataURL('image/jpeg', 0.93); }, i / fps);
