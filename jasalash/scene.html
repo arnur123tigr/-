@@ -682,6 +682,7 @@ const SHOTS = SH.map((s, i) => Object.assign({ a: s[0], b: s[1], sc: s[2], cap: 
 SHOTS.forEach((s, i) => { let j = i; while (j > 0 && SHOTS[j - 1].sc === s.sc) j--; s.g0 = SHOTS[j].a; });
 
 window.render = function (t) {
+  if (window.TMAP) { const m = window.TMAP.find(r => t < r[1]) || window.TMAP[window.TMAP.length - 1]; t = m[2] + clamp((t - m[0]) / (m[1] - m[0])) * (m[3] - m[2]); if (t >= m[3]) t = m[3] - 1e-3; }
   const sh = SHOTS.find(s => t >= s.a && t < s.b) || SHOTS[SHOTS.length - 1];
   x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.shadowBlur = 0;
   x.fillStyle = BG; x.fillRect(0, 0, W, H);
@@ -700,5 +701,5 @@ window.render = function (t) {
   if (sh.card && sh.sc === 'steppe') card(lt, '1930–1937', ['В 1930–1933 годах голод (Ашаршылык)', 'унёс около 1,5 млн жизней.', 'В 1937-м расстреляны Букейханов', 'и Байтурсынов, в 1935-м в лагере', 'умер Дулатов.'], .3);
   hud(t, sh); caption(t, sh); pill();
 };
-window.ready = (async () => { if (LANG === 'kk') await new Promise(r => { const sc = document.createElement('script'); sc.src = 'kk.js'; sc.onload = r; document.head.appendChild(sc); }); MAP = await (await fetch('map.json')).json(); const T = 'АБВӘӨҚҢҰҮ abc 012 —«»'; for (const f of ['400 40px "Roboto Condensed"', '500 40px "Roboto Condensed"', '700 40px "Roboto Condensed"', '800 40px "Roboto Condensed"', '900 40px "Roboto Condensed"', '500 20px "JetBrains Mono"', '700 20px "JetBrains Mono"']) await document.fonts.load(f, T); await document.fonts.ready; render(0); return true; })();
+window.ready = (async () => { if (LANG === 'kk') await new Promise(r => { const sc = document.createElement('script'); sc.src = 'kk.js'; sc.onload = r; document.head.appendChild(sc); }); try { window.TMAP = (await (await fetch('tmap_kk.json')).json()).map; } catch (e) {} MAP = await (await fetch('map.json')).json(); const T = 'АБВӘӨҚҢҰҮ abc 012 —«»'; for (const f of ['400 40px "Roboto Condensed"', '500 40px "Roboto Condensed"', '700 40px "Roboto Condensed"', '800 40px "Roboto Condensed"', '900 40px "Roboto Condensed"', '500 20px "JetBrains Mono"', '700 20px "JetBrains Mono"']) await document.fonts.load(f, T); await document.fonts.ready; render(0); return true; })();
 </script></body></html>

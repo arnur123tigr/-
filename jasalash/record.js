@@ -4,7 +4,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), { spaw
 const root = __dirname, out = process.argv[2] || 'video_silent.mp4', fps = +(process.argv[3] || 30);
 const srv = http.createServer((q, r) => { const f = path.join(root, decodeURIComponent(q.url.split('?')[0])); fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); return r.end(); } r.end(d); }); }).listen(0);
 (async () => {
-  const tl = { scenes: [{ end: 165.33 }] };
+  const tl = { scenes: [{ end: +(process.env.DUR || 165.33) }] };
   const dur = tl.scenes[tl.scenes.length - 1].end, N = Math.round(dur * fps);
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 540, height: 960 } });
   p.on('pageerror', e => console.log('ERR', e.message));

@@ -1,11 +1,20 @@
 # Synth SFX bed (whooshes on scene changes, glitch, boom, camera click) + soft ambient music bed.
 import numpy as np, wave
-SR = 48000; DUR = 165.4; N = int(SR * DUR)
+import json, os, sys
+SR = 48000; DUR = 165.4
+TM = json.load(open('tmap_kk.json')) if os.environ.get('LANG_Q') == 'kk' else None
+if TM: DUR = TM['dur'] + 0.5
+N = int(SR * DUR)
+def M(t):  # RU timeline time -> output time
+    if not TM: return t
+    for A, B, a, b in TM['map']:
+        if t < b: return A + (t - a) / (b - a) * (B - A)
+    return t
 rng = np.random.default_rng(7)
 sfx = np.zeros(N); mus = np.zeros(N)
 
-def put(buf, t, sig, g=1.0):
-    i = int(t * SR); j = min(N, i + len(sig)); buf[i:j] += sig[:j - i] * g
+def put(buf, t, sig, g=1.0, raw=False):
+    i = int((t if raw else M(t)) * SR); j = min(N, i + len(sig)); buf[i:j] += sig[:j - i] * g
 
 def env(n, a=0.01, r=0.3):
     t = np.arange(n) / SR; e = np.minimum(1, t / a) * np.exp(-t / r); return e
@@ -51,18 +60,19 @@ chords = [[220, 261.6, 329.6], [174.6, 220, 261.6], [196, 261.6, 329.6], [196, 2
 bar = 4.0
 t = 0; k = 0
 while t < DUR:
-    for f in chords[k % 4]: put(mus, t, tone(f / 2, bar + 1.2), 0.12)
-    put(mus, t, tone(chords[k % 4][0] / 4, bar + 1.2), 0.18)
+    for f in chords[k % 4]: put(mus, t, tone(f / 2, bar + 1.2), 0.12, True)
+    put(mus, t, tone(chords[k % 4][0] / 4, bar + 1.2), 0.18, True)
     for b in range(4):  # soft pluck
         f = chords[k % 4][b % 3]; n = int(SR * 0.6); tt = np.arange(n) / SR
-        put(mus, t + b, np.sin(2 * np.pi * f * tt) * np.exp(-tt * 6), 0.12)
+        put(mus, t + b, np.sin(2 * np.pi * f * tt) * np.exp(-tt * 6), 0.12, True)
     t += bar; k += 1
-fo = np.ones(N); i0, i1 = int(158 * SR), int(165.3 * SR); fo[i0:i1] = np.linspace(1, 0, i1 - i0); fo[i1:] = 0
+fo = np.ones(N); i0, i1 = int(M(158) * SR), int(min(DUR, M(165.3)) * SR); fo[i0:i1] = np.linspace(1, 0, i1 - i0); fo[i1:] = 0
 mus *= fo
 
 def save(name, a):
     a = a / (np.abs(a).max() + 1e-9) * 0.8
     s = (np.clip(a, -1, 1) * 32767).astype(np.int16)
     with wave.open(name, 'wb') as w: w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes(s.tobytes())
-save('sfx.wav', sfx); save('music.wav', mus)
+sx = '_kk' if TM else ''
+save(f'sfx{sx}.wav', sfx); save(f'music{sx}.wav', mus)
 print('ok')
