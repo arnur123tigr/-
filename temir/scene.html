@@ -1,0 +1,408 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:PS;src:url(fonts/PTSerif-Bold.ttf);font-weight:700}
+@font-face{font-family:PSI;src:url(fonts/PTSerif-BoldItalic.ttf);font-weight:700}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Әмір Темір: покорил полмира, но не стал ханом» — parchment map story, KZ / RU.
+// render(T): T = video seconds; voice starts at OFF. Scenes 1 and 6 show Higgsfield clips (frames loaded by record.js via setClipFrame).
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const W = 1080, H = 1920, OFF = 0.3;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const win = (t, a, b, f = .35) => clamp((t - a) / f) * clamp((b - t) / f);
+const lerp = (a, b, k) => a + (b - a) * k;
+const INK = '#3a2414', RED = '#8e1b14', RED2 = '#b0281c', PAPER = '#ecdcb6';
+
+// ---------- per-language timing (voice seconds, from whisper word times) and texts ----------
+const CFG = {
+  ru: {
+    S: [0, 5.15, 12.0, 20.25, 29.0, 36.05, 41.05, 47.25, 54.5],
+    c: { maver: 9.52, samar: 10.62, tree: 12.24, notHe: 15.12, throne: 16.38, emir: 19.36, power: 20.48, ar1: 22.5, ar2: 22.95, ar3: 23.4, ank: 24.5, ankHit: 26.9, bayazid: 28.24,
+      traces: 30.84, maus: 32.3, mausTxt: 33.5, card: 41.2, ans: 45.44, und: 46.02, tarih: 48.04, link: 50.74 },
+    t1: 'НЕ ХАН', t2: ['1370', 'Самарканд'], t3: ['Не чингизид', 'ЭМИР'], t4: ['1389', '1391', '1395', 'Анкара 1402'], t5: ['Мавзолей Ясави', 'Туркестан'], t6: ['Отрар', '1405'],
+    t7: 'ЕНТ: эмир ≠ хан', t8: ['Пиши «тарих»', 'Ссылка в шапке'],
+    L: { samar: 'Самарканд', maver: 'МАВЕРАННАХР', irtysh: 'Иртыш', delhi: 'Дели', horde: 'ЗОЛОТАЯ ОРДА', ott: 'ОСМАНЫ', ankara: 'Анкара', turk: 'Туркестан', otrar: 'Отрар',
+      chingis: 'Чингисхан', sons: ['Джучи', 'Чагатай', 'Угэдэй', 'Толуй'], temir: 'Темир', barlas: 'из рода барлас', khan: 'хан-чингизид', bay: 'Баязид' },
+    q: { head: 'ЕНТ · История Казахстана', q: 'Почему Темир носил титул эмира, а не хана?', a: ['A) Не хотел власти', 'B) Так решил османский султан', 'C) Не был потомком Чингисхана'] },
+    cm: { ph: 'Добавьте комментарий…', word: 'тарих', link: 'ссылка в шапке профиля' }
+  },
+  kk: {
+    S: [0, 6.2, 13.66, 23.5, 33.7, 40.45, 46.25, 52.62, 60.4],
+    c: { maver: 9.7, samar: 11.8, tree: 13.74, notHe: 17.56, throne: 19.5, emir: 22.32, power: 23.58, ar1: 27.56, ar2: 27.95, ar3: 28.35, ank: 29.28, ankHit: 31.0, bayazid: 32.3,
+      traces: 34.58, maus: 36.08, mausTxt: 37.5, card: 46.42, ans: 49.98, und: 51.48, tarih: 53.36, link: 55.9 },
+    t1: 'ХАН ЕМЕС', t2: ['1370', 'Самарқан'], t3: ['Шыңғыс ұрпағы емес', 'ӘМІР'], t4: ['1389', '1391', '1395', 'Анкара 1402'], t5: ['Йассауи кесенесі', 'Түркістан'], t6: ['Отырар', '1405'],
+    t7: 'ҰБТ: әмір ≠ хан', t8: ['Пікірге: «тарих»', 'Сілтеме шапкада'],
+    L: { samar: 'Самарқан', maver: 'МАУАРАННАХР', irtysh: 'Ертіс', delhi: 'Делі', horde: 'АЛТЫН ОРДА', ott: 'ОСМАНДАР', ankara: 'Анкара', turk: 'Түркістан', otrar: 'Отырар',
+      chingis: 'Шыңғыс хан', sons: ['Жошы', 'Шағатай', 'Үгедей', 'Төле'], temir: 'Темір', barlas: 'барлас тайпасынан', khan: 'Шыңғыс ұрпағы', bay: 'Баязид' },
+    q: { head: 'ҰБТ · Қазақстан тарихы', q: 'Неліктен Темір хан емес, әмір атанды?', a: ['A) Билікке ұмтылмады', 'B) Осман сұлтаны солай шешті', 'C) Шыңғыс ұрпағы емес еді'] },
+    cm: { ph: 'Пікір қосу…', word: 'тарих', link: 'сілтеме профиль шапкасында' }
+  }
+}[LANG];
+const S = CFG.S, C = CFG.c, END = S[8] + OFF;
+const sc = t => { let i = 0; while (i < 7 && t >= S[i + 1]) i++; return i + 1; };     // scene number 1..8 for voice time t
+
+// ---------- assets ----------
+const MAPI = new Image(); let MJ = null; const STILL1 = new Image(), STILL6 = new Image(), CLIP = new Image(); let clipOK = false;
+let GRAIN = null, PAPERC = null;
+window.ready = (async () => {
+  MJ = await (await fetch('map.json')).json();
+  await new Promise(r => { MAPI.onload = r; MAPI.src = 'map.jpg'; });
+  await new Promise(r => { STILL1.onload = r; STILL1.onerror = r; STILL1.src = 's1b.png'; });
+  await new Promise(r => { STILL6.onload = r; STILL6.onerror = r; STILL6.src = 's6.png'; });
+  await document.fonts.load('900 40px M'); await document.fonts.load('800 40px MX'); await document.fonts.load('700 40px PS'); await document.fonts.load('700 40px PSI');
+  // paper grain + vignette overlay
+  GRAIN = document.createElement('canvas'); GRAIN.width = W; GRAIN.height = H; const g = GRAIN.getContext('2d'); const id = g.createImageData(W, H);
+  let s = 12345; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < W * H; i++) { const v = rnd(); id.data[i * 4] = 60; id.data[i * 4 + 1] = 40; id.data[i * 4 + 2] = 20; id.data[i * 4 + 3] = v * 26; }
+  g.putImageData(id, 0, 0);
+  const rg = g.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .72); rg.addColorStop(0, 'rgba(60,30,10,0)'); rg.addColorStop(1, 'rgba(50,24,8,.62)');
+  g.fillStyle = rg; g.fillRect(0, 0, W, H);
+  // plain parchment sheet (for tree / card scenes): crop of the map's sea area is too blue, so synthesise
+  PAPERC = document.createElement('canvas'); PAPERC.width = W; PAPERC.height = H; const p = PAPERC.getContext('2d');
+  p.fillStyle = PAPER; p.fillRect(0, 0, W, H);
+  for (let i = 0; i < 260; i++) { const x = rnd() * W, y = rnd() * H, r = 40 + rnd() * 220; const q = p.createRadialGradient(x, y, 0, x, y, r);
+    q.addColorStop(0, `rgba(${150 + rnd() * 40},${110 + rnd() * 30},${60},${.05 + rnd() * .07})`); q.addColorStop(1, 'rgba(150,110,60,0)'); p.fillStyle = q; p.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  return true;
+})();
+window.setClipFrame = async url => { if (!url) { clipOK = false; return; } CLIP.src = url; await CLIP.decode(); clipOK = true; };
+
+// ---------- camera over the map: [voice t, lon, lat, px per degree lat, move duration] ----------
+const CAM = [[0, 66.8, 41, 46, 0], [S[1], 66.8, 41, 46, 0], [S[1] + .1, 66.96, 39.8, 80, S[2] - S[1] - .2],
+  [S[3], 63, 44, 44, 0], [C.ar1 - .8, 58, 45.5, 40, 2.2], [C.ank - .3, 45.5, 45, 38, 2.6],
+  [S[4], 50, 44, 40, 0], [S[4] + .2, 68.25, 46.6, 110, 2.6]];
+let cam = { lon: 66, lat: 41, s: 46 };
+function camAt(t) {
+  let c = { lon: CAM[0][1], lat: CAM[0][2], s: CAM[0][3] };
+  for (const [t0, lon, lat, s, d] of CAM) {
+    if (t < t0) break; const k = d ? ease((t - t0) / d) : 1;
+    c = { lon: lerp(c.lon, lon, k), lat: lerp(c.lat, lat, k), s: Math.exp(lerp(Math.log(c.s), Math.log(s), k)) };
+  }
+  return c;
+}
+const PX = (lon, lat) => [W / 2 + (lon - cam.lon) * cam.s * MJ.KX, H * .53 - (lat - cam.lat) * cam.s];
+function drawMap() {
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+  const f = cam.s / MJ.S, [x0, y0] = PX(MJ.L0, MJ.B1);
+  ctx.drawImage(MAPI, x0, y0, MJ.W * f, MJ.H * f);
+}
+function path(pts) { ctx.beginPath(); pts.forEach(([lo, la], i) => { const [x, y] = PX(lo, la); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }
+
+// ---------- text helpers ----------
+function txt(s, x, y, size, col = INK, font = 'PS', align = 'center', halo = 'rgba(240,226,190,.85)') {
+  ctx.font = `${font === 'M' ? 900 : font === 'MX' ? 800 : 700} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (halo) { ctx.lineJoin = 'round'; ctx.strokeStyle = halo; ctx.lineWidth = size * .22; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = col; ctx.fillText(s, x, y);
+}
+function fit(s, size, maxW, font = 'PS') { ctx.font = `700 ${size}px ${font}`; const w = ctx.measureText(s).width; return w > maxW ? size * maxW / w : size; }
+function label(s, lon, lat, a, size = 44, col = INK, font = 'PSI', dy = 0) { if (a <= 0) return; const [x, y] = PX(lon, lat); ctx.save(); ctx.globalAlpha = a; txt(s, x, y + dy, size, col, font); ctx.restore(); }
+function city(lon, lat, a, name, size = 46, dx = 0, dy = -50, col = RED) {
+  if (a <= 0) return; const [x, y] = PX(lon, lat); ctx.save(); ctx.globalAlpha = clamp(a * 2);
+  const k = back(clamp(a * 1.5)); ctx.fillStyle = 'rgba(176,40,28,.25)'; ctx.beginPath(); ctx.arc(x, y, 34 * k * (1 + .15 * Math.sin(a * 14)), 0, 7); ctx.fill();
+  ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, 14 * k, 0, 7); ctx.fill(); ctx.stroke();
+  if (name) { ctx.globalAlpha = clamp(a * 2 - .3); txt(name, x + dx, y + dy, size, INK, 'PS'); } ctx.restore();
+}
+// top cartouche caption (parchment ribbon with ink frame)
+function banner(lines, a, y = 250, big = 92, small = 58, colBig = RED) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const k = eout(a);
+  const fb = fit(lines[0], big, 860, 'PS'), fs = lines[1] ? fit(lines[1], small, 860, 'PSI') : 0;
+  ctx.font = `700 ${fb}px PS`; let w = ctx.measureText(lines[0]).width; if (lines[1]) { ctx.font = `700 ${fs}px PSI`; w = Math.max(w, ctx.measureText(lines[1]).width); }
+  w = Math.min(980, w + 120); const h = lines[1] ? fb + fs + 70 : fb + 60, x = W / 2 - w / 2 * (.6 + .4 * k), ww = w * (.6 + .4 * k);
+  ctx.shadowColor = 'rgba(40,20,5,.5)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8; ctx.fillStyle = '#f1e3c0'; ctx.fillRect(x, y - h / 2, ww, h); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(x + 10, y - h / 2 + 10, ww - 20, h - 20); ctx.lineWidth = 2; ctx.strokeRect(x + 18, y - h / 2 + 18, ww - 36, h - 36);
+  if (lines[1]) { txt(lines[0], W / 2, y - fs / 2 - 4, fb, colBig, 'PS', 'center', null); txt(lines[1], W / 2, y + fb / 2 + 2, fs, INK, 'PSI', 'center', null); }
+  else txt(lines[0], W / 2, y + 4, fb, colBig, 'PS', 'center', null);
+  ctx.restore();
+}
+// big clean title over video (scenes 1 and 6)
+function vidTitle(s, a, y, size = 130, col = '#fff') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const yy = y + (1 - eout(a)) * 30;
+  ctx.font = `900 ${size}px M`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 6; ctx.fillStyle = col; ctx.fillText(s, W / 2, yy); ctx.restore();
+}
+
+// ---------- ink drawing helpers ----------
+function strokePart(pts, k) { // pts in screen px; returns drawn partial path, tip and direction
+  let L = 0; const seg = []; for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); L += d; }
+  let need = L * clamp(k); const q = [pts[0]]; let dir = 0;
+  for (let i = 1; i < pts.length && need > 0; i++) { const d = seg[i - 1], f = Math.min(1, need / d); q.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f]); dir = Math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]); need -= d; }
+  return { q, dir };
+}
+function smooth(ll, n = 14) { // Catmull-Rom through lon/lat points -> screen points
+  const P = ll.map(p => PX(p[0], p[1])), out = [];
+  for (let i = 0; i < P.length - 1; i++) { const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || P[i + 1];
+    for (let j = 0; j < n; j++) { const t = j / n, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map(c => .5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3))); } }
+  out.push(P[P.length - 1]); return out;
+}
+function bigArrow(ll, k, a = 1, w = 30, col = RED) { // dark-red campaign arrow, tapering, with ink edge
+  if (k <= 0 || a <= 0) return; const { q, dir } = strokePart(smooth(ll), k); if (q.length < 2) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); q.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); };
+  ctx.shadowColor = 'rgba(40,10,0,.35)'; ctx.shadowBlur = 12; line(INK, w + 8); ctx.shadowColor = 'transparent'; line(col, w); line('rgba(255,140,110,.25)', w * .3);
+  const [hx, hy] = q[q.length - 1]; ctx.translate(hx, hy); ctx.rotate(dir); const hs = w * 1.9;
+  ctx.beginPath(); ctx.moveTo(hs * .9, 0); ctx.lineTo(-hs * .5, -hs * .8); ctx.lineTo(-hs * .25, 0); ctx.lineTo(-hs * .5, hs * .8); ctx.closePath();
+  ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.stroke(); ctx.restore();
+}
+function hatch(poly, a, col = 'rgba(142,27,20,', fill = .32) { // red region with diagonal ink hatching + dashed border
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; path(poly); ctx.fillStyle = col + fill + ')'; ctx.fill(); ctx.save(); ctx.clip();
+  ctx.strokeStyle = col + '.45)'; ctx.lineWidth = 3; for (let x = -H; x < W + H; x += 26) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke(); } ctx.restore();
+  path(poly); ctx.setLineDash([18, 10]); ctx.strokeStyle = col + '.95)'; ctx.lineWidth = 6; ctx.stroke(); ctx.restore();
+}
+// ink reveal of a closed region (clip by expanding circle) — for the red flood of Maverannahr
+function flood(poly, k, cx, cy, a = 1) { if (k <= 0) return; ctx.save(); const [x, y] = PX(cx, cy); ctx.beginPath(); ctx.arc(x, y, k * 900, 0, 7); ctx.clip(); hatch(poly, a, 'rgba(142,27,20,', .42); ctx.restore(); }
+function swords(x, y, s, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s * back(a), s * back(a));
+  for (const sg of [1, -1]) { ctx.save(); ctx.rotate(sg * Math.PI / 4); ctx.fillStyle = '#e8dcc0'; ctx.strokeStyle = INK; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-6, 40); ctx.lineTo(-6, -60); ctx.lineTo(0, -78); ctx.lineTo(6, -60); ctx.lineTo(6, 40); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = RED; ctx.fillRect(-22, 38, 44, 9); ctx.strokeRect(-22, 38, 44, 9); ctx.fillStyle = INK; ctx.fillRect(-5, 47, 10, 26); ctx.restore(); }
+  ctx.restore(); }
+
+// ---------- regions (approximate, hand-placed lon/lat) ----------
+const MAVER = [[60.2, 42.4], [61.2, 44.2], [62.8, 44.9], [65.2, 44.6], [66.6, 43.6], [68.1, 42.5], [69.2, 41.5], [70.4, 41.0], [71.8, 41.1], [72.9, 40.9], [73.2, 40.2],
+  [72.2, 39.4], [71.0, 38.9], [70.0, 38.0], [68.7, 37.2], [67.2, 37.2], [65.6, 37.6], [64.2, 38.6], [62.8, 39.6], [61.6, 40.8], [60.6, 41.6]];
+const HORDE = [[36, 46], [38, 49.5], [42, 52.5], [47, 55.6], [53, 56.2], [58, 55.6], [62, 54.5], [67, 53.5], [72, 52.5], [74, 49], [70, 46.5], [66, 45.4], [62.8, 45.3],
+  [59, 45.5], [55, 45.3], [53, 44.6], [51, 44.2], [47.5, 43.7], [44.5, 44.3], [40, 45.4], [37.5, 45.4]];
+const OTT = [[26, 41.2], [28.5, 41.9], [32, 42], [36, 41.6], [38.5, 40.8], [38.8, 38.6], [36.5, 37], [33, 36.4], [30, 36.6], [27.2, 37.4], [26.2, 39.2]];
+const SAM = [66.96, 39.65];
+
+// ---------- scene 1 / 6: video clip (or still fallback) ----------
+function clipScene(t0, t1, t, still, push) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (clipOK) { ctx.drawImage(CLIP, 0, 0, W, H); return; }
+  if (!still.naturalWidth) return; const k = (t - t0) / (t1 - t0), z = push > 0 ? 1 + .08 * k : 1.08 - .08 * k;
+  const iw = W * z, ih = iw * still.naturalHeight / still.naturalWidth; ctx.drawImage(still, W / 2 - iw / 2, H / 2 - ih / 2, iw, ih);
+}
+function scene1(t) {
+  clipScene(0, S[1], t, STILL1, 1);
+  const g = ctx.createLinearGradient(0, H * .55, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.6)'); ctx.fillStyle = g; ctx.fillRect(0, H * .55, W, H * .45);
+  const a = win(t, 2.7, S[1] + 1, .5);
+  vidTitle(CFG.t1, a, 1500, 150);
+  if (a > 0) { ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = RED2; ctx.lineWidth = 14; ctx.lineCap = 'round'; const k = eout((t - 3.9) / .5);  // red strike-through under the word
+    ctx.font = '900 150px M'; const w = ctx.measureText(CFG.t1).width; ctx.beginPath(); ctx.moveTo(W / 2 - w / 2 - 20, 1600); ctx.lineTo(W / 2 - w / 2 - 20 + (w + 40) * k, 1600); ctx.stroke(); ctx.restore(); }
+}
+function scene6(t) {
+  clipScene(S[5], S[6], t, STILL6, -1);
+  const g = ctx.createLinearGradient(0, H * .55, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.65)'); ctx.fillStyle = g; ctx.fillRect(0, H * .55, W, H * .45);
+  const a = win(t, S[5] + .4, S[6] + 1, .5);
+  vidTitle(CFG.t6[0], a, 1480, 130); vidTitle(CFG.t6[1], clamp((t - S[5] - .8) / .5) * a, 1630, 100, '#f3c77a');
+}
+
+// ---------- scene 2: Maverannahr fills red, Samarkand lights up ----------
+function mapLabels(t, a = 1) {
+  label(CFG.L.horde, 52, 50.5, a * .55, 44, 'rgba(58,36,20,.8)', 'PSI'); label(CFG.L.irtysh, 76.5, 52.8, a * .7, 36, '#3a4658', 'PSI');
+  label(CFG.L.delhi, 77.2, 28.6, a * .8, 38, INK, 'PS');
+}
+function scene2(t) {
+  drawMap(); mapLabels(t, .7);
+  flood(MAVER, eout((t - C.maver + .3) / 1.4), 67, 40.5);
+  label(CFG.L.maver, 66.2, 41.4, clamp((t - C.maver - .3) / .6) * (1 - clamp((t - C.samar - .2) / .5) * .4), 46, RED, 'PS');
+  city(SAM[0], SAM[1], clamp((t - C.samar + .2) / .6), CFG.L.samar, 52, 0, -58);
+  banner(CFG.t2, clamp((t - S[1] - .4) / .5), 250, 110, 66);
+}
+
+// ---------- scene 3: genealogy tree of Chinggis Khan, Temir outside, puppet khan on the throne ----------
+function inkLine(x1, y1, x2, y2, k, lw = 5) { if (k <= 0) return; ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(lerp(x1, x2, clamp(k)), lerp(y1, y2, clamp(k))); ctx.stroke(); }
+function medallion(x, y, r, a, name, fill = '#f3e6c4', ring = INK, nameSize = 40) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 2); const k = back(a); ctx.translate(x, y); ctx.scale(k, k);
+  ctx.fillStyle = fill; ctx.strokeStyle = ring; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill(); ctx.stroke(); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r - 9, 0, 7); ctx.stroke();
+  // little bust silhouette
+  ctx.fillStyle = ring; ctx.beginPath(); ctx.arc(0, -r * .18, r * .26, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(0, r * .5, r * .5, r * .34, 0, Math.PI, 0); ctx.fill();
+  ctx.restore(); if (name) { ctx.save(); ctx.globalAlpha = clamp(a * 2 - .4); txt(name, x, y + r + nameSize * .8, nameSize, INK, 'PS'); ctx.restore(); }
+}
+function crown(x, y, s, col = '#c9971a') { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-40, 20); ctx.lineTo(-44, -20); ctx.lineTo(-22, 0); ctx.lineTo(0, -30); ctx.lineTo(22, 0); ctx.lineTo(44, -20); ctx.lineTo(40, 20); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+function throne(x, y, s, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s * back(a), s * back(a));
+  ctx.fillStyle = '#7a1a12'; ctx.strokeStyle = INK; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-90, 120); ctx.lineTo(-90, -150); ctx.quadraticCurveTo(0, -230, 90, -150); ctx.lineTo(90, 120); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c9971a'; ctx.fillRect(-120, 40, 240, 34); ctx.strokeRect(-120, 40, 240, 34); ctx.fillRect(-110, 74, 24, 70); ctx.strokeRect(-110, 74, 24, 70); ctx.fillRect(86, 74, 24, 70); ctx.strokeRect(86, 74, 24, 70);
+  ctx.restore(); }
+function puppet(x, y, s, a, t) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  const sw = Math.sin(t * 2.2) * .06; ctx.rotate(sw);
+  ctx.fillStyle = '#efe0bd'; ctx.strokeStyle = INK; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(0, -70, 30, 0, 7); ctx.fill(); ctx.stroke();                                   // head
+  ctx.fillStyle = '#2d4f7c'; ctx.beginPath(); ctx.moveTo(-46, -36); ctx.lineTo(46, -36); ctx.lineTo(58, 60); ctx.lineTo(-58, 60); ctx.closePath(); ctx.fill(); ctx.stroke();   // robe
+  ctx.beginPath(); ctx.moveTo(-44, -26); ctx.lineTo(-74 + Math.sin(t * 2.2 + 1) * 8, 20); ctx.moveTo(44, -26); ctx.lineTo(74 + Math.sin(t * 2.2) * 8, 20); ctx.stroke();       // arms
+  crown(0, -112, .7); ctx.restore(); }
+function scene3(t) {
+  ctx.drawImage(PAPERC, 0, 0);
+  const t0 = C.tree, L = CFG.L;
+  // root
+  const rx = 400, ry = 560; medallion(rx, ry, 70, clamp((t - t0) / .5), L.chingis, '#f3e6c4', INK, 44);
+  if (t > t0) crown(rx, ry - 92, .75);
+  // four sons and grandchildren, ink drawn
+  const sons = [[150, 900], [320, 900], [490, 900], [660, 900]];
+  sons.forEach(([x, y], i) => {
+    const k = (t - t0 - .5 - i * .25) / .5;
+    inkLine(rx, ry + 100, rx, 760, k * 2); inkLine(rx, 760, x, 760, k * 1.6); inkLine(x, 760, x, y - 52, k * 1.2 - .5);
+    medallion(x, y, 46, clamp(k - .6), L.sons[i], '#f3e6c4', INK, 32);
+    for (let j = 0; j < 3; j++) { const gx = x - 50 + j * 50, kk = (t - t0 - 1.6 - i * .2 - j * .1) / .4;
+      inkLine(x, y + 92, gx, 1060, kk); if (kk > 0) { ctx.save(); ctx.globalAlpha = clamp(kk - .5); ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(gx, 1074, 12, 0, 7); ctx.fill(); ctx.restore(); } }
+  });
+  // dashed frame around the dynasty
+  const fa = clamp((t - t0 - 2.4) / .6); if (fa > 0) { ctx.save(); ctx.globalAlpha = fa * .8; ctx.setLineDash([16, 12]); ctx.strokeStyle = RED; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect(70, 420, 670, 700, 40); ctx.stroke(); ctx.restore(); }
+  // Temir outside the tree
+  const ta = clamp((t - C.notHe + .2) / .5), tx = 900, ty = 640;
+  medallion(tx, ty, 74, ta, L.temir, '#f6d9c8', RED, 46); if (ta > 0) { ctx.save(); ctx.globalAlpha = ta; txt(L.barlas, tx, ty + 160, fit(L.barlas, 30, 300, 'PSI'), INK, 'PSI'); ctx.restore(); }
+  const xa = clamp((t - C.notHe - .5) / .4); if (xa > 0) { ctx.save(); ctx.strokeStyle = RED2; ctx.lineWidth = 12; ctx.lineCap = 'round'; // red cross between tree and Temir
+    const cx0 = 790, cy0 = 520; ctx.beginPath(); ctx.moveTo(cx0 - 26, cy0 - 26); ctx.lineTo(cx0 - 26 + 52 * clamp(xa * 2), cy0 - 26 + 52 * clamp(xa * 2)); ctx.stroke();
+    if (xa > .5) { ctx.beginPath(); ctx.moveTo(cx0 + 26, cy0 - 26); ctx.lineTo(cx0 + 26 - 52 * clamp(xa * 2 - 1), cy0 - 26 + 52 * clamp(xa * 2 - 1)); ctx.stroke(); } ctx.restore(); }
+  // throne with puppet khan, strings to Temir
+  const th = clamp((t - C.throne) / .6), px = 330, py = 1470;
+  throne(px, py, 1.15, th); puppet(px, py - 70, 1.15, clamp((t - C.throne - .5) / .5), t);
+  if (th > 0) { ctx.save(); ctx.globalAlpha = clamp((t - C.throne - .5) / .5); txt(L.khan, px, py + 230, 38, INK, 'PSI'); ctx.restore(); }
+  const sk = clamp((t - C.throne - 1.1) / 1.0); if (sk > 0) { ctx.save(); ctx.strokeStyle = 'rgba(58,36,20,.85)'; ctx.lineWidth = 3;
+    const hx = tx - 10, hy = ty + 230; // Temir's "hand" (control bar)
+    ctx.save(); ctx.globalAlpha = sk; ctx.fillStyle = '#6b4423'; ctx.translate(hx, hy); ctx.rotate(-.3 + Math.sin(t * 2.2) * .08); ctx.fillRect(-90, -8, 180, 16); ctx.strokeRect(-90, -8, 180, 16); ctx.restore();
+    const ends = [[px - 74, py - 50], [px + 74, py - 50], [px, py - 175]];
+    ends.forEach(([ex, ey], i) => { const sx = hx - 80 + i * 80, sy = hy + (i - 1) * 20; const q = strokePart([[sx, sy], [lerp(sx, ex, .5), lerp(sy, ey, .5) + 30], [ex, ey]], sk).q;
+      ctx.beginPath(); q.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); });
+    ctx.restore(); }
+  // ӘМІР stamp
+  const ea = clamp((t - C.emir) / .35);
+  if (ea > 0) { ctx.save(); ctx.translate(tx - 10, ty - 175); ctx.rotate(-.12); const k = 1 + (1 - eout(ea)) * 1.4; ctx.scale(k, k); ctx.globalAlpha = ea;
+    ctx.strokeStyle = RED2; ctx.lineWidth = 8; ctx.strokeRect(-150, -60, 300, 120); ctx.lineWidth = 3; ctx.strokeRect(-140, -50, 280, 100);
+    txt(CFG.t3[1], 0, 4, 82, RED2, 'PS', 'center', null); ctx.restore(); }
+  // caption
+  banner([CFG.t3[0]], clamp((t - S[2] - .3) / .5), 230, 74, 0, INK);
+}
+
+// ---------- scene 4: three arrows at the Golden Horde, fourth to Ankara ----------
+const AR = [[SAM, [66.5, 42.5], [68.5, 45.8], [67.5, 48.2]],            // 1389: into the steppe across the Syr Darya
+  [SAM, [69.2, 41.3], [67, 47], [61, 51.5], [53.5, 53.2], [50, 53.3]],   // 1391: through Kazakh steppe to the Kondurcha
+  [SAM, [61, 37.5], [53, 37.5], [49.5, 40], [48, 42.2], [45.5, 43.8]],   // 1395: via Derbent to the Terek
+  [SAM, [60, 36.8], [52, 35.8], [46.3, 38.1], [40, 39.6], [33.6, 40.0]]];// 1402: through Iran and Tabriz to Ankara
+const ARL = [[69, 49.2], [50, 54.6], [44.5, 45.2], [37.2, 41.9]];
+function scene4(t) {
+  drawMap();
+  hatch(MAVER, .8, 'rgba(142,27,20,', .3);
+  hatch(HORDE, clamp((t - S[3] - .2) / .6) * .9, 'rgba(120,85,40,', .18);
+  label(CFG.L.horde, 56, 50.4, clamp((t - S[3] - .3) / .6), 58, INK, 'PS');
+  hatch(OTT, clamp((t - C.ank) / .8) * .9, 'rgba(40,70,110,', .2); label(CFG.L.ott, 33.5, 38.0, clamp((t - C.ank - .2) / .6), 46, '#22385a', 'PS');
+  city(SAM[0], SAM[1], 1, CFG.L.samar, 40, 0, 48);
+  const st = [C.ar1, C.ar2, C.ar3, C.ank];
+  st.forEach((s0, i) => { const d = i < 3 ? 1.1 : 2.2, k = eout((t - s0) / d);
+    bigArrow(AR[i], k, 1, i < 3 ? 26 : 30);
+    const la = clamp((t - s0 - d * .8) / .4); if (la > 0) label(CFG.t4[i], ARL[i][0], ARL[i][1], la, i < 3 ? 50 : 56, RED, 'PS');
+  });
+  const [ax, ay] = PX(32.86, 39.93); swords(ax, ay, .8, clamp((t - C.ankHit) / .4));
+  if (t > C.bayazid) label(CFG.L.bay, 32.86, 37.6, clamp((t - C.bayazid) / .5), 40, INK, 'PSI');
+  // year ribbon at top: years appear one by one
+  const ra = clamp((t - C.ar1 + .3) / .5); if (ra > 0) {
+    ctx.save(); ctx.globalAlpha = ra; ctx.fillStyle = '#f1e3c0'; ctx.shadowColor = 'rgba(40,20,5,.5)'; ctx.shadowBlur = 24; ctx.fillRect(60, 170, 960, 150); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(70, 180, 940, 130);
+    const xs = [175, 345, 515, 790]; st.forEach((s0, i) => { const a = clamp((t - s0) / .3); if (a > 0) { ctx.globalAlpha = ra * a; txt(CFG.t4[i], xs[i], 247, i < 3 ? 62 : 58, i < 3 ? RED : INK, 'PS', 'center', null);
+      if (i < 3) { ctx.fillStyle = INK; ctx.fillText('·', xs[i] + 85, 247); } } }); ctx.restore(); }
+}
+
+// ---------- scene 5: zoom to Turkestan, ink drawing of the Yasawi mausoleum ----------
+function mausoleum(x, y, s, k) { // k 0..1 drawing progress
+  if (k <= 0) return; ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const parts = [
+    [[-330, 0], [-330, -300], [-150, -300], [-150, 0]],                                     // left wing
+    [[150, 0], [150, -260], [330, -260], [330, 0]],                                         // right wing
+    [[-150, 0], [-150, -560], [150, -560], [150, 0]],                                       // portal (peshtak)
+    [[-80, 0], [-80, -380], [0, -470], [80, -380], [80, 0]],                                // portal arch
+    [[-330, 0], [330, 0]],
+    [[175, -260], [175, -340], [190, -400], [250, -440], [310, -400], [325, -340], [325, -260]], // ribbed dome
+    [[250, -440], [250, -480]],
+    [[-310, -300], [-310, -350], [-290, -390], [-240, -410], [-190, -390], [-170, -350], [-170, -300]], // small dome
+    [[-165, -560], [-165, -600]], [[165, -560], [165, -600]]
+  ];
+  const tot = parts.length; ctx.strokeStyle = INK; ctx.lineWidth = 9;
+  parts.forEach((p, i) => { const kk = clamp(k * tot - i); if (kk <= 0) return; const q = strokePart(p, kk).q; ctx.beginPath(); q.forEach(([a, b], j) => j ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.stroke(); });
+  const f = clamp(k * 1.4 - .6); if (f > 0) { ctx.globalAlpha = f * .5; ctx.fillStyle = '#3d7fa6';   // turquoise dome wash
+    ctx.beginPath(); ctx.moveTo(175, -260); ctx.lineTo(175, -340); ctx.quadraticCurveTo(190, -430, 250, -440); ctx.quadraticCurveTo(310, -430, 325, -340); ctx.lineTo(325, -260); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#b9925a'; ctx.globalAlpha = f * .35; ctx.fillRect(-150, -560, 300, 560); ctx.fillRect(-330, -300, 180, 300); ctx.fillRect(150, -260, 180, 260);
+    ctx.globalAlpha = f * .8; ctx.strokeStyle = INK; ctx.lineWidth = 4; for (let yy = -520; yy < -20; yy += 46) { ctx.beginPath(); ctx.moveTo(-140, yy); ctx.lineTo(-90, yy); ctx.moveTo(90, yy); ctx.lineTo(140, yy); ctx.stroke(); } }
+  ctx.restore(); }
+function scene5(t) {
+  drawMap(); hatch(MAVER, .5, 'rgba(142,27,20,', .2);
+  const [x, y] = PX(68.25, 43.3); city(68.25, 43.3, clamp((t - S[4] - 1.6) / .5), CFG.L.turk, 54, 0, -62);
+  { const oa = clamp((t - S[4] - 2.0) / .5) * .9, [ox, oy] = PX(68.3, 42.85); if (oa > 0) { ctx.save(); ctx.globalAlpha = oa; ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(ox, oy, 8, 0, 7); ctx.fill(); ctx.restore(); label(CFG.L.otrar, 68.3, 42.85, oa, 38, INK, 'PSI', 40); } }
+  // paper inset with the mausoleum, rising from the point
+  const ia = clamp((t - C.maus + .4) / .5); if (ia > 0) { ctx.save(); ctx.globalAlpha = ia; ctx.shadowColor = 'rgba(40,20,5,.5)'; ctx.shadowBlur = 26;
+    ctx.fillStyle = 'rgba(241,227,192,.94)'; ctx.fillRect(140, 430, 800, 760); ctx.shadowColor = 'transparent'; ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(154, 444, 772, 732);
+    ctx.lineWidth = 4; ctx.setLineDash([12, 10]); ctx.beginPath(); ctx.moveTo(540, 1190); ctx.lineTo(x, y - 100); ctx.stroke(); ctx.restore();
+    mausoleum(540, 1100, 1.0, (t - C.maus) / 2.6); }
+  banner(CFG.t5, clamp((t - C.mausTxt) / .5), 250, 84, 60);
+}
+
+// ---------- scene 7: exam card ----------
+function scene7(t) {
+  ctx.drawImage(PAPERC, 0, 0); const Q = CFG.q; const a = clamp((t - S[6] - .1) / .5);
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(0, (1 - eout(a)) * 80);
+  ctx.shadowColor = 'rgba(40,20,5,.45)'; ctx.shadowBlur = 34; ctx.shadowOffsetY = 10; ctx.fillStyle = '#fbf3df'; ctx.fillRect(90, 520, 900, 900); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.strokeRect(110, 540, 860, 860);
+  ctx.fillStyle = RED; ctx.fillRect(110, 540, 860, 96); txt(Q.head, W / 2, 590, fit(Q.head, 46, 780, 'M'), '#fbf3df', 'M', 'center', null);
+  // wrap question
+  ctx.font = '700 54px PS'; const words = Q.q.split(' '), lines = []; let cur = '';
+  for (const w of words) { const tst = cur ? cur + ' ' + w : w; if (ctx.measureText(tst).width > 760) { lines.push(cur); cur = w; } else cur = tst; } lines.push(cur);
+  lines.forEach((l, i) => txt(l, 160, 720 + i * 66, 54, INK, 'PS', 'left', null));
+  const y0 = 760 + lines.length * 66;
+  Q.a.forEach((s, i) => { const yy = y0 + i * 130, isA = i === 2; const sa = clamp((t - S[6] - .5 - i * .25) / .4); ctx.save(); ctx.globalAlpha = a * sa;
+    ctx.strokeStyle = 'rgba(58,36,20,.35)'; ctx.lineWidth = 2; ctx.strokeRect(150, yy - 50, 780, 100);
+    txt(s, 180, yy, fit(s, 46, 720, 'PS'), INK, 'PS', 'left', null);
+    if (isA) { const u = eout((t - C.und) / .6); if (u > 0) { ctx.strokeStyle = RED2; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.font = `700 ${fit(s, 46, 720, 'PS')}px PS`; const w = ctx.measureText(s).width;
+        ctx.beginPath(); for (let k = 0; k <= 40 * u; k++) { const xx = 180 + w * k / 40, yy2 = yy + 34 + Math.sin(k * .7) * 3; k ? ctx.lineTo(xx, yy2) : ctx.moveTo(xx, yy2); } ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(170 + 0, yy, 34, 40, 0, 0, 7 * u); ctx.stroke(); } }
+    ctx.restore(); });
+  // check mark
+  const ck = clamp((t - C.und - .5) / .4); if (ck > 0) { ctx.strokeStyle = RED2; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; const yy = y0 + 260;
+    const q = strokePart([[850, yy - 5], [880, yy + 30], [940, yy - 50]], ck).q; ctx.beginPath(); q.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+  ctx.restore();
+  banner([CFG.t7], clamp((t - C.ans + .2) / .5), 1580, 92, 0, RED);
+}
+
+// ---------- scene 8: comment CTA ----------
+function scene8(t) {
+  ctx.drawImage(PAPERC, 0, 0); const M = CFG.cm, a = clamp((t - S[7] - .1) / .5);
+  // profile header sketch at the top
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.fillStyle = 'rgba(241,227,192,.9)';
+  ctx.beginPath(); ctx.roundRect(90, 150, 900, 300, 30); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(230, 300, 90, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(230, 270, 34, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(230, 370, 56, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+  for (let i = 0; i < 3; i++) { ctx.fillStyle = 'rgba(58,36,20,.25)'; ctx.fillRect(370, 230 + i * 50, [520, 420, 300][i], 22); }
+  // link line highlighted
+  const la = clamp((t - C.link) / .5); ctx.fillStyle = `rgba(176,40,28,${.15 + .6 * la})`; ctx.fillRect(370, 330, 300 + 220 * la, 22);
+  if (la > 0) { ctx.globalAlpha = a * la; txt('🔗 ' + M.link, 640, 395, fit('🔗 ' + M.link, 36, 560, 'PSI'), RED, 'PSI', 'center', null); }
+  ctx.restore();
+  // comment field
+  const ca = clamp((t - S[7] - .3) / .5); ctx.save(); ctx.globalAlpha = ca; ctx.translate(0, (1 - eout(ca)) * 60);
+  ctx.shadowColor = 'rgba(40,20,5,.4)'; ctx.shadowBlur = 26; ctx.fillStyle = '#fbf3df'; ctx.beginPath(); ctx.roundRect(90, 1050, 900, 190, 95); ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.stroke();
+  const n = Math.floor(clamp((t - C.tarih + .1) / .6) * (M.word.length + .01));
+  if (n <= 0) txt(M.ph, 170, 1145, 52, 'rgba(58,36,20,.5)', 'PSI', 'left', null);
+  else { txt(M.word.slice(0, n).toUpperCase(), 170, 1145, 110, RED, 'PS', 'left', null); if (Math.floor(t * 2.5) % 2 === 0 && n < M.word.length) { ctx.fillStyle = INK; ctx.fillRect(170 + n * 70, 1100, 6, 90); } }
+  ctx.fillStyle = RED; ctx.beginPath(); ctx.arc(880, 1145, 62, 0, 7); ctx.fill(); ctx.fillStyle = '#fbf3df'; ctx.beginPath(); ctx.moveTo(850, 1115); ctx.lineTo(920, 1145); ctx.lineTo(850, 1175); ctx.lineTo(862, 1145); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // ink arrow from comment up to the header link
+  const ak = eout((t - C.link + .3) / 1.0); if (ak > 0) { ctx.save(); const q = strokePart([[540, 1010], [610, 800], [600, 600], [560, 470]], ak); ctx.strokeStyle = RED; ctx.lineWidth = 16; ctx.lineCap = 'round';
+    ctx.beginPath(); q.q.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); const [hx, hy] = q.q[q.q.length - 1]; ctx.translate(hx, hy); ctx.rotate(q.dir);
+    ctx.fillStyle = RED; ctx.beginPath(); ctx.moveTo(36, 0); ctx.lineTo(-20, -30); ctx.lineTo(-20, 30); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  banner(CFG.t8, clamp((t - S[7] - .4) / .5), 1520, 84, 62);
+}
+
+// ---------- main ----------
+function render(T) {
+  const t = T - OFF, n = sc(t);
+  cam = camAt(t);
+  ctx.save();
+  [null, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8][n](t);
+  ctx.restore();
+  if (n !== 1 && n !== 6) ctx.drawImage(GRAIN, 0, 0);
+  // transitions
+  const fl = clamp(1 - Math.abs(t - S[1]) / .18); if (fl > 0) { ctx.fillStyle = `rgba(255,248,230,${fl})`; ctx.fillRect(0, 0, W, H); }                 // flash 1 -> 2
+  const dk = Math.max(clamp(1 - Math.abs(t - S[5]) / .3), clamp(1 - Math.abs(t - S[6]) / .3) * .9); if (dk > 0) { ctx.fillStyle = `rgba(0,0,0,${dk})`; ctx.fillRect(0, 0, W, H); }   // dips to black
+  const fi = clamp(1 - T / .25); if (fi > 0) { ctx.fillStyle = `rgba(0,0,0,${fi})`; ctx.fillRect(0, 0, W, H); }
+  const fo = clamp((T - END + .5) / .5); if (fo > 0) { ctx.fillStyle = `rgba(0,0,0,${fo})`; ctx.fillRect(0, 0, W, H); }
+}
+window.END = END; window.S = S; window.OFF = OFF;
+</script></body></html>
