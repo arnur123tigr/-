@@ -416,7 +416,7 @@ function scenesPaper(t) {
   const fy = 1460; ctx.save(); ctx.globalAlpha = a0;
   ctx.fillStyle = 'rgba(246,238,218,.97)'; ctx.beginPath(); ctx.roundRect(110, fy - 80, W - 220, 160, 80); ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = INK; ctx.stroke();
   ctx.beginPath(); ctx.arc(200, fy, 44, 0, 7); ctx.fillStyle = 'rgba(122,74,34,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
-  const word = 'ТАРИХ', n = Math.floor(clamp((t - b.s7 - .5) / 1.0) * word.length + .001);
+  const word = '95', n = Math.floor(clamp((t - b.s7 - .5) / 1.0) * word.length + .001);
   ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   if (n === 0) { ctx.font = '700 46px PSI'; ctx.fillStyle = 'rgba(52,32,16,.45)'; ctx.fillText(L.ph, 270, fy + 2); }
   else { ctx.font = '900 92px M'; ctx.fillStyle = RED; ctx.letterSpacing = '6px'; const s = word.slice(0, n); ctx.fillText(s, 280, fy + 4); const wd = ctx.measureText(s).width; if ((t * 2) % 1 < .6) { ctx.fillStyle = INK; ctx.fillRect(290 + wd, fy - 42, 6, 84); } }
