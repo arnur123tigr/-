@@ -1,0 +1,265 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:I;src:url(fonts/Inter.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}#g{display:none}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas><canvas id="g" width="1080" height="1920"></canvas>
+<script type="module">
+// «Первая столица Казахстана сегодня в другой стране» — four capitals over a dark tilted satellite map
+// (look of ref IMG_8232). Three.js terrain plane + 2D overlay. render(T) is deterministic, T = video seconds,
+// the voice starts at OFF. ?lang=ru|kk picks texts + beats. Borders baked into terrain.jpg (Baikonur = Kazakhstan).
+// The first Flat Vector version is kept in scene_flat.html.
+import * as THREE from './vendor/three.module.min.js';
+const W = 1080, H = 1920, OFF = 0.3;
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const up = (t, a, d = .35) => clamp((t - a) / d);
+const C = { lime: '#C8F135', red: '#E8502F', gold: '#FFD23F', glass: 'rgba(22,22,20,.72)' };
+let B = null, END = 41, FL = [], CAP = [];
+
+// ---------- texts ----------
+const CITY = { oren: [55.10, 51.77], kyz: [65.51, 44.85], alm: [76.89, 43.24], akm: [71.43, 51.13] };
+const ORDER = ['oren', 'kyz', 'alm', 'akm'], YEARS = { oren: 1920, kyz: 1925, alm: 1929, akm: 1997 };
+const TX = {
+  ru: { names: { oren: 'Оренбург', kyz: 'Кызылорда', alm: 'Алма-Ата', akm: 'Акмола' }, num: n => `Столица №${n}`,
+        q1: 'Столица №1', q2: 'сегодня в другой стране', year: y => `${y} год`, today: 'сегодня — Россия', congress: 'V съезд · 1925',
+        old: 'киргизы', neu: 'казахи', ent1: 'Запомни к ЕНТ', order: 'Не путай порядок!', rus: 'Россия',
+        yourc: 'твой комментарий', c1: 'Напиши в комментариях', l1: ['Переходи по ссылке', 'в шапке профиля', 'или в описании'], link: 'ссылка в шапке ↑',
+        caps: [[0, 3.06, 'Первая столица Казахстана сегодня находится в другой стране.'], [3.34, 4.28, 'Знаешь, какой это город?'], [4.68, 5.58, 'Это Оренбург.'],
+          [5.88, 11.5, 'В 1920 году, когда создали Казахскую автономную республику, столицей стал именно он.'], [11.9, 15.28, 'В 1925 году столицу перенесли в Кызылорду.'],
+          [15.68, 20.16, 'Именно здесь, на пятом съезде, народу вернули историческое имя: казахи.'], [20.52, 23.96, 'В 1929 году столицей стала Алма-Ата,'],
+          [24.24, 27.44, 'а в 1997-м её перенесли в Акмолу.'], [27.72, 28.95, 'Запомни к ЕНТ:'], [29.1, 32.54, 'Оренбург, Кызылорда, Алма-Ата, Акмола.'],
+          [33.0, 33.84, 'Не путай порядок.'], [34.2, 35.8, 'Напиши «тарих» в комментариях.'], [36.14, 39.52, 'За полной подготовкой перейдите по ссылке в шапке профиля или в описании.']],
+        key: ['оренбург', 'кызылорду', 'кызылорда', 'алма-ата', 'акмолу', 'акмола', 'казахи', '«тарих»', '1920', '1925', '1929', '1997-м', 'ент'] },
+  kk: { names: { oren: 'Орынбор', kyz: 'Қызылорда', alm: 'Алматы', akm: 'Ақмола' }, num: n => `Астана №${n}`,
+        q1: 'Астана №1', q2: 'қазір басқа мемлекетте', year: y => `${y} жыл`, today: 'қазір — Ресей', congress: 'V съезд · 1925',
+        old: 'қырғыз', neu: 'қазақ', ent1: 'ҰБТ-ға есте сақта', order: 'Ретін шатастырма!', rus: 'Ресей',
+        yourc: 'сенің комментің', c1: 'Пікірге жаз', l1: ['Профиль шапкасындағы', 'немесе сипаттамадағы', 'сілтемеге өт'], link: 'сілтеме шапкада ↑',
+        caps: [[0, 3.18, 'Қазақстанның алғашқы астанасы қазір басқа мемлекетте.'], [3.52, 4.74, 'Қай қала екенін білесің бе?'], [5.2, 6.26, 'Бұл — Орынбор.'],
+          [6.68, 12.0, '1920 жылы Қазақ автономиялы республикасы құрылғанда, астана осы қала болды.'], [12.36, 15.62, '1925 жылы астана Қызылордаға көшті.'],
+          [15.74, 19.64, 'Дәл осында, бесінші съезде халқымыздың тарихи атауы қайтарылды:'], [20.0, 20.52, 'қазақ.'], [20.94, 23.72, '1929 жылы астана Алматыға,'],
+          [23.92, 27.04, 'ал 1997 жылы Ақмолаға көшірілді.'], [27.42, 29.1, 'ҰБТ-ға есте сақта:'], [29.2, 32.58, 'Орынбор, Қызылорда, Алматы, Ақмола.'],
+          [33.02, 34.2, 'Ретін шатастырма.'], [34.4, 35.76, 'Пікірге «тарих» деп жаз.'], [36.14, 40.48, 'Толық дайындық үшін профиль шапкасындағы немесе сипаттамадағы сілтемеге өтіңіз.']],
+        key: ['орынбор', 'қызылордаға', 'қызылорда', 'алматыға', 'алматы', 'ақмолаға', 'ақмола', 'қазақ', '«тарих»', '1920', '1925', '1929', '1997', 'ұбт-ға'] } }[LANG];
+
+// ---------- three.js terrain ----------
+const LON0 = 20, LON1 = 112, LAT0 = 16, LAT1 = 74, LONC = 66, LATC = 47, KX = Math.cos(47 * Math.PI / 180);
+const G = (lon, lat) => new THREE.Vector3((lon - LONC) * KX, lat - LATC, 0);
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('g'), antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setPixelRatio(1);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(38, W / H, .05, 400);
+const FOV = 38 * Math.PI / 180, PITCH = 42 * Math.PI / 180;
+
+function camAt(t) {   // {lon, lat, s}: screen-centre point and approx px per degree there
+  const wide = { lon: 66.5, lat: 47.0, s: 46 }, zoom = { lon: 56.0, lat: 51.2, s: 100 };
+  const star = q => starAt(q).p;
+  if (t < B.y1925 - .1) { const k = ease((t - .25) / 1.2); return { lon: lerp(wide.lon, zoom.lon, k) + .15 * Math.sin(t * .4), lat: lerp(wide.lat, zoom.lat, k), s: Math.exp(lerp(Math.log(wide.s), Math.log(zoom.s), k)) * (1 + .004 * t) }; }
+  if (t < B.ent - .2) { const st = star(t), k = ease((t - B.y1925 + .1) / .9);
+    return { lon: lerp(zoom.lon, st[0], k), lat: lerp(zoom.lat, st[1], k), s: Math.exp(lerp(Math.log(zoom.s), Math.log(72), k)) }; }
+  const st = star(B.ent - .2), k = ease((t - B.ent + .2) / 1.1);
+  const s5 = { lon: lerp(st[0], 66.5, k), lat: lerp(st[1], 47.5, k), s: Math.exp(lerp(Math.log(72), Math.log(44), k)) };
+  const k6 = ease((t - B.cta + .3) / 4); s5.lon += k6 * 1.5; s5.s *= 1 + .1 * k6;   // slow drift under the CTA
+  return s5;
+}
+function setCam(c) {
+  const d = H / (2 * c.s * Math.tan(FOV / 2)), tg = G(c.lon, c.lat);
+  camera.position.set(tg.x, tg.y - d * Math.sin(PITCH), d * Math.cos(PITCH)); camera.up.set(0, 1, 0); camera.lookAt(tg);
+  camera.updateMatrixWorld(); scene.fog = new THREE.Fog(0x000000, d * 0.75, d * 1.22);
+}
+const PX = (lon, lat) => { const v = G(lon, lat).project(camera); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H]; };
+function starAt(t) {   // the capital star flies along an arc between capitals
+  let p = CITY.oren, h = 0;
+  for (const [a, b, t0, t1] of FL) { if (t < t0) break; const u = clamp((t - t0) / (t1 - t0)), k = ease(u);
+    p = [lerp(CITY[a][0], CITY[b][0], k), lerp(CITY[a][1], CITY[b][1], k)]; h = Math.sin(Math.PI * u) * 170; }
+  return { p, h };
+}
+
+// ---------- 2D helpers ----------
+function font(w, s) { ctx.font = `${w} ${s}px I`; }
+function txt(s, x, y, size, col = '#fff', w = 800, align = 'center', shadow = true) {
+  font(w, size); ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (shadow) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = size * .35; ctx.shadowOffsetY = size * .06; ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore(); }
+  else { ctx.fillStyle = col; ctx.fillText(s, x, y); }
+}
+const tw = (s, size, w = 800) => { font(w, size); return ctx.measureText(s).width; };
+const fitS = (s, size, maxW, w = 800) => Math.min(size, size * maxW / tw(s, size, w));
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function star(x, y, r, col = C.gold) { ctx.beginPath(); for (let k = 0; k < 10; k++) { const q = k % 2 ? r * .45 : r, a = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } ctx.closePath(); ctx.fillStyle = col; ctx.fill(); }
+function glow(x, y, r, col, a) { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, col.replace('A', a)); g.addColorStop(1, col.replace('A', 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+function pill(s, x, y, a, size = 38, dot = C.lime, bg = C.glass, col = '#fff') {   // dark marker pill with a lime dot
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 1.5); ctx.translate(x, y); const k = back(a); ctx.scale(k, k);
+  const w = tw(s, size, 600) + size * 1.9, h = size * 1.75; rr(-w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = bg; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2; ctx.stroke();
+  if (dot) { ctx.beginPath(); ctx.arc(-w / 2 + size * .85, 0, size * .2, 0, 7); ctx.fillStyle = dot; ctx.fill(); }
+  txt(s, dot ? size * .32 : 0, 1, size, col, 600, 'center', false); ctx.restore();
+}
+function redPill(s, x, y, a, size = 40) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 1.5); ctx.translate(x, y); const k = back(a); ctx.scale(k, k);
+  const w = tw(s, size, 700) + size * 1.4, h = size * 1.7; rr(-w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = C.red; ctx.fill(); txt(s, 0, 1, size, '#fff', 700, 'center', false); ctx.restore(); }
+// title block (ref look): white line, big lime line, subtitle, red pill
+function titleBlock(t, t0, t1, l1, l2, sub = null, red = null, y = 300) {
+  const k = up(t, t0, .4) * (t1 ? 1 - up(t, t1 - .25, .25) : 1); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; const dy = (1 - eout(up(t, t0, .5))) * 34;
+  if (l1) txt(l1, W / 2, y + dy, fitS(l1, 80, 940), '#fff', 800);
+  if (l2) txt(l2, W / 2, y + 120 + dy, fitS(l2, 150, 980), C.lime, 800);
+  if (sub) txt(sub, W / 2, y + (l2 ? 225 : 85) + dy, 44, '#fff', 500);
+  ctx.restore();
+  if (red) redPill(red[0], W / 2, y + 315, up(t, red[1], .35) * k);
+}
+
+// ---------- captions: word by word, timed inside each sentence by length ----------
+function buildCaps() {
+  CAP = [];
+  for (const [a0, a1, s] of TX.caps) {
+    const words = s.split(' '), wt = words.map(w => (/\d{4}/.test(w) ? 16 : w.length) + 3), tot = wt.reduce((x, y) => x + y, 0);
+    let acc = 0; const ws = words.map((w, i) => { const st = a0 + (a1 - a0) * acc / tot; acc += wt[i]; return { w, t0: st + OFF, t1: a0 + (a1 - a0) * acc / tot + OFF }; });
+    let cur = [];   // chunks of up to 3 words, break after punctuation
+    ws.forEach((x, i) => { cur.push(x); if (cur.length === 3 || /[,.:?!—]$/.test(x.w) || i === ws.length - 1) { CAP.push(cur); cur = []; } });
+  }
+}
+function captions(t, y) {
+  let ch = null; for (const c of CAP) { if (t >= c[0].t0 - .05 && t < c[c.length - 1].t1 + .25) ch = c; }
+  if (!ch) return;
+  const size = 62, gap = 18, widths = ch.map(o => tw(o.w, size, 800)), total = widths.reduce((a, b) => a + b, 0) + gap * (ch.length - 1);
+  const sc = Math.min(1, 980 / total); ctx.save(); ctx.translate(W / 2, y); ctx.scale(sc, sc); let x = -total / 2;
+  const fadeIn = up(t, ch[0].t0 - .05, .12);
+  ch.forEach((o, i) => {
+    const on = t >= o.t0, now = on && t < o.t1 + .05, isKey = TX.key.includes(o.w.toLowerCase().replace(/[,.:?!]/g, ''));
+    const col = on ? (now || isKey ? C.lime : '#fff') : 'rgba(255,255,255,.45)';
+    ctx.save(); ctx.globalAlpha = fadeIn; const pop = now ? 1 + .06 * (1 - clamp((t - o.t0) / .15)) : 1;
+    ctx.translate(x + widths[i] / 2, 0); ctx.scale(pop, pop); txt(o.w, 0, 0, size, col, 800); ctx.restore();
+    x += widths[i] + gap;
+  });
+  ctx.restore();
+}
+
+// ---------- map overlays ----------
+function trail(t) {
+  ctx.save(); ctx.setLineDash([16, 14]); ctx.lineCap = 'round';
+  for (const [a, b, t0, t1] of FL) {
+    if (t < t0) break; const k = ease((t - t0) / (t1 - t0)); ctx.beginPath();
+    for (let i = 0; i <= 48 * k; i++) { const u = i / 48, p = PX(lerp(CITY[a][0], CITY[b][0], u), lerp(CITY[a][1], CITY[b][1], u)), yy = p[1] - Math.sin(Math.PI * u) * 170; i ? ctx.lineTo(p[0], yy) : ctx.moveTo(p[0], yy); }
+    ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 10; ctx.stroke(); ctx.strokeStyle = C.lime; ctx.lineWidth = 6; ctx.stroke();
+  }
+  ctx.restore();
+}
+function mapLayer(t) {
+  const arrive = { oren: B.oren, kyz: B.kyz, alm: B.alm, akm: B.akm };
+  const ra = (1 - up(t, B.y1925, .4)) * up(t, B.y1920 + .8, .5);   // «Россия» label in scenes 1–2
+  if (ra > 0) { const [x, y] = PX(53.0, 54.0); ctx.save(); ctx.globalAlpha = ra * .8; txt(TX.rus.toUpperCase(), x, y, 40, 'rgba(255,255,255,.85)', 700); ctx.restore(); }
+  trail(t);
+  for (const k of ORDER) {   // capitals reached: lime glow + dot
+    const a = up(t, arrive[k] - .15, .4); if (a <= 0) continue; const [x, y] = PX(...CITY[k]);
+    glow(x, y, 120, 'rgba(200,241,53,A)', .55 * a * (.85 + .15 * Math.sin(t * 5)));
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fillStyle = C.lime; ctx.fill();
+  }
+  const { p, h } = starAt(t); const [sx, sy0] = PX(...p), sy = sy0 - h - 4, pulse = 1 + .06 * Math.sin(t * 7), a = up(t, .05, .3);
+  ctx.save(); ctx.globalAlpha = a; glow(sx, sy, 110, 'rgba(255,214,80,A)', .7);
+  ctx.translate(sx, sy); ctx.rotate(h ? Math.sin(t * 6) * .2 : 0); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+  star(0, 0, 44 * pulse, C.gold); ctx.shadowColor = 'transparent'; star(0, -3, 30 * pulse, '#FFE58A'); ctx.restore();
+  const qa = (1 - up(t, B.oren - .25, .45)) * up(t, .6, .3);   // question mark, flips away on the city name
+  if (qa > 0) { const flip = Math.cos(clamp((t - B.oren + .25) / .45) * Math.PI / 2), blink = .6 + .4 * Math.abs(Math.sin(t * 5));
+    ctx.save(); ctx.globalAlpha = qa * blink; ctx.translate(sx, sy - 120 + Math.sin(t * 4) * 8); ctx.scale(flip, 1); txt('?', 0, 0, 140, C.lime, 900); ctx.restore(); }
+  for (const k of ORDER) { const i = ORDER.indexOf(k), nx = ORDER[i + 2];   // a name stays until the star reaches the capital after next
+    const a = up(t, arrive[k] - .15, .4) * (nx ? 1 - up(t, arrive[nx] - .4, .4) : 1) * (1 - up(t, B.ent - .2, .4)); if (a <= 0) continue; const [x, y] = PX(...CITY[k]);
+    pill(TX.names[k], x, y + (k === 'akm' ? -84 : 84), a, t > B.ent ? 30 : 36); }
+}
+
+// ---------- timeline panel ----------
+function timeline(t) {
+  const a = up(t, B.y1920, .5), f6 = 1 - up(t, B.cta - .3, .35); if (a <= 0 || f6 <= 0) return;
+  const k5 = ease((t - B.ent + .1) / .9), y = lerp(1620, 1010, k5), sc = lerp(.92, 1.08, k5);
+  const xs = [-345, -115, 115, 345], tA = [B.y1920, B.y1925, B.y1929, B.y1997];
+  ctx.save(); ctx.globalAlpha = a * f6; ctx.translate(W / 2, y); ctx.scale(sc, sc);
+  rr(-470, -115, 940, 230, 40); ctx.fillStyle = 'rgba(14,14,12,.78)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 2; ctx.stroke();
+  let last = 0; for (let i = 0; i < 4; i++) if (t >= tA[i]) last = i;
+  const grow = i => up(t, tA[i], .6), xEnd = last === 0 ? lerp(-420, xs[0], grow(0)) : lerp(xs[last - 1], xs[last], eout(grow(last)));
+  ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-420, 0); ctx.lineTo(420, 0); ctx.stroke();
+  ctx.strokeStyle = C.lime; ctx.beginPath(); ctx.moveTo(-420, 0); ctx.lineTo(xEnd, 0); ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const g = grow(i); if (g <= 0) continue; const key = ORDER[i];
+    let hl = 0; if (t > B.n[0] - .1) { hl = clamp((t - B.n[i] + .05) / .15) * (i < 3 ? 1 - clamp((t - B.n[i + 1] + .05) / .2) : 1); if (t > B.order) hl = 1; }
+    const s = back(g) * (1 + .1 * hl * (t < B.order ? 1 : 0));
+    ctx.save(); ctx.translate(xs[i], 0); ctx.scale(s, s);
+    if (i === last && t < B.ent) glow(0, 0, 50, 'rgba(200,241,53,A)', .5);
+    star(0, 0, 24, C.gold);
+    txt(String(YEARS[key]), 0, -62, 44, hl > .5 ? C.lime : '#fff', 800, 'center', false);
+    const nm = TX.names[key]; txt(nm, 0, 62, Math.min(30, 30 * 205 / tw(nm, 30, 700)), hl > .5 ? C.lime : 'rgba(255,255,255,.85)', 700, 'center', false);
+    ctx.restore();
+    if (i > 0 && t > B.ent) { ctx.save(); ctx.globalAlpha = up(t, B.ent + .3, .4); txt('→', (xs[i] + xs[i - 1]) / 2, -62, 34, C.lime, 700, 'center', false); ctx.restore(); }
+  }
+  ctx.restore();
+}
+
+// ---------- scenes ----------
+function titles(t) {
+  titleBlock(t, .2, B.oren - .1, TX.q1 + ' = ?', null, TX.q2);
+  titleBlock(t, B.oren - .1, B.y1925 - .1, TX.num(1), TX.names.oren, TX.year(1920), [TX.today, B.y1920 + 1.2]);
+  titleBlock(t, B.kyz - .3, B.strike - .9, TX.num(2), TX.names.kyz, TX.year(1925));
+  const a = up(t, B.strike - .9, .35) * (1 - up(t, B.y1929 - .35, .3));   // «қырғыз» struck out -> «қазақ»
+  if (a > 0) {
+    ctx.save(); ctx.globalAlpha = a; txt(TX.congress, W / 2, 290, 52, '#fff', 700);
+    const kOld = 1 - up(t, B.kazakh, .35), sz = 120, w = tw(TX.old, sz, 800);
+    ctx.save(); ctx.globalAlpha = a * (.35 + .65 * kOld); ctx.translate(W / 2, 420 - eout(1 - kOld) * 20); const ks = 1 - .35 * (1 - kOld); ctx.scale(ks, ks);
+    txt(TX.old, 0, 0, sz, '#fff', 800);
+    const sk = eout((t - B.strike) / .5); if (sk > 0) { ctx.strokeStyle = C.red; ctx.lineCap = 'round'; ctx.lineWidth = 14; ctx.beginPath(); ctx.moveTo(-w / 2 - 16, 8); ctx.lineTo(-w / 2 - 16 + (w + 32) * sk, -2); ctx.stroke(); }
+    ctx.restore();
+    const kn = up(t, B.kazakh, .4); if (kn > 0) { ctx.save(); ctx.translate(W / 2, 545); const s = back(kn); ctx.scale(s, s); txt(TX.neu, 0, 0, 170, C.lime, 900); ctx.restore(); }
+    ctx.restore();
+  }
+  titleBlock(t, B.alm - .4, B.akm - .3, TX.num(3), TX.names.alm, TX.year(1929));
+  titleBlock(t, B.akm - .3, B.ent - .1, TX.num(4), TX.names.akm, TX.year(1997));
+  const d = up(t, B.ent - .2, .6) * (1 - up(t, B.cta - .3, .3)); if (d > 0) { ctx.fillStyle = `rgba(0,0,0,${.5 * d})`; ctx.fillRect(0, 0, W, H); }
+  if (t > B.ent - .2 && t < B.cta) { const f = 1 - up(t, B.cta - .35, .3), k = up(t, B.ent - .1, .4);
+    ctx.save(); ctx.globalAlpha = f * k; txt(TX.ent1, W / 2, 640 + (1 - eout(k)) * 30, fitS(TX.ent1, 100, 960), C.lime, 800); ctx.restore();
+    redPill(TX.order, W / 2, 1290, up(t, B.order, .35) * f, 46); }
+}
+function cta(t) {
+  if (t < B.cta - .35) return;
+  const a = up(t, B.cta - .35, .35); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(0, 0, W, H);
+  const kc = up(t, B.cta - .15, .45); ctx.save(); ctx.globalAlpha = a * kc; ctx.translate(0, (1 - eout(kc)) * 40);   // comment field
+  rr(150, 380, 780, 190, 40); ctx.fillStyle = 'rgba(20,20,18,.88)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 2; ctx.stroke();
+  txt(TX.yourc, 300, 425, 26, 'rgba(255,255,255,.55)', 500, 'left', false);
+  const g = ctx.createLinearGradient(190, 440, 270, 520); g.addColorStop(0, C.gold); g.addColorStop(1, C.red); ctx.beginPath(); ctx.arc(235, 490, 40, 0, 7); ctx.fillStyle = g; ctx.fill();
+  const word = 'ТАРИХ', n = Math.floor(clamp((t - B.cta - .05) / .55) * word.length + .001), shown = word.slice(0, n);
+  txt(shown, 300, 492, 92, C.lime, 900, 'left', false); const cw = tw(shown, 92, 900);
+  if (Math.floor(t * 2.5) % 2 === 0 || n < word.length) { ctx.fillStyle = '#fff'; ctx.fillRect(306 + cw, 448, 6, 88); }
+  txt(TX.c1, W / 2, 640, fitS(TX.c1, 64, 940), '#fff', 800);
+  ctx.restore();
+  const kl = up(t, B.link - .7, .45); if (kl > 0) {   // link in the profile header or description
+    ctx.save(); ctx.globalAlpha = a * kl; const dy = (1 - eout(kl)) * 40;
+    txt(TX.l1[0], W / 2, 800 + dy, fitS(TX.l1[0], 70, 960), '#fff', 800); txt(TX.l1[1], W / 2, 890 + dy, fitS(TX.l1[1], 70, 960), C.lime, 800); txt(TX.l1[2], W / 2, 980 + dy, fitS(TX.l1[2], 70, 960), '#fff', 800);
+    const bp = 1 + .05 * Math.sin(t * 8); ctx.save(); ctx.translate(W / 2, 1120 + dy); ctx.scale(bp, bp); const w = tw(TX.link, 40, 700) + 70; rr(-w / 2, -36, w, 72, 36); ctx.fillStyle = C.lime; ctx.fill(); txt(TX.link, 0, 2, 40, '#111', 700, 'center', false); ctx.restore();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+window.render = function (T) {
+  const t = T; setCam(camAt(t)); renderer.render(scene, camera);
+  ctx.drawImage(renderer.domElement, 0, 0);
+  let g = ctx.createLinearGradient(0, 0, 0, H);   // cinematic grade: dark horizon and bottom, soft vignette
+  g.addColorStop(0, 'rgba(0,0,0,.97)'); g.addColorStop(.07, 'rgba(0,0,0,.8)'); g.addColorStop(.17, 'rgba(0,0,0,.4)'); g.addColorStop(.32, 'rgba(0,0,0,.08)'); g.addColorStop(.62, 'rgba(0,0,0,.05)'); g.addColorStop(.85, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,.9)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  g = ctx.createRadialGradient(W / 2, H * .5, H * .3, W / 2, H * .5, H * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (t < B.cta) mapLayer(t);
+  titles(t); timeline(t); cta(t);
+  captions(t, t > B.cta - .3 ? 1420 : t > B.ent - .2 ? 1460 : 1400);
+  if (T > END - .45) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .45) / .45)})`; ctx.fillRect(0, 0, W, H); }
+};
+window.ready = (async () => {
+  const all = await (await fetch('beats.json')).json(); const b = all[LANG]; END = b.end;
+  B = {}; for (const k in b) B[k] = k === 'end' ? b[k] : Array.isArray(b[k]) ? b[k].map(x => x + OFF) : b[k] + OFF;
+  FL = [['oren', 'kyz', B.y1925 + .3, B.kyz], ['kyz', 'alm', B.y1929 + .2, B.alm], ['alm', 'akm', B.y1997 + .2, B.akm]];
+  const tex = await new THREE.TextureLoader().loadAsync('terrain.jpg'); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry((LON1 - LON0) * KX, LAT1 - LAT0), new THREE.MeshBasicMaterial({ map: tex, color: 0xb8b8b8 }));
+  plane.position.set(((LON0 + LON1) / 2 - LONC) * KX, (LAT0 + LAT1) / 2 - LATC, 0); scene.add(plane);
+  await document.fonts.load('800 40px I'); await document.fonts.load('500 40px I'); await document.fonts.load('900 40px I');
+  buildCaps(); render(0); return true;
+})();
+</script></body></html>
