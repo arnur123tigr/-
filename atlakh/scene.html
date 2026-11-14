@@ -1,0 +1,440 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:PS;src:url(fonts/PTSerif-Bold.ttf);font-weight:700}
+@font-face{font-family:PSI;src:url(fonts/PTSerif-BoldItalic.ttf);font-weight:700}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Атлах, 751: пять дней, которые остановили Китай» — old-paper ink map story.
+// render(T) is deterministic, T = video seconds; t = voice time (T - OFF). ?lang=ru|kk
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const W = 1080, H = 1920, OFF = 0.3, KX = Math.cos(43 * Math.PI / 180);
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const off = document.createElement('canvas'); off.width = W; off.height = H; const oc = off.getContext('2d');
+const PAPER = new Image(); let SH, B;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const ramp = (t, a, d = .4) => clamp((t - a) / d);
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const INK = '#2b1a0c', INK2 = 'rgba(52,32,16,', RED = '#b3261e', GREEN = '#2f7d3a', BLUE = '#2a5fa8';
+
+const TX = {
+  ru: { t1: ['5 ДНЕЙ · 751'], t2: ['748 · СУЯБ РАЗРУШЕН'], t3: ['АТЛАХ · БЛИЗ ТАРАЗА'], t4: ['КАРЛУКИ + ТЮРГЕШИ', '→ НА СТОРОНЕ АРАБОВ'],
+    t5a: 'КИТАЙ УШЁЛ', t5b: 'ИСЛАМ НАЧАЛ РАСПРОСТРАНЯТЬСЯ', t6h: 'ЗАПОМНИ К ЕНТ', d751: 'Атлахская битва', d748: 'Разрушение Суяба', t6: '751 = АТЛАХ · 748 = СУЯБ',
+    t7a: 'В КОММЕНТАРИИ:', t7b: 'ССЫЛКА В ШАПКЕ ПРОФИЛЯ', ph: 'Добавьте комментарий…', day: 'ДЕНЬ',
+    Taraz: 'Тараз', Suyab: 'Суяб', Atlakh: 'Атлах', Chach: 'Чач', Samarkand: 'Самарканд', Kashgar: 'Кашгар', Changan: 'Чанъань',
+    Zhetysu: 'ЖЕТЫСУ', Tang: 'ИМПЕРИЯ ТАН', Caliph: 'АРАБСКИЙ ХАЛИФАТ', Talas: 'р. Талас', Chu: 'Чу', Ili: 'Или', Syr: 'Сырдарья',
+    Balkhash: 'Балхаш', Issyk: 'Иссык-Куль', Aral: 'Арал', Caspian: 'Каспий', KAZ: 'КАЗАХСТАН',
+    aCN: 'КИТАЙ', aAR: 'АРАБЫ', aKA: 'КАРЛУКИ', aTU: 'ТЮРГЕШИ' },
+  kk: { t1: ['5 КҮН · 751'], t2: ['748 · СУЯБ ҚИРАТЫЛДЫ'], t3: ['АТЛАХ · ТАРАЗ МАҢЫ'], t4: ['ҚАРЛҰҚ + ТҮРГЕШ', '→ АРАБТАР ЖАҒЫНДА'],
+    t5a: 'ҚЫТАЙ КЕТТІ', t5b: 'ИСЛАМ ТАРАЛА БАСТАДЫ', t6h: 'ҰБТ-ҒА ЕСТЕ САҚТА', d751: 'Атлах шайқасы', d748: 'Суябтың қиратылуы', t6: '751 = АТЛАХ · 748 = СУЯБ',
+    t7a: 'ПІКІРГЕ:', t7b: 'СІЛТЕМЕ ШАПКАДА', ph: 'Пікір қосыңыз…', day: 'КҮН',
+    Taraz: 'Тараз', Suyab: 'Суяб', Atlakh: 'Атлах', Chach: 'Шаш', Samarkand: 'Самарқанд', Kashgar: 'Қашқар', Changan: 'Чаньань',
+    Zhetysu: 'ЖЕТІСУ', Tang: 'ТАН ИМПЕРИЯСЫ', Caliph: 'АРАБ ХАЛИФАТЫ', Talas: 'Талас өз.', Chu: 'Шу', Ili: 'Іле', Syr: 'Сырдария',
+    Balkhash: 'Балқаш', Issyk: 'Ыстықкөл', Aral: 'Арал', Caspian: 'Каспий', KAZ: 'ҚАЗАҚСТАН',
+    aCN: 'ҚЫТАЙ', aAR: 'АРАБТАР', aKA: 'ҚАРЛҰҚТАР', aTU: 'ТҮРГЕШТЕР' }
+}[LANG];
+
+const P = { Taraz: [71.37, 42.9], Suyab: [75.2, 42.8], Atlakh: [71.72, 42.64], Chach: [69.25, 41.3], Samarkand: [66.97, 39.65], Kashgar: [75.99, 39.47], Changan: [108.9, 34.3] };
+// mountain ridges (lon,lat)
+const RIDGES = [
+  [[69.6, 41.5], [71, 41.6], [72.5, 41.5], [74, 41.55], [75.5, 41.65], [77, 41.9], [78.5, 42.2], [80, 42.4], [81.5, 42.85], [83, 43.05], [85, 43.25], [87, 43.35], [89, 43.2], [91, 43.0], [93, 43.0]],
+  [[72.6, 42.7], [73.3, 42.72], [74, 42.66], [74.8, 42.6], [75.6, 42.52]],
+  [[71.1, 42.18], [71.8, 42.24], [72.6, 42.28], [73.4, 42.22]],
+  [[75.9, 43.0], [76.6, 43.05], [77.4, 43.05], [78.2, 43.0], [79, 42.9]],
+  [[68.6, 43.55], [69.2, 43.2], [69.8, 42.85], [70.3, 42.6]],
+  [[79, 45.15], [80, 45.0], [81, 44.85], [82, 44.9]],
+  [[70.5, 38.9], [72.5, 38.6], [74, 38.2], [75.5, 37.5], [77, 36.5], [79, 36], [82, 36.2], [85, 36.4], [88, 36.4], [91, 36]],
+  [[73.5, 34.8], [77, 33], [80, 30.5], [84, 28.8], [88, 28], [92, 28]],
+  [[84, 50], [86, 49.5], [88, 49], [90, 48], [92, 47]],
+  [[100, 38.5], [102, 37.6], [104, 36.5]], [[105, 34], [108, 33.6], [111, 33.4]]];
+const MT = [];
+for (const r of RIDGES) { let acc = 0; for (let i = 0; i < r.length - 1; i++) { const [a, b] = [r[i], r[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let d = 0; d < L; d += .32) { const k = d / L, n = MT.length; MT.push([lerp(a[0], b[0], k) + (hash(n) - .5) * .14, lerp(a[1], b[1], k) + (hash(n + 50) - .5) * .18, .8 + .5 * hash(n + 99)]); } } }
+
+// ---------- timing ----------
+let b;   // beats for this language
+function cam(t) {
+  // [t, lon, lat, s]
+  const K = [[0, 88, 40, 11.5], [b.hit - .05, 86, 40.5, 12.5], [b.hit + .75, 69, 44.6, 30], [b.s2 - .01, 69.2, 44.6, 31],
+    [b.s2, 83, 43.5, 74], [b.s3 - .01, 76.2, 43.2, 80],
+    [b.s3, 73.4, 42.75, 118], [b.s4 - .01, 72.1, 42.72, 168],
+    [b.s4, 71.75, 42.8, 165], [b.s5 - .01, 71.75, 42.8, 165],
+    [b.s5, 71.75, 42.8, 165], [b.s6 - .01, 74.5, 43.6, 52], [b.s6, 74.5, 43.6, 52], [99, 74.5, 43.6, 52]];
+  let i = 0; while (i < K.length - 2 && t >= K[i + 1][0]) i++;
+  const [t0, ...a] = K[i], [t1, ...c] = K[i + 1];
+  let k = t1 > t0 ? clamp((t - t0) / (t1 - t0)) : 1;
+  k = i === 1 ? ease(k) : k * k * (3 - 2 * k);
+  // log-interpolate scale
+  return { lon: lerp(a[0], c[0], k), lat: lerp(a[1], c[1], k), s: Math.exp(lerp(Math.log(a[2]), Math.log(c[2]), k)) };
+}
+let C, CY = H * .54;
+const X = lon => W / 2 + (lon - C.lon) * C.s * KX, Y = lat => CY - (lat - C.lat) * C.s;
+const pt = p => [X(p[0]), Y(p[1])];
+
+// ---------- paths (built once in "world units": x = lon*KX, y = -lat) ----------
+let LAND, LAKES, RIV = [], KAZP;
+function mkPath(rings, close = true) { const p = new Path2D(); for (const r of rings) { r.forEach(([x, y], i) => i ? p.lineTo(x * KX, -y) : p.moveTo(x * KX, -y)); if (close) p.closePath(); } return p; }
+function worldT(g) { g.setTransform(C.s, 0, 0, C.s, W / 2 - C.lon * KX * C.s, CY + C.lat * C.s); }
+
+function drawMap(t, A) {
+  if (A <= 0) return;
+  ctx.save(); ctx.globalAlpha = A;
+  // land tint
+  worldT(ctx); ctx.fillStyle = 'rgba(150,108,58,.16)'; ctx.fill(LAND, 'evenodd');
+  // ripple lines along coasts (old map style)
+  oc.setTransform(1, 0, 0, 1, 0, 0); oc.clearRect(0, 0, W, H); worldT(oc); oc.lineJoin = 'round';
+  const rings = [30, 22, 15, 9];
+  rings.forEach((d, i) => {
+    oc.globalCompositeOperation = 'source-over'; oc.globalAlpha = .35 + .15 * i; oc.strokeStyle = '#000'; oc.lineWidth = 2 * d / C.s; oc.stroke(LAND); oc.stroke(LAKES);
+    oc.globalCompositeOperation = 'destination-out'; oc.globalAlpha = 1; oc.lineWidth = (2 * d - 2.4) / C.s; oc.stroke(LAND); oc.stroke(LAKES);
+  });
+  oc.globalCompositeOperation = 'destination-out'; oc.fill(LAND, 'evenodd');
+  oc.globalCompositeOperation = 'source-in'; oc.setTransform(1, 0, 0, 1, 0, 0); oc.fillStyle = 'rgba(70,58,40,.55)'; oc.fillRect(0, 0, W, H);
+  oc.globalCompositeOperation = 'source-over';
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(off, 0, 0);
+  // lakes
+  worldT(ctx); ctx.fillStyle = 'rgba(96,118,112,.22)'; ctx.fill(LAKES, 'evenodd');
+  ctx.lineJoin = 'round'; ctx.strokeStyle = INK2 + '.85)'; ctx.lineWidth = 2.4 / C.s; ctx.stroke(LAND); ctx.lineWidth = 1.8 / C.s; ctx.stroke(LAKES);
+  // rivers
+  const rw = clamp(C.s / 45, .8, 2.6);
+  ctx.strokeStyle = 'rgba(58,74,86,.8)'; ctx.lineCap = 'round';
+  for (const r of RIV) { ctx.lineWidth = r.w * 1.7 * rw / C.s; ctx.stroke(r.p); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // mountains
+  const sz = clamp(C.s * .3, 9, 34), step = Math.max(1, Math.round(sz * 1.15 / (.32 * C.s * KX)));
+  ctx.lineWidth = clamp(sz / 12, 1.2, 2.6); ctx.lineJoin = 'round';
+  MT.forEach(([lo, la, k], i) => {
+    if (i % step) return; const x = X(lo), y = Y(la); if (x < -50 || x > W + 50 || y < -50 || y > H + 50) return;
+    const h = sz * k, w = h * 1.1;
+    ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w * .05, y - h); ctx.lineTo(x + w / 2, y); ctx.closePath(); ctx.fillStyle = 'rgba(214,190,146,.9)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - w * .05, y - h); ctx.lineTo(x + w / 2, y); ctx.lineTo(x + w * .12, y); ctx.closePath(); ctx.fillStyle = 'rgba(90,62,32,.45)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w * .05, y - h); ctx.lineTo(x + w / 2, y); ctx.strokeStyle = INK2 + '.8)'; ctx.stroke();
+  });
+  ctx.restore();
+}
+function label(txt, lon, lat, o = {}) {
+  const a = (o.a ?? 1); if (a <= 0) return;
+  const x = X(lon) + (o.dx || 0), y = Y(lat) + (o.dy || 0);
+  ctx.save(); ctx.globalAlpha = a; ctx.font = `700 ${o.size || 34}px ${o.it ? 'PSI' : 'PS'}`; ctx.textAlign = o.al || 'center'; ctx.textBaseline = 'middle';
+  if (o.sp) ctx.letterSpacing = o.sp + 'px';
+  ctx.lineWidth = o.halo ?? 7; ctx.strokeStyle = 'rgba(232,218,186,.85)'; ctx.lineJoin = 'round'; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = o.c || INK; ctx.fillText(txt, x, y); ctx.restore();
+}
+function city(name, p, a = 1, o = {}) {
+  if (a <= 0) return; const [x, y] = pt(p);
+  ctx.save(); ctx.globalAlpha = a; const r = o.r || 9;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = o.fill || 'rgba(240,228,200,1)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, r * .38, 0, 7); ctx.fillStyle = o.dot || INK; ctx.fill(); ctx.restore();
+  if (name) label(name, p[0], p[1], { a, size: o.size || 36, dx: o.dx ?? 0, dy: o.dy ?? -36, al: o.al });
+}
+// army block: formation of counters
+function army(lon, lat, col, o = {}) {
+  const a = o.a ?? 1; if (a <= 0) return;
+  const cols = o.cols || 4, rows = o.rows || 3, u = o.u || 30, g = u * .28;
+  const cx = X(lon), cy = Y(lat), w = cols * u + (cols - 1) * g, h = rows * u + (rows - 1) * g;
+  ctx.save(); ctx.globalAlpha = a;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const n = (o.seed || 0) * 100 + r * cols + c, sc = o.scatter || 0;
+    let x = cx - w / 2 + c * (u + g), y = cy - h / 2 + r * (u + g), rot = 0, al = 1;
+    if (sc > 0) { const ang = (o.dir || 0) + (hash(n) - .5) * 2.2, dist = sc * (140 + 260 * hash(n + 7)); x += Math.cos(ang) * dist; y += Math.sin(ang) * dist + sc * sc * 120 * hash(n + 3); rot = sc * (hash(n + 5) - .5) * 6; al = clamp(1 - sc * (1 + hash(n + 9))); }
+    if (o.shake) { x += Math.sin(o.shake * 50 + n) * 4 * o.shakeA; y += Math.cos(o.shake * 43 + n * 2) * 4 * o.shakeA; }
+    ctx.save(); ctx.globalAlpha = a * al; ctx.translate(x + u / 2, y + u / 2); ctx.rotate(rot);
+    ctx.fillStyle = 'rgba(40,24,10,.35)'; ctx.fillRect(-u / 2 + 4, -u / 2 + 5, u, u);
+    ctx.fillStyle = col; ctx.fillRect(-u / 2, -u / 2, u, u);
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(-u / 2, -u / 2, u, u * .3);
+    ctx.lineWidth = 2.4; ctx.strokeStyle = INK; ctx.strokeRect(-u / 2, -u / 2, u, u);
+    ctx.beginPath(); ctx.moveTo(-u * .28, u * .28); ctx.lineTo(u * .28, -u * .28); ctx.moveTo(-u * .28, -u * .28); ctx.lineTo(u * .28, u * .28); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(30,18,8,.55)'; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+  if (o.name) { const la = (o.la ?? 1) * a * clamp(1 - (o.scatter || 0) * 3); if (la > 0) { ctx.save(); ctx.globalAlpha = la; ctx.font = '900 30px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.letterSpacing = '2px'; const ly = o.below ? cy + h / 2 + 34 : cy - h / 2 - 30; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(236,224,196,.95)'; ctx.lineJoin = 'round'; ctx.strokeText(o.name, cx, ly); ctx.fillStyle = o.lc || col; ctx.fillText(o.name, cx, ly); ctx.restore(); } }
+}
+// title text (top)
+function title(lines, a, y = 250, o = {}) {
+  if (a <= 0) return; const sz = o.size || 78;
+  ctx.save(); ctx.globalAlpha = clamp(a); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.letterSpacing = '1px';
+  const dy = (1 - eout(a)) * 26;
+  lines.forEach((ln, i) => {
+    let s = sz; ctx.font = `900 ${s}px M`; while (ctx.measureText(ln).width > W - 120) { s -= 2; ctx.font = `900 ${s}px M`; }
+    const yy = y + i * sz * 1.18 + dy;
+    ctx.shadowColor = 'rgba(240,228,200,.9)'; ctx.shadowBlur = 26; ctx.lineWidth = 12; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(238,226,198,.92)'; ctx.strokeText(ln, W / 2, yy);
+    ctx.shadowBlur = 0;
+    // colour numbers / accent
+    const parts = ln.split(/(\d+|→|\+|·|=)/).filter(Boolean); let x = W / 2 - ctx.measureText(ln).width / 2; ctx.textAlign = 'left';
+    for (const p of parts) { ctx.fillStyle = /^\d+$/.test(p) ? RED : /→|\+|·|=/.test(p) ? '#7a4a22' : (o.c || INK); ctx.fillText(p, x, yy); x += ctx.measureText(p).width; }
+    ctx.textAlign = 'center';
+  });
+  ctx.restore();
+}
+function frameDecor(a) {
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = INK2 + '.75)'; ctx.lineWidth = 4; ctx.strokeRect(34, 34, W - 68, H - 68); ctx.lineWidth = 1.6; ctx.strokeRect(48, 48, W - 96, H - 96);
+  // compass rose bottom-left
+  const x = 165, y = H - 270, r = 78; ctx.translate(x, y);
+  ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r * .62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r * .55, 0, 7); ctx.stroke();
+  for (let i = 0; i < 8; i++) { const L = i % 2 ? r * .55 : r; ctx.save(); ctx.rotate(i * Math.PI / 4); ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(L * .14, 0); ctx.lineTo(0, 0); ctx.closePath(); ctx.fillStyle = INK; ctx.fill(); ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(-L * .14, 0); ctx.lineTo(0, 0); ctx.closePath(); ctx.fillStyle = 'rgba(236,222,190,1)'; ctx.fill(); ctx.stroke(); ctx.restore(); }
+  ctx.font = '700 30px PS'; ctx.fillStyle = INK; ctx.textAlign = 'center'; ctx.fillText(LANG === 'kk' ? 'С' : 'С', 0, -r - 14);
+  ctx.restore();
+}
+// red wash over the area the Chinese army controls (east of edge lon)
+function wash(edge, a, col = '179,38,30') {
+  if (a <= 0) return;
+  ctx.save();
+  const zp = new Path2D(); ZH.forEach((p, i) => { const [x, y] = pt(p); i ? zp.lineTo(x, y) : zp.moveTo(x, y); }); zp.closePath();
+  const x0 = X(edge); ctx.beginPath(); ctx.rect(x0, -10, W * 4, H + 20); ctx.clip(); ctx.clip(zp);
+  ctx.fillStyle = `rgba(${col},${.2 * a})`; ctx.fill(zp);
+  ctx.strokeStyle = `rgba(${col},${.32 * a})`; ctx.lineWidth = 2; ctx.beginPath();
+  for (let x = -H; x < W + H; x += 22) { ctx.moveTo(x, 0); ctx.lineTo(x + H, H); } ctx.stroke();
+  ctx.setLineDash([14, 9]); ctx.lineWidth = 4; ctx.strokeStyle = `rgba(150,30,22,${.8 * a})`; ctx.stroke(zp);
+  ctx.setLineDash([]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x0 + 2, 0); ctx.lineTo(x0 + 2, H); ctx.stroke();
+  ctx.restore();
+}
+function arrowPath(pts, k) { // returns subset up to fraction k
+  const L = [0]; for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const tot = L[L.length - 1] * k, out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) { if (L[i] <= tot) out.push(pts[i]); else { const f = (tot - L[i - 1]) / (L[i] - L[i - 1]); out.push([lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)]); break; } }
+  return out;
+}
+function bez(a, c, e, n = 60) { const o = []; for (let i = 0; i <= n; i++) { const u = i / n; o.push([(1 - u) ** 2 * a[0] + 2 * (1 - u) * u * c[0] + u * u * e[0], (1 - u) ** 2 * a[1] + 2 * (1 - u) * u * c[1] + u * u * e[1]]); } return o; }
+function drawArrow(ps, col, wd, head = true, a = 1) {
+  if (ps.length < 2 || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const n = ps.length - 1, [x1, y1] = ps[n], [x0, y0] = ps[Math.max(0, n - 3)], an = Math.atan2(y1 - y0, x1 - x0);
+  const trim = head ? wd * 1.2 : 0;
+  ctx.beginPath(); ps.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.strokeStyle = INK; ctx.lineWidth = wd + 6; ctx.stroke(); ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.stroke();
+  if (head) { ctx.translate(x1, y1); ctx.rotate(an); ctx.beginPath(); ctx.moveTo(wd * 1.6, 0); ctx.lineTo(-wd * 1.4, -wd * 1.5); ctx.lineTo(-wd * .9, 0); ctx.lineTo(-wd * 1.4, wd * 1.5); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke(); }
+  ctx.restore();
+}
+function fire(x, y, k, t) {
+  if (k <= 0) return; ctx.save();
+  for (let i = 0; i < 9; i++) { // smoke
+    const ph = (t * .6 + hash(i)) % 1, sx = x + (hash(i + 3) - .5) * 40 + ph * 30, sy = y - 20 - ph * 170;
+    ctx.globalAlpha = k * .35 * (1 - ph); ctx.fillStyle = '#3a3026'; ctx.beginPath(); ctx.arc(sx, sy, 16 + ph * 40, 0, 7); ctx.fill();
+  }
+  for (let i = 0; i < 7; i++) { const fl = .7 + .3 * Math.sin(t * 23 + i * 2.1), hx = x + (i - 3) * 11, hh = (40 + 30 * hash(i)) * fl * k;
+    ctx.globalAlpha = .9 * k; const g = ctx.createLinearGradient(0, y, 0, y - hh); g.addColorStop(0, '#c5341a'); g.addColorStop(.6, '#ef8a1f'); g.addColorStop(1, 'rgba(255,214,90,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(hx - 12, y); ctx.quadraticCurveTo(hx - 10, y - hh * .5, hx, y - hh); ctx.quadraticCurveTo(hx + 10, y - hh * .5, hx + 12, y); ctx.fill(); }
+  ctx.restore();
+}
+
+// ---------- scenes ----------
+function render(T) {
+  const t = T - OFF; C = cam(t);
+  // shake on impacts
+  let shx = 0, shy = 0; const sh = (t0, A) => { const d = t - t0; if (d > 0 && d < .45) { const e = (1 - d / .45) * A; shx += Math.sin(d * 90) * e; shy += Math.cos(d * 77) * e; } };
+  sh(b.hit, 16); if (t > b.s4 && t < b.s5) for (const d of days()) sh(d, 7); sh(b.karluk + 1.1, 10);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(PAPER, 0, 0, W, H);
+  ctx.save(); ctx.translate(shx, shy);
+  const mapA = t < b.s6 ? 1 : lerp(1, .14, ease((t - b.s6) / .6));
+  drawMap(t, mapA);
+  if (t < b.s6) scenesMap(t); else scenesPaper(t);
+  ctx.restore();
+  frameDecor(t < b.s6 ? 1 : .8);
+  // transition: flash at s5, quick paper-dissolve dips at cuts
+  const fl = t > b.s5 - .08 ? clamp(1 - (t - b.s5) / .45) * clamp((t - b.s5 + .08) / .08) : 0;
+  for (const c of [b.s2, b.s3, b.s4, b.s6, b.s7]) { const d = Math.abs(t - c); if (d < .12) { ctx.fillStyle = `rgba(232,218,186,${(1 - d / .12) * .55})`; ctx.fillRect(0, 0, W, H); } }
+  if (fl > 0) { ctx.fillStyle = `rgba(255,250,236,${fl})`; ctx.fillRect(0, 0, W, H); }
+  const fo = clamp((t - b.end - .4) / .9); if (fo > 0) { ctx.fillStyle = `rgba(20,12,6,${fo})`; ctx.fillRect(0, 0, W, H); }
+}
+function days() { const a = b.s4 + .15, z = b.turks; return [0, 1, 2, 3, 4].map(i => lerp(a, z, i / 4)); }
+
+const ARMY = { cn: [72.95, 43.25], ar: [70.35, 42.15] };
+const ZH = [[69.5, 44.2], [71.5, 45.6], [74, 46.6], [78, 47.4], [83, 47.0], [90, 46.3], [101, 44.5], [101, 37.5], [92, 38.6], [84, 39.6], [78, 40.4], [74, 40.9], [71, 41.3], [69.5, 41.9]];
+function scenesMap(t) {
+  const L = TX;
+  // ---- region labels ----
+  const s = C.s;
+  const lab = (k, lon, lat, smin, smax, o) => { const a = clamp((s - smin) / (smin * .25)) * clamp((smax - s) / (smax * .2)); if (a > 0) label(L[k], lon, lat, { ...o, a: a * (o?.a ?? 1) }); };
+  lab('Caspian', 50.5, 42.5, 8, 60, { it: 1, size: 36, c: '#3d4a4a' });
+  lab('Aral', 59.8, 45.2, 10, 70, { it: 1, size: 32, c: '#3d4a4a' });
+  lab('Balkhash', 74.5, 46.6, 10, 140, { it: 1, size: 32, c: '#3d4a4a' });
+  lab('Issyk', 77.3, 42.0, 30, 400, { it: 1, size: 32, c: '#3d4a4a', dy: 70 });
+  lab('Syr', 66.2, 44.6, 25, 160, { it: 1, size: 30, c: '#3a4a56' });
+  lab('Ili', 79.2, 44.25, 40, 400, { it: 1, size: 30, c: '#3a4a56' });
+  lab('Chu', 73.3, 43.9, 50, 400, { it: 1, size: 30, c: '#3a4a56' });
+  lab('Talas', 70.75, 43.55, 90, 400, { it: 1, size: 30, c: '#3a4a56' });
+  lab('Tang', 101, 29.5, 6, 40, { size: 40, sp: 6, c: '#7a2a1e' });
+  lab('Caliph', 56, 37.6, 6, 55, { size: 38, sp: 4, c: '#2a5a30' });
+  lab('Zhetysu', 78.6, 45.1, 35, 120, { it: 1, size: 54, sp: 14, c: '#5a3a1c' });
+  // cities
+  const cs = (k, smin, o = {}) => { const a = clamp((s - smin) / (smin * .3)); if (a > 0) city(L[k], P[k], a * (o.a ?? 1), o); };
+  if (t < b.s2) { cs('Changan', 5, { r: 8, size: 32 }); }
+  cs('Kashgar', 40, { r: 7, size: 30, dy: 32 });
+  cs('Samarkand', 40, { r: 7, size: 30 });
+  cs('Chach', 60, { r: 7, size: 30 });
+
+  // ---------- S1 ----------
+  if (t < b.s2) {
+    // Kazakhstan dashed outline + label
+    const ka = ramp(t, b.kz - .2, .6);
+    if (ka > 0) { ctx.save(); worldT(ctx); ctx.setLineDash([10 / C.s, 7 / C.s]); ctx.lineWidth = 4 / C.s; ctx.strokeStyle = `rgba(122,74,34,${ka * .9})`; ctx.stroke(KAZP); ctx.fillStyle = `rgba(122,74,34,${ka * .1})`; ctx.fill(KAZP); ctx.restore();
+      label(L.KAZ, 67.5, 48.3, { a: ka, size: 48, sp: 10, c: '#6b3d18' }); }
+    city(L.Taraz, P.Taraz, clamp(ramp(t, b.hit + .2, .3)), { size: 38, dx: -12, dy: 40 });
+    // arrow China -> Taraz
+    const path = bez([P.Changan[0], P.Changan[1]], [93, 47.5], [P.Taraz[0] + .35, P.Taraz[1] + .05]).map(pt);
+    const ak = eout(clamp((t - .15) / (b.hit - .15)));
+    const br = clamp((t - b.hit) / .7);
+    if (br <= 0) drawArrow(arrowPath(path, ak), RED, 16);
+    else {
+      drawArrow(arrowPath(path, .9), RED, 16, false);
+      // broken pieces flying back
+      const tip = arrowPath(path, 1), e = tip[tip.length - 1], q = arrowPath(path, .9).pop();
+      const an = Math.atan2(e[1] - q[1], e[0] - q[0]);
+      for (let i = 0; i < 2; i++) { ctx.save(); const d = eout(br) * (60 + i * 50); ctx.translate(lerp(q[0], e[0], .5 + i * .5) + Math.cos(an + 2.2 + i * 1.6) * d, lerp(q[1], e[1], .5 + i * .5) + Math.sin(an + 2.2 + i * 1.6) * d + br * br * 40); ctx.rotate(an + br * (i ? -2.4 : 1.8)); ctx.globalAlpha = 1 - br * .3;
+        if (i) { ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(-22, -24); ctx.lineTo(-14, 0); ctx.lineTo(-22, 24); ctx.closePath(); } else { ctx.beginPath(); ctx.rect(-28, -8, 56, 16); }
+        ctx.fillStyle = RED; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke(); ctx.restore(); }
+      // ink burst
+      const [tx, ty] = pt(P.Taraz); ctx.save(); ctx.globalAlpha = clamp(1 - br); ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(tx, ty, 20 + eout(br) * 120, 0, 7); ctx.stroke();
+      ctx.globalAlpha = clamp(1 - br * .5); for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283 + .3, r0 = 26, r1 = 26 + eout(br) * (50 + 40 * hash(i)); ctx.beginPath(); ctx.moveTo(tx + Math.cos(a) * r0, ty + Math.sin(a) * r0); ctx.lineTo(tx + Math.cos(a) * r1, ty + Math.sin(a) * r1); ctx.lineWidth = 4; ctx.stroke(); }
+      ctx.restore();
+    }
+    title(L.t1, ramp(t, .2, .5), 250, { size: 104 });
+    return;
+  }
+  // red wash (Chinese control) S2..S5
+  const cnLon = t < b.s3 ? lerp(91, 76.2, ease((t - b.cn_in + .4) / (b.y748 - b.cn_in + 1.2))) : t < b.s5 ? ARMY.cn[0] + .3 : lerp(ARMY.cn[0] + .3, 101, ease((t - b.leave) / 3.2));
+  const wa = t < b.s5 ? 1 : 1 - ease((t - b.leave - 2.2) / 1.5);
+  wash(cnLon, wa);
+  // islam green wave S5
+  if (t > b.islam - .2) {
+    const k = clamp((t - b.islam + .2) / 2.6), [cx, cy] = pt(P.Taraz);
+    ctx.save(); worldT(ctx); ctx.clip(LAND, 'evenodd'); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const R = eout(k) * 17 * C.s * KX, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, R));
+    g.addColorStop(0, 'rgba(47,125,58,.30)'); g.addColorStop(.8, 'rgba(47,125,58,.20)'); g.addColorStop(1, 'rgba(47,125,58,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 4; i++) { const kk = (t - b.islam + .2 - i * .45) / 2.2; if (kk <= 0 || kk > 1) continue; ctx.globalAlpha = (1 - kk) * .9; ctx.strokeStyle = GREEN; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(cx, cy, eout(kk) * 15 * C.s * KX, 0, 7); ctx.stroke(); }
+    ctx.restore();
+  }
+  // cities
+  const suA = 1;
+  const razed = t > b.raze + .9;
+  city(L.Suyab, P.Suyab, suA, { size: 36, dy: 44, fill: razed ? 'rgba(120,100,80,1)' : undefined, dot: razed ? '#1a1008' : undefined });
+  if (t > b.raze && t < b.s3 + 1) { const [x, y] = pt(P.Suyab); const k = clamp((t - b.raze) / .3) * clamp((b.s3 + 1 - t) / .8); fire(x, y - 6, k, t);
+    const fl = clamp(1 - (t - b.raze) / .5); if (fl > 0) { ctx.save(); ctx.globalAlpha = fl; const g = ctx.createRadialGradient(x, y, 0, x, y, 160); g.addColorStop(0, 'rgba(255,190,80,.9)'); g.addColorStop(1, 'rgba(255,190,80,0)'); ctx.fillStyle = g; ctx.fillRect(x - 160, y - 160, 320, 320); ctx.restore(); } }
+  if (razed) { const [x, y] = pt(P.Suyab), k = clamp((t - b.raze - .9) / .3); ctx.save(); ctx.globalAlpha = k; ctx.strokeStyle = '#1a1008'; ctx.lineWidth = 5; const r = 16; ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r); ctx.stroke(); ctx.restore(); }
+  const tzA = t > b.s3 ? 1 : clamp((C.s - 60) / 20);
+  city(L.Taraz, P.Taraz, tzA, { size: 38, dy: -36, dx: -16, al: 'right' });
+  if (t > b.y751 - .2) { const k = back(ramp(t, b.meet - .2, .5)); if (k > 0) { city(L.Atlakh, P.Atlakh, clamp(k), { r: 11 * k, size: 44, dy: 4, dx: 26, al: 'left', fill: '#f3e2b8', dot: RED }); } }
+
+  // ---- armies ----
+  // Chinese army
+  let cn = null;
+  if (t < b.s3) { const k = ease((t - b.cn_in + .4) / (b.y748 - b.cn_in + 1.2)); cn = [lerp(91, 76.2, k), lerp(43.7, 43.2, k)]; }
+  else if (t < b.s5) { const k = ease((t - b.s3 - .2) / (b.meet - b.s3)); cn = [lerp(74.8, ARMY.cn[0], k), lerp(43.1, ARMY.cn[1], k)]; }
+  else { const k = ease((t - b.s5) / 3); cn = [lerp(ARMY.cn[0], 80, k), lerp(ARMY.cn[1], 43.3, k)]; }
+  let ar = null;
+  if (t > b.s3 + .1) { const k = ease((t - b.s3 - .1) / (b.meet - b.s3 + .3)); ar = [lerp(66.5, ARMY.ar[0], k), lerp(41.9, ARMY.ar[1], k)]; }
+  // battle pulses
+  let push = 0; const sc = clamp(C.s / 165);
+  if (t > b.s4 - .1 && t < b.s5) for (const d of days()) { const x = t - d + .22; if (x > 0 && x < .9) push += x < .22 ? eout(x / .22) : 1 - ease((x - .22) / .68); }
+  const dir = [ARMY.ar[0] - ARMY.cn[0], ARMY.ar[1] - ARMY.cn[1]];
+  // Turks
+  const kb = clamp((t - b.karluk + .2) / 1.3), hitT = b.karluk + 1.1;
+  const rout = t > b.rout - .2 ? clamp((t - b.rout + .2) / 1.4) : 0;
+  const cnScatter = t > b.s5 - 2 ? 0 : 0;
+  if (cn) {
+    const shake = t > hitT && t < b.rout ? 1 : 0;
+    const p = [cn[0] + dir[0] * .2 * push, cn[1] + dir[1] * .2 * push];
+    const ca = t < b.s5 ? 1 : 0;
+    army(p[0], p[1], RED, { u: t < b.s3 ? 30 : 34, cols: 4, rows: 3, name: L.aCN, scatter: rout, dir: -.35, seed: 1, a: ca, shake: t, shakeA: shake });
+  }
+  if (t > b.s5 && t < b.s6) { // retreating arrow east
+    const k = ease((t - b.leave + .3) / 2.4); if (k > 0) { const a0 = pt([73.0, 43.1]), a1 = pt([lerp(73.0, 82, k), lerp(43.1, 43.6, k)]); drawArrow([a0, [lerp(a0[0], a1[0], .5), lerp(a0[1], a1[1], .5) - 30 * k], a1], RED, 14, true, clamp(1.6 - k)); }
+  }
+  if (ar) { const p = [ar[0] - dir[0] * .2 * push, ar[1] - dir[1] * .2 * push]; army(p[0], p[1], GREEN, { u: t < b.s4 ? 30 : 34, cols: 4, rows: 3, name: L.aAR, seed: 2, below: true, a: t < b.s5 ? 1 : clamp(1 - (t - b.s5) / .6) }); }
+  if (t > b.karluk - .2 && t < b.s5) {
+    const hk = ease(kb);
+    const ta = t > b.rout + 1 ? clamp(1 - (t - b.rout - 1) / .8) : 1;
+    army(lerp(71.7, 72.35, hk), lerp(44.7, 43.88, hk), BLUE, { u: 30, cols: 3, rows: 2, name: L.aKA, seed: 3, a: clamp(kb * 3) * ta });
+    army(lerp(74.6, 73.65, hk), lerp(44.5, 43.72, hk), BLUE, { u: 30, cols: 3, rows: 2, name: L.aTU, seed: 4, a: clamp(kb * 3) * ta });
+    if (t > hitT) { const [x, y] = pt([73.05, 43.52]), k = clamp((t - hitT) / .6); ctx.save(); ctx.globalAlpha = 1 - k; ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 30 + 150 * eout(k), 0, 7); ctx.stroke(); ctx.restore(); }
+  }
+  // dust puffs on day hits
+  if (t > b.s4 - .1 && t < b.s5 && cn && ar) for (const d of days()) { const x = t - d; if (x > 0 && x < .7) { const m = pt([lerp(cn[0], ar[0], .5), lerp(cn[1], ar[1], .5)]); ctx.save(); for (let i = 0; i < 8; i++) { const an = i / 8 * 6.283 + d, r = 20 + 90 * eout(x / .7); ctx.globalAlpha = (1 - x / .7) * .5; ctx.fillStyle = '#7a5a36'; ctx.beginPath(); ctx.arc(m[0] + Math.cos(an) * r, m[1] + Math.sin(an) * r * .6, 14 + 20 * x, 0, 7); ctx.fill(); } ctx.restore(); } }
+
+  // ---- day counter (S4) ----
+  if (t > b.s4 && t < b.s5) {
+    const ds = days(); let n = 0; ds.forEach(d => { if (t >= d) n++; });
+    const a = clamp((t - b.s4) / .3);
+    ctx.save(); ctx.globalAlpha = a; const x = W - 250, y = 560, w = 190, h = 210;
+    ctx.fillStyle = 'rgba(240,228,200,.92)'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h); ctx.lineWidth = 1.5; ctx.strokeRect(x + 8, y + 8, w - 16, h - 16);
+    const pop = n ? 1 + .25 * clamp(1 - (t - ds[n - 1]) / .25) : 1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = RED; ctx.font = `900 ${Math.round(110 * pop)}px M`; ctx.fillText(String(Math.max(1, n)), x + w / 2, y + 88);
+    ctx.fillStyle = INK; ctx.font = '900 34px M'; ctx.letterSpacing = '4px'; ctx.fillText(L.day, x + w / 2, y + 168); ctx.restore();
+  }
+  // ---- titles ----
+  if (t < b.s3) title(L.t2, ramp(t, b.y748 - .1, .45));
+  else if (t < b.s4) title(L.t3, ramp(t, b.meet - .1, .45));
+  else if (t < b.s5) title(L.t4, ramp(t, b.karluk, .45), 230, { size: 70 });
+  else { const a1 = ramp(t, b.leave, .45), a2 = ramp(t, b.islam, .45); title([L.t5a], a1, 230, { size: 80 }); if (a2 > 0) title([L.t5b], a2, 330, { size: 60, c: '#24602e' }); }
+}
+
+function scenesPaper(t) {
+  const L = TX;
+  if (t < b.s7) {
+    const out = clamp((b.s7 - t) / .25);
+    title([L.t6h], ramp(t, b.s6, .45) * out, 330, { size: 70 });
+    const k1 = back(ramp(t, b.d751 - .1, .45)), k2 = back(ramp(t, b.d748 - .1, .45)), kn = back(ramp(t, b.d748 + .25, .4));
+    const y = 880;
+    const date = (txt, sub, x, k, col) => { if (k <= 0) return; ctx.save(); ctx.globalAlpha = clamp(k) * out; ctx.translate(x, y); ctx.scale(k, k); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '900 196px M'; ctx.lineWidth = 14; ctx.strokeStyle = 'rgba(238,226,198,.9)'; ctx.lineJoin = 'round'; ctx.strokeText(txt, 0, 0); ctx.fillStyle = col; ctx.fillText(txt, 0, 0);
+      ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-150, 115); ctx.lineTo(150, 115); ctx.stroke();
+      ctx.font = '700 50px PSI'; ctx.fillStyle = INK; const words = sub.split(' '); words.forEach((w2, i) => ctx.fillText(w2, 0, 190 + i * 60)); ctx.restore(); };
+    date('751', L.d751, 260, k1, GREEN);
+    date('748', L.d748, 820, k2, RED);
+    if (kn > 0) { ctx.save(); ctx.globalAlpha = clamp(kn) * out; ctx.translate(W / 2, y); ctx.scale(kn, kn); ctx.font = '900 150px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = RED; ctx.fillText('≠', 0, -6); ctx.restore(); }
+    // bottom summary
+    const ab = ramp(t, b.d748 + .9, .5) * out; if (ab > 0) { ctx.save(); ctx.globalAlpha = ab; ctx.font = '900 54px M'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const s = L.t6, x0 = W / 2 - ctx.measureText(s).width / 2; let x = x0; ctx.textAlign = 'left'; const y2 = 1420;
+      ctx.fillStyle = 'rgba(240,228,200,.9)'; ctx.fillRect(x0 - 30, y2 - 55, ctx.measureText(s).width + 60, 110); ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeRect(x0 - 30, y2 - 55, ctx.measureText(s).width + 60, 110);
+      for (const p of s.split(/(751|748)/)) { ctx.fillStyle = p === '751' ? GREEN : p === '748' ? RED : INK; ctx.fillText(p, x, y2 + 2); x += ctx.measureText(p).width; } ctx.restore(); }
+    return;
+  }
+  // ---- S7 CTA ----
+  const a0 = ramp(t, b.s7, .4);
+  // profile header mock at top
+  const hy = 250; ctx.save(); ctx.globalAlpha = ramp(t, b.link - .4, .5);
+  ctx.beginPath(); ctx.arc(230, hy, 80, 0, 7); ctx.fillStyle = 'rgba(240,228,200,1)'; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); ctx.arc(230, hy - 18, 28, 0, 7); ctx.fillStyle = INK; ctx.fill(); ctx.beginPath(); ctx.arc(230, hy + 62, 52, Math.PI * 1.15, Math.PI * 1.85); ctx.lineWidth = 16; ctx.stroke();
+  ctx.fillStyle = 'rgba(52,32,16,.85)'; ctx.fillRect(350, hy - 50, 420, 26); ctx.fillStyle = 'rgba(52,32,16,.45)'; ctx.fillRect(350, hy - 6, 320, 20);
+  // link chip
+  const lp = 1 + .06 * Math.sin((t - b.link) * 6) * clamp(1 - (t - b.link - 2) / 1);
+  ctx.save(); ctx.translate(520, hy + 52); ctx.scale(lp, lp); ctx.fillStyle = '#2a5fa8'; ctx.beginPath(); ctx.roundRect(-170, -30, 340, 60, 30); ctx.fill(); ctx.font = '900 30px M'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🔗 LINK', 0, 2); ctx.restore();
+  ctx.restore();
+  // arrow up
+  const ak = eout(ramp(t, b.link, .8));
+  if (ak > 0) { const x = 520, y0 = 1060, y1 = lerp(y0, 375, ak); drawArrow([[x, y0], [x, y1]], '#7a4a22', 14, true); }
+  title([L.t7b], ramp(t, b.link + .2, .45), 1150, { size: 64 });
+  // comment field
+  const fy = 1460; ctx.save(); ctx.globalAlpha = a0;
+  ctx.fillStyle = 'rgba(246,238,218,.97)'; ctx.beginPath(); ctx.roundRect(110, fy - 80, W - 220, 160, 80); ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); ctx.arc(200, fy, 44, 0, 7); ctx.fillStyle = 'rgba(122,74,34,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
+  const word = 'ТАРИХ', n = Math.floor(clamp((t - b.s7 - .5) / 1.0) * word.length + .001);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  if (n === 0) { ctx.font = '700 46px PSI'; ctx.fillStyle = 'rgba(52,32,16,.45)'; ctx.fillText(L.ph, 270, fy + 2); }
+  else { ctx.font = '900 92px M'; ctx.fillStyle = RED; ctx.letterSpacing = '6px'; const s = word.slice(0, n); ctx.fillText(s, 280, fy + 4); const wd = ctx.measureText(s).width; if ((t * 2) % 1 < .6) { ctx.fillStyle = INK; ctx.fillRect(290 + wd, fy - 42, 6, 84); } }
+  // send icon
+  ctx.translate(W - 200, fy); ctx.beginPath(); ctx.moveTo(-30, -30); ctx.lineTo(36, 0); ctx.lineTo(-30, 30); ctx.lineTo(-18, 0); ctx.closePath(); ctx.fillStyle = n >= word.length ? '#2a5fa8' : 'rgba(52,32,16,.35)'; ctx.fill();
+  ctx.restore();
+  title([L.t7a], a0, 1320, { size: 70 });
+}
+
+// ---------- load ----------
+window.ready = (async () => {
+  const [sh, bt] = await Promise.all([fetch('shapes.json').then(r => r.json()), fetch('beats.json').then(r => r.json())]);
+  SH = sh; b = bt[LANG];
+  LAND = mkPath(SH.land); LAKES = mkPath(SH.lakes); KAZP = mkPath(SH.KAZ);
+  for (const r of SH.rivers) RIV.push({ w: r.w, p: mkPath([r.p], false) });
+  PAPER.src = 'paper.jpg'; await PAPER.decode();
+  await Promise.all(['900 40px M', '800 40px MX', '700 40px PS', '700 40px PSI'].map(f => document.fonts.load(f)));
+  await document.fonts.load('700 40px PSI');
+  return true;
+})();
+</script></body></html>
