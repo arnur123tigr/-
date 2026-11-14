@@ -1,0 +1,285 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:M;src:url(fonts/Montserrat-Black.ttf);font-weight:900}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Первая столица Казахстана сегодня в другой стране» — four capitals on a flat map (Flat Vector).
+// render(T) is deterministic, T = video seconds; the voice starts at T = OFF. ?lang=ru|kk picks texts + beats.
+// Kazakhstan outline (shapes.json) includes Baikonur, filled, no hole.
+const W = 1080, H = 1920, OFF = 0.3;
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let SH = null, cam = null, B = null, END = 41;
+const D2R = Math.PI / 180, KX = Math.cos(47 * D2R);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const up = (t, a, d = .35) => clamp((t - a) / d);
+
+const C = { bg1: '#17BDB5', bg2: '#0A9796', land: '#45CBC3', landS: 'rgba(255,255,255,.35)', kz: '#F4FFFC', kzS: '#0B3B4A',
+  y: '#FFD23F', yD: '#E0A800', navy: '#0B3B4A', white: '#FFFFFF', red: '#FF5A4E' };
+
+// cities: lon, lat
+const CITY = { oren: [55.10, 51.77], kyz: [65.51, 44.85], alm: [76.89, 43.24], akm: [71.43, 51.13] };
+const ORDER = ['oren', 'kyz', 'alm', 'akm'];
+const TX = {
+  ru: { title1: ['СТОЛИЦА №1 = ', '?'], names: { oren: 'ОРЕНБУРГ', kyz: 'КЫЗЫЛОРДА', alm: 'АЛМА-АТА', akm: 'АКМОЛА' },
+        rus: 'РОССИЯ', kz: 'КАЗАХСТАН', old: 'КИРГИЗЫ', neu: 'КАЗАХИ', congress: 'V СЪЕЗД · 1925',
+        ent: ['ЗАПОМНИ К ', 'ЕНТ'], order: 'НЕ ПУТАЙ ПОРЯДОК!', c1: ['ПИШИ В КОММЕНТАРИЯХ'], c2: ['ССЫЛКА', 'В ШАПКЕ ПРОФИЛЯ'], or: 'или в описании',
+        today: 'СЕГОДНЯ — РОССИЯ', handle: 'профиль', link: 'ссылка' },
+  kk: { title1: ['АСТАНА №1 = ', '?'], names: { oren: 'ОРЫНБОР', kyz: 'ҚЫЗЫЛОРДА', alm: 'АЛМАТЫ', akm: 'АҚМОЛА' },
+        rus: 'РЕСЕЙ', kz: 'ҚАЗАҚСТАН', old: 'ҚЫРҒЫЗ', neu: 'ҚАЗАҚ', congress: 'V СЪЕЗД · 1925',
+        ent: ['ҰБТ-ҒА ', 'ЕСТЕ САҚТА'], order: 'РЕТІН ШАТАСТЫРМА!', c1: ['ПІКІРГЕ ЖАЗ'], c2: ['СІЛТЕМЕ', 'ШАПКАДА'], or: 'немесе сипаттамада',
+        today: 'ҚАЗІР — РЕСЕЙ', handle: 'профиль', link: 'сілтеме' } }[LANG];
+const YEARS = { oren: 1920, kyz: 1925, alm: 1929, akm: 1997 };
+
+// ---------- camera + star path ----------
+// star timeline: arrives at each capital; flights [from, to, t0, t1]
+let FL = [];
+function starAt(t) {
+  let p = CITY.oren, h = 0;
+  for (const [a, b, t0, t1] of FL) {
+    if (t < t0) break;
+    const k = ease((t - t0) / (t1 - t0));
+    p = [lerp(CITY[a][0], CITY[b][0], k), lerp(CITY[a][1], CITY[b][1], k)]; h = Math.sin(Math.PI * clamp((t - t0) / (t1 - t0))) * 160;
+  }
+  return { p, h };
+}
+function camAt(t) {
+  const wide = { lon: 66.5, lat: 47.6, s: 30 }, zoom = { lon: 57.5, lat: 50.2, s: 64 };
+  if (t < B.y1925 - .1) {   // scene 1–2: fast push onto Orenburg
+    const k = ease((t - .25) / 1.1); return { lon: lerp(wide.lon, zoom.lon, k), lat: lerp(wide.lat, zoom.lat, k), s: Math.exp(lerp(Math.log(wide.s), Math.log(zoom.s), k)) };
+  }
+  if (t < B.ent - .2) {     // scenes 3–4: follow the star
+    const st = starAt(t).p, k = ease((t - B.y1925 + .1) / .8);
+    const s = Math.exp(lerp(Math.log(zoom.s), Math.log(46), k));
+    return { lon: lerp(zoom.lon, st[0], k), lat: lerp(zoom.lat, st[1] - .8, k), s };
+  }
+  const st = starAt(B.ent - .2).p, k = ease((t - B.ent + .2) / 1.0);   // scene 5: back to the whole country
+  return { lon: lerp(st[0], wide.lon, k), lat: lerp(st[1] - .8, wide.lat - 1.2, k), s: Math.exp(lerp(Math.log(46), Math.log(26), k)) };
+}
+const PX = (lon, lat) => [W / 2 + (lon - cam.lon) * cam.s * KX, H * .5 - (lat - cam.lat) * cam.s];
+
+function path(rings) { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => { const [x, y] = PX(lo, la); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); } }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function txt(s, x, y, size, col = '#fff', font = 'M', align = 'center', outline = null, ow = .16) {
+  ctx.font = `900 ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (outline) { ctx.lineJoin = 'round'; ctx.strokeStyle = outline; ctx.lineWidth = size * ow; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = col; ctx.fillText(s, x, y);
+}
+function tw(s, size, font = 'M') { ctx.font = `900 ${size}px ${font}`; return ctx.measureText(s).width; }
+function star(x, y, r, col = C.y, edge = C.navy, ew = 0) {
+  ctx.beginPath(); for (let k = 0; k < 10; k++) { const q = k % 2 ? r * .45 : r, a = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } ctx.closePath();
+  if (ew) { ctx.lineJoin = 'round'; ctx.strokeStyle = edge; ctx.lineWidth = ew; ctx.stroke(); }
+  ctx.fillStyle = col; ctx.fill();
+}
+
+// ---------- map ----------
+function drawMap(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // soft dot grid (flat-vector texture)
+  ctx.fillStyle = 'rgba(255,255,255,.07)'; for (let y = 30; y < H; y += 60) for (let x = 30 + (y / 60 % 2) * 30; x < W; x += 60) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+  path(SH.land); ctx.fillStyle = C.land; ctx.fill('evenodd');
+  ctx.save(); ctx.strokeStyle = C.landS; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+  for (const c of ['RUS', 'CHN', 'MNG', 'UZB', 'KGZ', 'TKM', 'TJK', 'AFG', 'IRN', 'AZE', 'GEO', 'ARM', 'TUR', 'UKR']) { path(SH[c]); ctx.stroke(); } ctx.restore();
+  // Kazakhstan (with Baikonur): white flat shape, offset shadow, navy edge
+  ctx.save(); ctx.translate(10, 14); path(SH.KAZ); ctx.fillStyle = 'rgba(6,60,66,.25)'; ctx.fill(); ctx.restore();
+  path(SH.KAZ); ctx.fillStyle = C.kz; ctx.fill(); ctx.lineJoin = 'round'; ctx.strokeStyle = C.kzS; ctx.lineWidth = 5; ctx.stroke();
+  for (const k of ['North Aral Sea', 'South Aral Sea', 'Lake Balkhash', 'Alaköl', 'Lake Zaysan', 'Issyk-Kul', 'Sarygamysh Köli']) { if (!SH.lakes[k]) continue; path(SH.lakes[k]); ctx.fillStyle = C.bg1; ctx.fill(); }
+  // country labels
+  const [rx, ry] = PX(53.5, 54.6); ctx.save(); ctx.globalAlpha = .55; txt(TX.rus, rx, ry, cam.s * .9, '#fff', 'M'); ctx.restore();
+  const [kx, ky] = PX(68.5, 48.3); ctx.save(); ctx.globalAlpha = .16; txt(TX.kz, kx, ky, cam.s * 1.35, C.navy, 'M'); ctx.restore();
+}
+function cityDot(key, a, big = false) {
+  if (a <= 0) return; const [x, y] = PX(...CITY[key]); ctx.save(); ctx.globalAlpha = clamp(a * 2);
+  const r = (big ? 16 : 12) * back(a); ctx.beginPath(); ctx.arc(x, y, r + 6, 0, 7); ctx.fillStyle = C.navy; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = C.y; ctx.fill();
+  ctx.restore();
+}
+function cityLabel(key, a, dy = 70, size = 44) {
+  if (a <= 0) return; const [x, y0] = PX(...CITY[key]); const y = y0 + dy; const s = TX.names[key];
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); const k = back(a); ctx.scale(k, k);
+  const w = tw(s, size) + 44; rr(-w / 2, -size * .78, w, size * 1.56, size * .5); ctx.fillStyle = C.navy; ctx.fill();
+  txt(s, 0, 2, size, C.white); ctx.restore();
+}
+function trail(t) {   // dashed yellow route between capitals already reached / being flown
+  ctx.save(); ctx.setLineDash([18, 16]); ctx.lineCap = 'round'; ctx.strokeStyle = C.y; ctx.lineWidth = 7;
+  for (const [a, b, t0, t1] of FL) {
+    if (t < t0) break; const k = ease((t - t0) / (t1 - t0)); ctx.beginPath();
+    for (let i = 0; i <= 40 * k; i++) { const u = i / 40; const p = PX(lerp(CITY[a][0], CITY[b][0], ease(u) * 0 + u), lerp(CITY[a][1], CITY[b][1], u)); const yy = p[1] - Math.sin(Math.PI * u) * 160; i ? ctx.lineTo(p[0], yy) : ctx.moveTo(p[0], yy); }
+    ctx.strokeStyle = 'rgba(11,59,74,.35)'; ctx.lineWidth = 11; ctx.stroke(); ctx.strokeStyle = C.y; ctx.lineWidth = 7; ctx.stroke();
+  }
+  ctx.restore();
+}
+function bigStar(t) {
+  const { p, h } = starAt(t); const [x, y0] = PX(...p); const y = y0 - h;
+  const pulse = 1 + .07 * Math.sin(t * 7), a = up(t, .05, .3);
+  ctx.save(); ctx.globalAlpha = a;
+  const gl = ctx.createRadialGradient(x, y, 0, x, y, 120); gl.addColorStop(0, 'rgba(255,230,120,.75)'); gl.addColorStop(1, 'rgba(255,230,120,0)'); ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 120, 0, 7); ctx.fill();
+  const rot = h ? Math.sin(t * 6) * .25 : 0; ctx.translate(x, y); ctx.rotate(rot);
+  star(4, 8, 50 * pulse, 'rgba(6,60,66,.35)'); star(0, 0, 50 * pulse, C.y, C.navy, 10); star(0, 0, 50 * pulse, C.y);
+  ctx.restore();
+  return [x, y];
+}
+
+// ---------- HUD: titles + timeline ----------
+function title(parts, t0, t1, y = 300, size = 92, cols = [C.white, C.y]) {
+  const k = up(globalT, t0, .4) * (t1 ? 1 - up(globalT, t1 - .3, .3) : 1); if (k <= 0) return;
+  let full = parts.join(''), sz = Math.min(size, size * 980 / tw(full, size)); const wAll = tw(full, sz);
+  ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - eout(k)) * 30); let x = W / 2 - wAll / 2;
+  parts.forEach((p, i) => { txt(p, x, y, sz, cols[i % cols.length], 'M', 'left', C.navy, .2); x += tw(p, sz); });
+  ctx.restore();
+}
+let globalT = 0;
+function timeline(t) {
+  const a = up(t, B.y1920, .5); if (a <= 0) return;
+  const k5 = ease((t - B.ent + .1) / .9), cx = W / 2, y = lerp(1500, 1000, k5), sc = lerp(1, 1.1, k5);
+  const fade6 = 1 - up(t, B.cta - .3, .4); if (fade6 <= 0) return;
+  const xs = [-345, -115, 115, 345], tAppear = [B.y1920, B.y1925, B.y1929, B.y1997];
+  ctx.save(); ctx.globalAlpha = a * fade6; ctx.translate(cx, y); ctx.scale(sc, sc);
+  rr(-470, -125, 940, 250, 46); ctx.fillStyle = 'rgba(11,59,74,.82)'; ctx.fill();
+  // line grows to the newest point
+  let last = 0; for (let i = 0; i < 4; i++) if (t >= tAppear[i]) last = i;
+  const grow = i => up(t, tAppear[i], .6);
+  const xEnd = last === 0 ? lerp(-420, xs[0], grow(0)) : lerp(xs[last - 1], xs[last], eout(grow(last)));
+  ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-420, 0); ctx.lineTo(420, 0); ctx.stroke();
+  ctx.strokeStyle = C.y; ctx.beginPath(); ctx.moveTo(-420, 0); ctx.lineTo(xEnd, 0); ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const g = grow(i); if (g <= 0) continue; const key = ORDER[i];
+    let hl = 0; if (t > B.n[0] - .1) { const tn = B.n[i]; hl = clamp((t - tn + .05) / .15) * (i < 3 ? 1 - clamp((t - B.n[i + 1] + .05) / .2) : 1); if (t > B.order) hl = 1; }
+    const s = back(g) * (1 + .12 * hl * (t < B.order ? 1 : 0));
+    ctx.save(); ctx.translate(xs[i], 0); ctx.scale(s, s);
+    if (i === last && t < B.ent) { ctx.beginPath(); ctx.arc(0, 0, 30 + 8 * Math.sin(t * 7), 0, 7); ctx.fillStyle = 'rgba(255,210,63,.3)'; ctx.fill(); }
+    star(0, 0, 26, C.y, C.navy, 6); star(0, 0, 26, C.y);
+    txt(String(YEARS[key]), 0, -70, 44, C.y);
+    const nm = TX.names[key], ns = Math.min(30, 30 * 200 / tw(nm, 30));
+    txt(nm, 0, 70, ns, hl > .5 || t > B.order ? C.y : C.white);
+    ctx.restore();
+    if (i > 0 && t > B.ent) { ctx.save(); ctx.globalAlpha = up(t, B.ent + .3, .4); txt('→', (xs[i] + xs[i - 1]) / 2, -70, 34, '#fff'); ctx.restore(); }
+  }
+  ctx.restore();
+}
+
+// ---------- scenes ----------
+function scene1(t) {   // star outside the NW border, blinking question mark
+  if (t > B.oren + .6) return;
+  const [x, y] = PX(...CITY.oren); const qa = (1 - up(t, B.oren - .2, .5)) * up(t, .5, .3);
+  if (qa > 0) {
+    const flip = Math.cos(clamp((t - B.oren + .2) / .5) * Math.PI / 2);   // scaleX -> 0 (flip) before the name appears
+    const blink = .65 + .35 * Math.abs(Math.sin(t * 5));
+    ctx.save(); ctx.globalAlpha = qa * blink; ctx.translate(x, y - 150 + Math.sin(t * 4) * 8); ctx.scale(flip, 1);
+    txt('?', 0, 0, 150, C.y, 'M', 'center', C.navy, .14); ctx.restore();
+  }
+  title(TX.title1, .2, B.oren - .1, 300, 100);
+}
+function scene2(t) {
+  if (t < B.oren - .3) return;
+  title([TX.names.oren, ' · 1920'], B.oren - .1, B.y1925 - .1, 300, 96, [C.y, C.white]);
+  const a = up(t, B.y1920 + 1.2, .4) * (1 - up(t, B.y1925 - .4, .3));
+  if (a > 0) { ctx.save(); ctx.globalAlpha = a; const [x, y] = PX(...CITY.oren); txt(TX.today, W / 2, 420, 46, C.white, 'MX', 'center', C.navy, .18); ctx.restore(); }
+}
+function scene3(t) {
+  if (t < B.y1925 - .3 || t > B.y1929) return;
+  title([TX.names.kyz, ' · 1925'], B.kyz - .3, B.y1929 - .1, 300, 96, [C.y, C.white]);
+  // «қырғыз» struck out -> «ҚАЗАҚ»
+  const a = up(t, B.strike - 1.0, .4) * (1 - up(t, B.y1929 - .4, .3)); if (a <= 0) return;
+  const y = 520, sz = 104; ctx.save(); ctx.globalAlpha = a;
+  const kOld = 1 - up(t, B.kazakh, .35), w = tw(TX.old, sz);
+  ctx.save(); ctx.globalAlpha = a * (.4 + .6 * kOld); ctx.translate(W / 2, y - eout(1 - kOld) * 40); ctx.scale(1 - .3 * (1 - kOld), 1 - .3 * (1 - kOld));
+  rr(-w / 2 - 40, -70, w + 80, 140, 36); ctx.fillStyle = 'rgba(11,59,74,.85)'; ctx.fill();
+  txt(TX.old, 0, 4, sz, C.white, 'M', 'center');
+  const sk = eout((t - B.strike) / .5); if (sk > 0) { ctx.strokeStyle = C.red; ctx.lineCap = 'round'; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(-w / 2 - 20, 6); ctx.lineTo(-w / 2 - 20 + (w + 40) * sk, -4); ctx.stroke(); }
+  ctx.restore();
+  const kn = up(t, B.kazakh, .4); if (kn > 0) {
+    ctx.save(); ctx.translate(W / 2, y + 150); const s = back(kn) * 1.0; ctx.scale(s, s);
+    const ww = tw(TX.neu, 128) + 70; rr(-ww / 2, -86, ww, 172, 40); ctx.fillStyle = C.y; ctx.fill(); ctx.strokeStyle = C.navy; ctx.lineWidth = 10; ctx.stroke();
+    txt(TX.neu, 0, 6, 128, C.navy); ctx.restore();
+  }
+  const kc = up(t, B.strike - .6, .4); txt(TX.congress, W / 2, 410, 44 * kc + .01, C.white, 'MX', 'center', C.navy, .18);
+  ctx.restore();
+}
+function scene4titles(t) {
+  if (t < B.alm - .4 || t > B.ent) return;
+  const fade = 1 - up(t, B.ent - .3, .3);
+  const k1 = up(t, B.alm - .4, .4), k2 = up(t, B.akm - .3, .4);
+  const p1 = TX.names.alm + ' · 1929', p2 = '→ ' + TX.names.akm + ' · 1997';
+  ctx.save(); ctx.globalAlpha = fade;
+  const s1 = Math.min(84, 84 * 960 / tw(p1, 84)), s2 = Math.min(84, 84 * 960 / tw(p2, 84));
+  ctx.save(); ctx.globalAlpha = fade * k1; txt(p1, W / 2, 270 + (1 - eout(k1)) * 30, s1, k2 > 0 ? C.white : C.y, 'M', 'center', C.navy, .2); ctx.restore();
+  if (k2 > 0) { ctx.save(); ctx.globalAlpha = fade * k2; txt(p2, W / 2, 380 + (1 - eout(k2)) * 30, s2, C.y, 'M', 'center', C.navy, .2); ctx.restore(); }
+  ctx.restore();
+}
+function scene5(t) {
+  if (t < B.ent - .3 || t > B.cta) return;
+  const d = up(t, B.ent - .2, .6) * (1 - up(t, B.cta - .3, .3));
+  ctx.fillStyle = `rgba(8,120,120,${.62 * d})`; ctx.fillRect(0, 0, W, H);
+  const f = 1 - up(t, B.cta - .35, .3);
+  ctx.save(); ctx.globalAlpha = f; title(TX.ent, B.ent - .1, null, 560, 96, [C.white, C.y]); ctx.restore();
+  const ko = up(t, B.order, .35);
+  if (ko > 0) { ctx.save(); ctx.globalAlpha = ko * f; ctx.translate(W / 2, 1420); const s = back(ko); ctx.scale(s, s);
+    const w = tw(TX.order, 64) + 80; rr(-w / 2, -60, w, 120, 60); ctx.fillStyle = C.red; ctx.fill(); txt(TX.order, 0, 4, 64, C.white); ctx.restore(); }
+}
+function scene6(t) {
+  if (t < B.cta - .35) return;
+  const a = up(t, B.cta - .35, .35);
+  ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,.07)'; for (let y = 30; y < H; y += 60) for (let x = 30 + (y / 60 % 2) * 30; x < W; x += 60) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+  // profile header mock (top)
+  const kh = up(t, B.link - .6, .45); if (kh > 0) {
+    ctx.save(); ctx.globalAlpha = a * kh; ctx.translate(0, (1 - eout(kh)) * -40);
+    rr(90, 230, 900, 300, 44); ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(220, 380, 92, 0, 7); ctx.fillStyle = C.bg1; ctx.fill(); ctx.lineWidth = 10; ctx.strokeStyle = C.y; ctx.stroke(); star(220, 384, 54, C.y, C.navy, 8); star(220, 384, 54, C.y);
+    rr(350, 300, 330, 34, 17); ctx.fillStyle = '#CFE7E6'; ctx.fill(); rr(350, 356, 520, 22, 11); ctx.fill(); rr(350, 392, 420, 22, 11); ctx.fill();
+    const lp = 1 + .06 * Math.sin(t * 8); ctx.save(); ctx.translate(520, 465); ctx.scale(lp, lp); rr(-170, -38, 340, 76, 38); ctx.fillStyle = C.y; ctx.fill(); ctx.strokeStyle = C.navy; ctx.lineWidth = 6; ctx.stroke();
+    txt('🔗 ' + TX.link, 0, 3, 40, C.navy, 'M'); ctx.restore();
+    ctx.restore();
+    // bouncing arrow up
+    const by = 690 + Math.sin(t * 8) * 22; ctx.save(); ctx.globalAlpha = a * kh; ctx.fillStyle = C.y; ctx.strokeStyle = C.navy; ctx.lineWidth = 8; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(540, by - 120); ctx.lineTo(630, by - 20); ctx.lineTo(580, by - 20); ctx.lineTo(580, by + 90); ctx.lineTo(500, by + 90); ctx.lineTo(500, by - 20); ctx.lineTo(450, by - 20); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.globalAlpha = a * up(t, B.link - .3, .4); txt(TX.c2[0], W / 2, 890, 84, C.white, 'M', 'center', C.navy, .2); txt(TX.c2[1], W / 2, 985, 84, C.y, 'M', 'center', C.navy, .2);
+    txt(TX.or, W / 2, 1070, 42, C.white, 'MX', 'center', C.navy, .2); ctx.restore();
+  }
+  // comment field (lower half)
+  const kc = up(t, B.cta - .1, .45); ctx.save(); ctx.globalAlpha = a * kc; ctx.translate(0, (1 - eout(kc)) * 60);
+  txt(TX.c1[0], W / 2, 1250, Math.min(76, 76 * 960 / tw(TX.c1[0], 76)), C.white, 'M', 'center', C.navy, .2);
+  rr(80, 1330, 920, 170, 85); ctx.fillStyle = C.navy; ctx.fill();
+  ctx.beginPath(); ctx.arc(170, 1415, 52, 0, 7); ctx.fillStyle = '#2BC3BE'; ctx.fill(); ctx.beginPath(); ctx.arc(170, 1400, 20, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(170, 1452, 34, Math.PI, 0); ctx.fill();
+  const word = 'ТАРИХ', n = Math.floor(clamp((t - B.cta - .05) / .5) * word.length + .001), shown = word.slice(0, n);
+  txt(shown, 250, 1418, 92, C.y, 'M', 'left'); const cw = tw(shown, 92);
+  if (Math.floor(t * 2.5) % 2 === 0 || n < word.length) { ctx.fillStyle = '#fff'; ctx.fillRect(258 + cw, 1370, 8, 96); }
+  const sp = n >= word.length ? back(up(t, B.cta + .6, .3)) : .0; if (sp > 0) { ctx.save(); ctx.translate(915, 1415); ctx.scale(sp, sp); ctx.beginPath(); ctx.arc(0, 0, 56, 0, 7); ctx.fillStyle = C.y; ctx.fill();
+    ctx.fillStyle = C.navy; ctx.beginPath(); ctx.moveTo(-24, -26); ctx.lineTo(30, 0); ctx.lineTo(-24, 26); ctx.lineTo(-14, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  ctx.restore();
+  ctx.restore();
+}
+
+function render(T) {
+  const t = T; globalT = t; cam = camAt(t);
+  drawMap(t);
+  // past capitals: dots and names stay on the map
+  const arrive = { oren: B.oren, kyz: B.kyz, alm: B.alm, akm: B.akm };
+  trail(t);
+  for (const k of ORDER) { const a = up(t, arrive[k] - .15, .4); cityDot(k, a, true); }
+  const [sx, sy] = bigStar(t);
+  for (const k of ORDER) { const a = up(t, arrive[k] - .15, .4); if (k === 'oren' && t < B.y1925) cityLabel(k, a, 95, 50); else cityLabel(k, a, k === 'akm' ? -105 : 80, t > B.ent ? 34 : 40); }
+  scene1(t); scene2(t); scene3(t); scene4titles(t); scene5(t);
+  timeline(t);
+  scene6(t);
+  if (T > END - .45) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .45) / .45)})`; ctx.fillRect(0, 0, W, H); }
+}
+window.ready = (async () => {
+  SH = await (await fetch('shapes.json')).json();
+  const all = await (await fetch('beats.json')).json(); const b = all[LANG]; END = b.end;
+  B = {}; for (const k in b) B[k] = k === 'end' ? b[k] : Array.isArray(b[k]) ? b[k].map(x => x + OFF) : b[k] + OFF;
+  // flights: star leaves on the year, lands on the city name
+  FL = [['oren', 'kyz', B.y1925 + .3, B.kyz], ['kyz', 'alm', B.y1929 + .2, B.alm], ['alm', 'akm', B.y1997 + .2, B.akm]];
+  await document.fonts.load('900 40px M'); await document.fonts.load('800 40px MX');
+  render(0); return true;
+})();
+</script></body></html>
