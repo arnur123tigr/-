@@ -11,7 +11,7 @@ html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block
 // "Почему самолёты над Атлантикой летят по одной узкой полосе" — Russian remake of a geography reel:
 // satellite map + flight-radar dark map, North Atlantic Tracks, jet stream, glowing planes.
 // render(T) is deterministic, T = video seconds; t = voice time (T - OFF).
-const W = 1080, H = 1920, OFF = 0.3, END = 67.6, CTA0 = 56.3;
+const W = 1080, H = 1920, OFF = 0.3, END = 71.6, CTA0 = 56.3;
 const main = document.getElementById('c'); let ctx = main.getContext('2d');
 const SAT = new Image(), DARK = new Image(); let GL = null, CAPS = [], SRC;
 const D2R = Math.PI / 180;
@@ -318,13 +318,14 @@ function cta(t) {
   ctx.save(); ctx.globalAlpha = a * p2; txt('Мы подготовили', W / 2, H * .4, 70); txt('гайд по географии', W / 2, H * .4 + 85, 70); ctx.restore();
   { const q = ap(t, 61.4, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; const sc = back(q); ctx.translate(W / 2, H * .4 + 235); ctx.scale(sc, sc); book(); ctx.restore(); } }
   ctx.save(); ctx.globalAlpha = a * p3; txt('Напиши в комментариях', W / 2, H * .6 + 40, 62); ctx.restore();
-  { const q = ap(t, 64.1, .3); if (q > 0) {
-    const pulse = 1 + .06 * Math.sin((t - 64.1) * 8) * ap(t, 64.5), sc = back((t - 64.1) / .45) * pulse;
+  { const q = ap(t, 63.95, .3); if (q > 0) {
+    const pulse = 1 + .06 * Math.sin((t - 63.95) * 8) * ap(t, 64.35), sc = back((t - 63.95) / .45) * pulse;
     ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .6 + 230); ctx.scale(sc, sc);
-    ctx.font = '900 110px M'; const w = ctx.measureText('ГЕО').width + 130, h = 180;
+    ctx.font = '900 110px M'; const w = ctx.measureText('95').width + 130, h = 180;
     ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
     ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 44); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ГЕО', 0, 8); ctx.restore(); } }
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('95', 0, 8); ctx.restore(); } }
+  { const q = ap(t, 66.4, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; txt('Полная подготовка —', W / 2, H * .86 - 40, 50, '#fff', 'MX'); txt('ссылка в шапке профиля', W / 2, H * .86 + 25, 50, '#f2c62a', 'MX'); txt('или в описании', W / 2, H * .86 + 90, 50, '#f2c62a', 'MX'); ctx.restore(); } }
 }
 
 function render(T) {

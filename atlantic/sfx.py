@@ -1,7 +1,7 @@
 """Atlantic reel: synthesise SFX (sfx.wav: whooshes on cuts, pops on pop-ins, tape rewind, mosquito buzz, dings)
 and a light music bed (music.wav: soft pad + pluck arpeggio + kick, D minor, 100 bpm)."""
 import wave, numpy as np
-SR = 48000; OFF = 0.3; DUR = 68.5
+SR = 48000; OFF = 0.3; DUR = 72.5
 rng = np.random.default_rng(3)
 def band(x, lo, hi):
     X = np.fft.rfft(x); f = np.fft.rfftfreq(len(x), 1 / SR); X[(f < lo) | (f > hi)] = 0; return np.fft.irfft(X, len(x))
@@ -31,12 +31,12 @@ def buzz(L):
     return norm(band(np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR)), 300, 4000)) * (.6 + .4 * np.sin(2 * np.pi * .8 * t) ** 2) * np.minimum(1, t / .4) * np.minimum(1, (L - t) / .4)
 s = np.zeros(int(SR * DUR))
 for c in [4.72, 13.06, 16.92, 24.42, 27.34, 31.52, 35.38, 37.88, 40.22, 43.16, 52.34, 56.3]: add(s, c + OFF - .3, whoosh(.9), .45)
-for c in [2.6, 7.95, 9.9, 11.95, 12.1, 12.25, 15.24, 16.1, 19.8, 23.0, 23.6, 24.6, 26.2, 29.68, 30.66, 34.1, 35.5, 36.1, 38.6, 40.4, 40.75, 41.1, 41.45, 47.04, 48.95, 52.64, 53.34, 53.96, 57.3, 59.0, 60.45, 61.4, 63.0]: add(s, c + OFF, pop(), .45)
+for c in [2.6, 7.95, 9.9, 11.95, 12.1, 12.25, 15.24, 16.1, 19.8, 23.0, 23.6, 24.6, 26.2, 29.68, 30.66, 34.1, 35.5, 36.1, 38.6, 40.4, 40.75, 41.1, 41.45, 47.04, 48.95, 52.64, 53.34, 53.96, 57.3, 59.0, 60.45, 61.4, 63.0, 66.4]: add(s, c + OFF, pop(), .45)
 for c in [9.6, 45.6]: add(s, c + OFF, whoosh(.6), .4)
 for k in range(6): add(s, 43.6 + k * .12 + OFF, whoosh(.4), .2)
 jl = int(SR * 7.5); add(s, 17.0 + OFF, band(rng.standard_normal(jl), 200, 900) / 4 * np.minimum(1, np.arange(jl) / SR / 1.0) * np.minimum(1, (jl / SR - np.arange(jl) / SR) / 1.0), .25)
 el = int(SR * 3.0); add(s, 24.4 + OFF, band(rng.standard_normal(el), 300, 1600) / 4 * np.minimum(1, np.arange(el) / SR / .5) * np.minimum(1, (el / SR - np.arange(el) / SR) / .5), .3)
-for c in [54.85, 64.1]: add(s, c + OFF, ding(), .4)
+for c in [54.85, 63.95]: add(s, c + OFF, ding(), .4)
 write('sfx.wav', norm(s) * .9)
 bpm = 100; beat = 60 / bpm; m = np.zeros(int(SR * DUR))
 prog = [[62, 65, 69], [58, 62, 65], [60, 64, 67], [57, 61, 64]]   # Dm Bb C A
