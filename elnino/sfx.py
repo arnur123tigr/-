@@ -9,7 +9,9 @@ def R2K(t):   # russian voice time -> kazakh voice time
     if not TM: return t
     for (k0, r0), (k1, r1) in zip(TM, TM[1:]):
         if t <= r1 or (k1, r1) == tuple(TM[-1]): return k0 + (t - r0) * (k1 - k0) / (r1 - r0)
-if LANG == 'kk': DUR = 100
+if LANG == 'kk': DUR = 103
+else: DUR = 98
+CM = json.load(open(f'cta_{LANG}.json'))
 rng = np.random.default_rng(3)
 def band(x, lo, hi):
     X = np.fft.rfft(x); f = np.fft.rfftfreq(len(x), 1 / SR); X[(f < lo) | (f > hi)] = 0; return np.fft.irfft(X, len(x))
@@ -42,9 +44,11 @@ def ding(f=880):
 s = np.zeros(int(SR * DUR))
 for c in cams[1:]: add(s, c + OFF - .25, whoosh(1.4), .55)
 for i, c in enumerate(sorted(names)): add(s, c + OFF, blip(1100 + 140 * (i % 5)), .35)
-for c in [1.9, 21.3, 28.9, 34.2, 34.5, 41.7, 41.9, 42.0, 42.3, 47.3, 47.6, 47.9, 49.5, 49.8, 51.6, 53.8, 54.0, 54.3, 54.5, 72.6, 88.3, 92.5] + [60.3 + i * .12 for i in range(10)]: add(s, c + OFF, pop(), .5)
-for c in [10.2, 12.5, 18.2, 56.6, 61.4, 79.5, 83.7, 86.1]: add(s, c + OFF, ding(), .4)
+for c in [1.9, 21.3, 28.9, 34.2, 34.5, 41.7, 41.9, 42.0, 42.3, 47.3, 47.6, 47.9, 49.5, 49.8, 51.6, 53.8, 54.0, 54.3, 54.5, 72.6] + [60.3 + i * .12 for i in range(10)]: add(s, c + OFF, pop(), .5)
+for c in [10.2, 12.5, 18.2, 56.6, 61.4, 79.5]: add(s, c + OFF, ding(), .4)
 add(s, 5.6 + OFF, whoosh(.8), .4); add(s, 45.8 + OFF, band(rng.standard_normal(SR) * np.exp(-tt(1) * 5), 40, 900), .5)
+REMAP = False
+for k, g in [('start', .4), ('ent', .5), ('key', .6), ('link', .4)]: add(s, CM[k] + OFF, pop() if k != 'start' else ding(), g)
 write('sfx.wav' if LANG == 'ru' else 'sfx_kk.wav', norm(s) * .9)
 
 # music bed

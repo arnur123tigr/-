@@ -11,14 +11,15 @@ html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block
 const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
 const KK = { 'Восточная часть': 'Тынық мұхитының', 'Тихого океана': 'шығыс бөлігі', 'Супер': 'Супер', 'Пассаты': 'Пассаттар', 'Австралия': 'Аустралия',
   'около': 'шамамен', 'человек': 'адам', '≈ 3% населения Земли': '≈ Жер халқының 3%-ы', 'Такие вопросы': 'Мұндай сұрақтар', 'часто попадаются на': 'жиі кездеседі:',
-  'ЕНТ по географии': 'Географиядан ҰБТ', 'Мы подготовили': 'Біз дайындадық:', 'гайд ЕНТ по географии': 'ҰБТ географиясынан гайд', 'Напиши в комментариях': 'Комментарийге жаз' };
+  'ЕНТ по географии': 'Географиядан ҰБТ', 'Хочешь гайд': 'Географиядан', 'по географии?': 'гайд керек пе?', 'Напиши в комментариях': 'Комментарийге жаз',
+  'Полная подготовка к ЕНТ —': 'ҰБТ-ға толық дайындық —', 'ссылка в шапке профиля': 'сілтеме профиль шапкасында', 'или в описании': 'немесе сипаттамада' };
 const L = s => (LANG === 'kk' && KK[s]) || s;
 let TMAP = null;   // kk: [[kk voice time, ru voice time], ...] so the same animation follows the Kazakh voice
 const mapT = v => { if (!TMAP) return v; let i = 0; while (i < TMAP.length - 2 && v > TMAP[i + 1][0]) i++; const [a0, b0] = TMAP[i], [a1, b1] = TMAP[i + 1]; return b0 + (v - a0) * (b1 - b0) / (a1 - a0); };
 const W = 1080, H = 1920, OFF = 0.3; let END = 95.4;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const gl = document.createElement('canvas'); gl.width = W / 4; gl.height = H / 4; const gx = gl.getContext('2d');
-let CAPS = []; const MAP = new Image(), SST = new Image();
+let CAPS = [], CM = null; const LOGO = new Image(); const MAP = new Image(), SST = new Image();
 const MLON0 = 60, MY1 = 117.30871701272397, SI = 24, SSI = 6;   // map grid: lon 60..345, Miller y ±117.3, 24 px/deg
 const D2R = Math.PI / 180, EMO = '"Noto Color Emoji"';
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -247,13 +248,14 @@ function render(T) {
     ctx.restore(); } }
 
   drawCaption(tv, t);
-  drawCTA(t);
+  drawCTA(tv);
+  if (LOGO.width) { const lh = 70, lw = lh * LOGO.width / LOGO.height; ctx.globalAlpha = .82; ctx.drawImage(LOGO, W - 48 - lw, 48, lw, lh); ctx.globalAlpha = 1; }   // JAS EDUCATION logo
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.35)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   if (T < .25) { ctx.fillStyle = `rgba(0,0,0,${1 - T / .25})`; ctx.fillRect(0, 0, W, H); }
   if (T > END - .6) { ctx.fillStyle = `rgba(0,0,0,${clamp((T - END + .6) / .6)})`; ctx.fillRect(0, 0, W, H); }
 }
 function drawCaption(t, tr) {
-  if (tr > 83.6) return;
+  if (t > CM.start - .05) return;
   const c = CAPS.find(c => t >= c.s - .05 && t < c.e + .1); if (!c) return;
   const a = clamp((t - c.s + .05) / .1) * clamp((c.e + .1 - t) / .1);
   ctx.save(); ctx.globalAlpha = a; ctx.font = '800 62px RM';
@@ -262,33 +264,39 @@ function drawCaption(t, tr) {
   const cw = ctx.measureText(c.t).width; if (cw > 980) ctx.font = `800 ${Math.floor(62 * 980 / cw)}px RM`;
   ctx.fillText(c.t, W / 2, H * .655); ctx.restore();
 }
-function pill(s, x, y, size, col, a = 1, sc = 1) {
+function pill(s, x, y, size, col, a = 1, sc = 1, fg = '#fff') {
   if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.font = `800 ${size}px R`; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
   ctx.translate(x, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = size * .4; ctx.fillStyle = col;
   ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * .28); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(s, 0, size * .04); ctx.restore();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = fg; ctx.fillText(s, 0, size * .04); ctx.restore();
 }
-function drawCTA(t) {
-  const a = clamp((t - 83.6) / .5); if (a <= 0) return;
-  ctx.fillStyle = `rgba(4,12,20,${.55 * a})`; ctx.fillRect(0, 0, W, H);
-  const p1 = clamp((t - 83.7) / .35), p2 = clamp((t - 87.6) / .35), p3 = clamp((t - 91.6) / .35);
-  ctx.globalAlpha = a * p1; txt(L('Такие вопросы'), W / 2, H * .13, 78); txt(L('часто попадаются на'), W / 2, H * .13 + 90, 62);
-  pill(L('ЕНТ по географии'), W / 2, H * .13 + 220, 72, '#e8792a', a * clamp((t - 86.1) / .3), back((t - 86.1) / .45));
-  ctx.globalAlpha = a * p2; txt(L('Мы подготовили'), W / 2, H * .36, 70); txt(L('гайд ЕНТ по географии'), W / 2, H * .36 + 85, 70);
-  { const q = clamp((t - 88.3) / .4); if (q > 0) emoji('📘', W / 2, H * .36 + 220, 150 * back(q), a * q); }
-  ctx.globalAlpha = a * p3; txt(L('Напиши в комментариях'), W / 2, H * .53 + 40, 64);
-  { const q = clamp((t - 92.5) / .3); if (q > 0) {
-    const pulse = 1 + .06 * Math.sin((t - 92.5) * 8) * clamp((t - 92.9) / .3), sc = back((t - 92.5) / .45) * pulse;
-    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .53 + 230); ctx.scale(sc, sc);
-    ctx.font = '800 110px R'; const w = ctx.measureText('ГЕО').width + 130, h = 180;
-    ctx.fillStyle = '#3fc43a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
-    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 44); ctx.moveTo(-w / 2 + 70, h / 2 - 2); ctx.lineTo(-w / 2 + 40, h / 2 + 50); ctx.lineTo(-w / 2 + 125, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ГЕО', 0, 8); ctx.restore(); } }
+function drawCTA(t) {   // t = this language's own voice time; CM = word times of the re-voiced closing CTA (keyword «95»)
+  const a = clamp((t - CM.start) / .5); if (a <= 0) return;
+  ctx.fillStyle = `rgba(10,8,40,${.6 * a})`; ctx.fillRect(0, 0, W, H);
+  const on = (k, f = .35) => clamp((t - CM[k]) / f);
+  ctx.globalAlpha = a * on('start'); txt(L('Такие вопросы'), W / 2, H * .12, 78); txt(L('часто попадаются на'), W / 2, H * .12 + 90, 62);
+  pill(L('ЕНТ по географии'), W / 2, H * .12 + 220, 72, '#FEB300', a * on('ent', .3), back((t - CM.ent) / .45), '#130B54');
+  ctx.globalAlpha = a * on('guide'); txt(L('Хочешь гайд'), W / 2, H * .335, 70); txt(L('по географии?'), W / 2, H * .335 + 85, 70);
+  ctx.globalAlpha = a * on('write'); txt(L('Напиши в комментариях'), W / 2, H * .5, 64);
+  { const q = on('key', .3); if (q > 0) {
+    const pulse = 1 + .06 * Math.sin((t - CM.key) * 8) * clamp((t - CM.key - .4) / .3), sc = back((t - CM.key) / .45) * pulse;
+    ctx.save(); ctx.globalAlpha = a * q; ctx.translate(W / 2, H * .5 + 185); ctx.scale(sc, sc);
+    ctx.font = '800 120px R'; const w = ctx.measureText('95').width + 150, h = 185;
+    ctx.fillStyle = '#FEB300'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 46); ctx.moveTo(-w / 2 + 60, h / 2 - 2); ctx.lineTo(-w / 2 + 34, h / 2 + 50); ctx.lineTo(-w / 2 + 112, h / 2 - 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#130B54'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('95', 0, 8); ctx.restore(); } }
+  { const q = on('link'); if (q > 0) { ctx.save(); ctx.globalAlpha = a * q; const y = H * .755;
+    ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.strokeStyle = 'rgba(254,179,0,.7)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(70, y - 120, W - 140, 250, 36); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.globalAlpha = a * q; txt(L('Полная подготовка к ЕНТ —'), W / 2, y - 55, 52, '#ffffff');
+    ctx.globalAlpha = a * on('bio'); txt(L('ссылка в шапке профиля'), W / 2, y + 15, 56, '#FEB300');
+    ctx.globalAlpha = a * on('desc'); txt(L('или в описании'), W / 2, y + 80, 52, '#ffffff'); } }
   ctx.globalAlpha = 1;
 }
 window.ready = (async () => {
   CAPS = await (await fetch(LANG === 'kk' ? 'captions_kk.json' : 'captions.json')).json();
-  if (LANG === 'kk') { TMAP = await (await fetch('tmap_kk.json')).json(); END = (await (await fetch('timeline_kk.json')).json()).scenes[0].end; }
+  if (LANG === 'kk') TMAP = await (await fetch('tmap_kk.json')).json();
+  CM = await (await fetch(`cta_${LANG}.json`)).json(); END = CM.end + OFF + 1.4;
+  await new Promise(r => { LOGO.onload = r; LOGO.onerror = r; LOGO.src = 'logo.png'; });
   await Promise.all([[MAP, 'map_hi.jpg'], [SST, 'sst.png']].map(([im, s]) => new Promise(r => { im.onload = r; im.src = s; })));
   await MAP.decode(); await SST.decode();
   await document.fonts.load('800 40px R'); await document.fonts.load('40px RM'); await document.fonts.load(`40px ${EMO}`);

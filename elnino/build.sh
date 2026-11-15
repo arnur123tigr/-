@@ -3,8 +3,8 @@
 # synth SFX + music -> record frames (2D canvas) -> mix VO on top (bed ducked under voice), loudness -14 LUFS (two-pass).
 set -e; cd "$(dirname "$0")"
 L=${LANG_Q:-ru}
-if [ "$L" = kk ]; then python3 captions_kk.py >/dev/null; python3 sfx.py kk; VO=vo_kk.mp3; SFX=sfx_kk.wav; MUS=music_kk.wav; DUR=99.2; VS=video_silent_kk.mp4
-else python3 captions.py >/dev/null; python3 sfx.py; VO=vo_a.mp3; SFX=sfx.wav; MUS=music.wav; DUR=95.4; VS=video_silent.mp4; fi
+if [ "$L" = kk ]; then python3 captions_kk.py >/dev/null; python3 sfx.py kk; VO=vo_kk95.mp3; SFX=sfx_kk.wav; MUS=music_kk.wav; DUR=102.4; VS=video_silent_kk.mp4
+else python3 captions.py >/dev/null; python3 sfx.py; VO=vo_ru95.mp3; SFX=sfx.wav; MUS=music.wav; DUR=97.5; VS=video_silent.mp4; fi
 [ "$SKIP_RECORD" = 1 ] || node record.js $VS 30
 mix(){ # $1 = music volume, $2 = output
   F="[1:a]aresample=48000,adelay=300:all=1,apad=whole_dur=$DUR,volume=1.6,asplit=2[v][vk];[2:a]aresample=48000,volume=0.3[s];[3:a]aresample=48000,volume=$1[m];[s][m]amix=inputs=2:normalize=0:duration=first[bed];[bed][vk]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350:makeup=1[duck];[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.5:attack=2:release=60:level=false"
