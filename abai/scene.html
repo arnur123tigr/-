@@ -1,0 +1,682 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Abai real names quiz (chalkboard)</title>
+<style>
+@font-face{font-family:Chalk;src:url(fonts/Caveat.ttf);font-weight:400 700}
+@font-face{font-family:Mont;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Chalkboard quiz reel «Абайдың шын аты» / «Абая звали не Абай» (KZ + RU, ?lang=kk|ru)
+// Deterministic: render(T) draws the frame for time T; timing from timeline_<lang>.json (timing.py).
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const main = document.getElementById('c');
+const M = main.getContext('2d');
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// ---------- seeded random ----------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+// ---------- colours ----------
+const BOARD = '#24332d';
+const CHALK = 'rgb(238,236,226)';
+const YEL = 'rgb(255,204,80)';   // amber chalk (JAS #FEB300, softened)
+const PINK = 'rgb(255,170,160)';
+const BLUE = 'rgb(170,215,255)';
+
+// ---------- board background (baked once) ----------
+const bg = mk();
+(function bakeBoard() {
+  const g = bg.getContext('2d');
+  g.fillStyle = BOARD; g.fillRect(0, 0, W, H);
+  const r = rng(7);
+  // big soft eraser clouds
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W, y = r() * H, rad = 180 + r() * 420;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, `rgba(255,255,255,${0.025 + r() * 0.03})`);
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // eraser swipe arcs
+  g.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.012 + r() * 0.02})`;
+    g.lineWidth = 60 + r() * 90;
+    g.beginPath();
+    const x = r() * W, y = r() * H;
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + (r() - .5) * 600, y + (r() - .5) * 200, x + (r() - .5) * 800, y + (r() - .5) * 300);
+    g.stroke();
+  }
+  // fine dust
+  const id = g.getImageData(0, 0, W, H), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (r() - 0.5) * 14;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    if (r() < 0.0025) { d[i] += 40; d[i + 1] += 40; d[i + 2] += 40; }
+  }
+  g.putImageData(id, 0, 0);
+  // vignette
+  const v = g.createRadialGradient(CX, CY, H * 0.25, CX, CY, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  // wooden frame
+  const fr = 26;
+  const wood = g.createLinearGradient(0, 0, W, 0);
+  wood.addColorStop(0, '#5a3b22'); wood.addColorStop(.5, '#6e4a2c'); wood.addColorStop(1, '#4e3320');
+  g.fillStyle = wood;
+  g.fillRect(0, 0, W, fr); g.fillRect(0, H - fr, W, fr); g.fillRect(0, 0, fr, H); g.fillRect(W - fr, 0, fr, H);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 4; g.strokeRect(fr, fr, W - 2 * fr, H - 2 * fr);
+})();
+
+// ---------- chalk grain mask (holes punched out of chalk) ----------
+const grain = mk();
+(function bakeGrain() {
+  const g = grain.getContext('2d');
+  const id = g.createImageData(W, H), d = id.data, r = rng(99);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = r();
+    d[i] = d[i + 1] = d[i + 2] = 0;
+    d[i + 3] = v < 0.32 ? 255 * (0.35 + r() * 0.65) : (v < 0.5 ? 70 : 0);
+  }
+  g.putImageData(id, 0, 0);
+  // horizontal drag streaks
+  g.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `rgba(0,0,0,${0.3 + r() * 0.5})`;
+    g.fillRect(r() * W, r() * H, 3 + r() * 16, 1.2);
+  }
+})();
+
+// ---------- layers ----------
+const L = mk(), LC = L.getContext('2d');     // chalk (world space)
+const U = mk(), UC = U.getContext('2d');     // ui text
+const T = mk(), TC = T.getContext('2d');     // temp (eraseable figure)
+const A = mk(), AC = A.getContext('2d');     // scene frame A
+const B = mk(), BC = B.getContext('2d');     // scene frame B
+let glows = [];                               // drawn additively after grain
+
+// ---------- geometry helpers ----------
+function catmull(cp, n = 10) {
+  if (cp.length < 3) return cp.slice();
+  const out = [];
+  for (let i = 0; i < cp.length - 1; i++) {
+    const p0 = cp[Math.max(0, i - 1)], p1 = cp[i], p2 = cp[i + 1], p3 = cp[Math.min(cp.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  out.push(cp[cp.length - 1]);
+  return out;
+}
+function ell(cx, cy, rx, ry, a0 = 0, a1 = Math.PI * 2, n = 36) {
+  const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return o;
+}
+const S = (pts, extra = {}) => Object.assign({ pts: catmull(pts) }, extra);      // smooth stroke
+const P = (pts, extra = {}) => Object.assign({ pts }, extra);                       // poly stroke
+const E = (cx, cy, rx, ry, extra = {}, a0, a1) => Object.assign({ pts: ell(cx, cy, rx, ry, a0, a1) }, extra);
+
+function prep(strokes) {
+  let tot = 0;
+  for (const s of strokes) {
+    let l = 0; s.cum = [0];
+    for (let i = 1; i < s.pts.length; i++) { l += Math.hypot(s.pts[i][0] - s.pts[i - 1][0], s.pts[i][1] - s.pts[i - 1][1]); s.cum.push(l); }
+    s.len = l; s.start = tot; tot += l;
+  }
+  strokes.total = tot;
+  return strokes;
+}
+
+// draw a stroke set, progress 0..1 along total length
+function drawStrokes(ctx, strokes, prog = 1, o = {}) {
+  const lw = o.lw || 7, col = o.color || CHALK;
+  const upto = strokes.total * clamp(prog);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const s of strokes) {
+    if (s.start >= upto) break;
+    const avail = upto - s.start;
+    ctx.save();
+    if (s.g === 'head' && o.head) o.head(ctx);
+    ctx.strokeStyle = s.color || col;
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (pass ? 0.45 : 1);
+      ctx.lineWidth = (s.lw || lw) * (pass ? 0.55 : 1);
+      ctx.beginPath();
+      const ox = pass ? 1.6 : 0, oy = pass ? -1.2 : 0;
+      ctx.moveTo(s.pts[0][0] + ox, s.pts[0][1] + oy);
+      for (let i = 1; i < s.pts.length; i++) {
+        if (s.cum[i] <= avail) ctx.lineTo(s.pts[i][0] + ox, s.pts[i][1] + oy);
+        else {
+          const f = (avail - s.cum[i - 1]) / (s.cum[i] - s.cum[i - 1]);
+          ctx.lineTo(lerp(s.pts[i - 1][0], s.pts[i][0], f) + ox, lerp(s.pts[i - 1][1], s.pts[i][1], f) + oy);
+          break;
+        }
+      }
+      ctx.stroke();
+    }
+    if (s.fill && avail >= s.len) { ctx.globalAlpha = 0.9; ctx.fillStyle = s.color || col; ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// ---------- text helpers ----------
+function font(px, w = 700, fam = 'Chalk') { return `${w} ${px}px ${fam}`; }
+// write-on text revealed left->right (or right->left for rtl)
+function chalkText(ctx, txt, x, y, px, prog = 1, o = {}) {
+  if (prog <= 0) return;
+  ctx.save();
+  ctx.font = font(px, o.w || 700, o.fam || 'Chalk');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (o.rtl) ctx.direction = 'rtl';
+  const w = ctx.measureText(txt).width;
+  ctx.beginPath();
+  const pw = (w + px) * clamp(prog);
+  if (o.rtl) ctx.rect(x + w / 2 + px / 2 - pw, y - px * 1.2, pw, px * 2.4);
+  else ctx.rect(x - w / 2 - px / 2, y - px * 1.2, pw, px * 2.4);
+  ctx.clip();
+  ctx.fillStyle = o.color || CHALK;
+  ctx.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  ctx.fillText(txt, x, y);
+  ctx.globalAlpha *= 0.4; ctx.fillText(txt, x + 1.5, y - 1.5);
+  ctx.restore();
+  return w;
+}
+function wrap(ctx, txt, px, maxW) {
+  ctx.font = font(px); const words = txt.split(' '); const lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  if (lines.length === 2) {           // balance two lines
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const l1 = words.slice(0, k).join(' '), l2 = words.slice(k).join(' ');
+      const m = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
+      if (m <= maxW && (!best || m < best[0])) best = [m, [l1, l2]];
+    }
+    if (best) return best[1];
+  }
+  return lines;
+}
+// headline at top (screen space), written on over `dur` seconds
+function headline(txt, t, o = {}) {
+  const px = o.px || 92, y0 = o.y || 210;
+  const lines = wrap(UC, txt, px, 940);
+  const tot = lines.reduce((a, l) => a + l.length, 0);
+  let acc = 0; const dur = o.dur || 0.9;
+  lines.forEach((ln, i) => {
+    const a = acc / tot, b = (acc + ln.length) / tot; acc += ln.length;
+    const p = seg(t, (o.t0 || 0) + a * dur, (o.t0 || 0) + b * dur);
+    chalkText(UC, ln, CX, y0 + i * px * 1.05, px, p, { color: o.color || YEL });
+  });
+  // underline
+  const ul = seg(t, (o.t0 || 0) + dur, (o.t0 || 0) + dur + 0.3);
+  if (ul > 0 && !o.noLine) {
+    const y = y0 + (lines.length - 1) * px * 1.05 + px * 0.62;
+    UC.save(); UC.strokeStyle = o.color || YEL; UC.lineWidth = 6; UC.lineCap = 'round'; UC.globalAlpha = .8;
+    UC.beginPath(); UC.moveTo(CX - 200, y); UC.quadraticCurveTo(CX, y + 10, CX - 200 + 400 * ul, y - 2); UC.stroke(); UC.restore();
+  }
+}
+function glowText(txt, x, y, px, alpha, color = YEL, fam = 'Chalk', rtl = false) {
+  glows.push({ txt, x, y, px, alpha, color, fam, rtl });
+}
+// multi-colour chalk text, centred at x: parts = [[txt, colour], ...]
+function chalkParts(ctx, parts, x, y, px, prog = 1) {
+  if (prog <= 0) return [];
+  ctx.save(); ctx.font = font(px);
+  const ws = parts.map(p => ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0);
+  let cx = x - tot / 2; const boxes = [];
+  ctx.beginPath(); ctx.rect(x - tot / 2 - px / 2, y - px * 1.2, (tot + px) * clamp(prog), px * 2.4); ctx.clip();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  parts.forEach((p, i) => {
+    ctx.fillStyle = p[1]; ctx.globalAlpha = 1; ctx.fillText(p[0], cx, y);
+    ctx.globalAlpha = 0.4; ctx.fillText(p[0], cx + 1.5, y - 1.5);
+    boxes.push([cx, ws[i]]); cx += ws[i];
+  });
+  ctx.restore();
+  return boxes;
+}
+// sponge path: zigzag rows across a box, returns points up to p
+function spongePath(p, x0 = 140, x1 = 940, top = 260, bot = 1760, rows = 7) {
+  const pts = [];
+  for (let r = 0; r <= rows; r++) pts.push([r % 2 ? x1 : x0, lerp(top, bot, r / rows)]);
+  const all = catmull(pts, 16);
+  return all.slice(0, Math.max(1, Math.floor(all.length * clamp(p))));
+}
+function sponge(ctx, q) {
+  ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(-0.15);
+  ctx.fillStyle = 'rgb(214,178,92)'; ctx.strokeStyle = 'rgb(120,90,40)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.roundRect(-120, -60, 240, 120, 24); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgb(90,70,50)'; ctx.beginPath(); ctx.roundRect(-120, 22, 240, 38, 14); ctx.fill();
+  ctx.restore();
+}
+function arrow(ctx, pts, prog, o = {}) {
+  const st = prep([S(pts, { color: o.color, lw: o.lw || 6 })]);
+  drawStrokes(ctx, st, prog);
+  if (prog >= 0.98) {
+    const a = pts[pts.length - 1], b = pts[pts.length - 2], ang = Math.atan2(a[1] - b[1], a[0] - b[0]), L = 34;
+    drawStrokes(ctx, prep([P([[a[0] - L * Math.cos(ang - 0.5), a[1] - L * Math.sin(ang - 0.5)], a, [a[0] - L * Math.cos(ang + 0.5), a[1] - L * Math.sin(ang + 0.5)]], { color: o.color, lw: o.lw || 6 })]), 1);
+  }
+}
+// =============================================================
+// Abai quiz: texts per language, silhouettes, photos, scenes
+// =============================================================
+const LANG = new URLSearchParams(location.search).get('lang') || 'kk';
+const NAVY = '#130B54', AMBER = '#FEB300';
+const TX = {
+  kk: {
+    s1: 'АБАЙ = ?', s2: '3 сұрақ · 3 секунд',
+    q1: 'Абайдың шын есімі?', o1: ['А) Ибраһим', 'Ә) Мұхамед', 'Б) Абдулла'],
+    a1: 'ИБРАҺИМ', c1: 'Абай = Ибраһим', n1: '«Абай» — бала кездегі лақап аты', mnt: 'Шыңғыстау',
+    q2: 'Шоқанның шын есімі?', o2: ['А) Шыңғыс', 'Ә) Мұхамед Қанапия', 'Б) Ибраһим'],
+    a2: 'МҰХАМЕД ҚАНАПИЯ', father: 'әкесінің аты', n2: '«Шоқан» — үйдегі еркелету аты',
+    q3: 'Ыбырайдың шын есімі?', hard: 'ең қиыны!', o3: ['А) Ыдырыс', 'Ә) Исмаил', 'Б) Ибраһим'],
+    eq1: 'Абай = Ыбырай', eq2: '= ИБРАҺИМ', names: ['Абай', 'Шоқан', 'Ыбырай'],
+    ent: 'ҰБТ', e1: 'ҰБТ-ға дайындық', e2: 'сілтеме шапкада', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'],
+  },
+  ru: {
+    s1: 'АБАЙ = ?', s2: '3 вопроса · 3 секунды',
+    q1: 'Настоящее имя Абая?', o1: ['А) Ибрагим', 'Б) Мухамед', 'В) Абдулла'],
+    a1: 'ИБРАГИМ', c1: 'Абай = Ибрагим', n1: '«Абай» — детское прозвище', mnt: 'Чингистау',
+    q2: 'Настоящее имя Шокана?', o2: ['А) Чингиз', 'Б) Мухамед-Ханафия', 'В) Ибрагим'],
+    a2: 'МУХАМЕД-ХАНАФИЯ', father: 'имя отца', n2: '«Шокан» — домашнее ласковое имя',
+    q3: 'Настоящее имя Ыбырая?', hard: 'самый сложный!', o3: ['А) Ыдырыс', 'Б) Исмаил', 'В) Ибрагим'],
+    eq1: 'Абай = Ыбырай', eq2: '= ИБРАГИМ', names: ['Абай', 'Шокан', 'Ыбырай'],
+    ent: 'ЕНТ', e1: 'Подготовка к ЕНТ', e2: 'ссылка в шапке профиля', cta: ['Перейдите по ссылке', 'в шапке профиля'],
+  },
+}[LANG];
+
+// ---------- photo layer + images ----------
+const PH = mk(), PC = PH.getContext('2d');
+const IMG = {};
+function loadImg(k, src) { return new Promise(r => { const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = src; }); }
+
+// ---------- silhouettes (origin = frame centre; frame 440 x 560) ----------
+function bust(kind) {
+  const st = [];
+  // head
+  st.push(E(0, -70, 72, 88));
+  st.push(E(-74, -66, 10, 18, { lw: 5 }, Math.PI * 0.5, Math.PI * 1.5));
+  st.push(E(74, -66, 10, 18, { lw: 5 }, -Math.PI * 0.5, Math.PI * 0.5));
+  st.push(E(-26, -78, 11, 6, { lw: 5 }, Math.PI, Math.PI * 2));
+  st.push(E(26, -78, 11, 6, { lw: 5 }, Math.PI, Math.PI * 2));
+  st.push(S([[0, -70], [-7, -46], [4, -42]], { lw: 5 }));
+  // neck
+  st.push(P([[-30, 14], [-32, 50]], { lw: 6 })); st.push(P([[30, 14], [32, 50]], { lw: 6 }));
+  if (kind === 'abai') {
+    // tubeteika (skullcap) with ornament + full beard
+    st.push(S([[-72, -112], [-64, -150], [-30, -170], [30, -170], [64, -150], [72, -112]], { color: YEL }));
+    st.push(S([[-74, -112], [0, -102], [74, -112]], { color: YEL }));
+    st.push(S([[-40, -128], [-20, -142], [0, -128], [20, -142], [40, -128]], { lw: 4, color: YEL }));
+    st.push(S([[-60, -40], [-56, 10], [-30, 46], [0, 56], [30, 46], [56, 10], [60, -40]], { lw: 6 }));
+    st.push(S([[-4, -26], [-20, -30], [-36, -20]], { lw: 5 })); st.push(S([[4, -26], [20, -30], [36, -20]], { lw: 5 }));
+    for (let k = -2; k <= 2; k++) st.push(P([[k * 14, 8], [k * 15, 40]], { lw: 3 }));
+    // robe (shapan) with wrap collar
+    st.push(S([[-36, 54], [-120, 80], [-180, 150], [-200, 270]]));
+    st.push(S([[36, 54], [120, 80], [180, 150], [200, 270]]));
+    st.push(S([[-36, 54], [10, 150], [40, 270]], { lw: 6 }));
+    st.push(S([[36, 54], [0, 120]], { lw: 6 }));
+  } else if (kind === 'shokan') {
+    // side-parted hair, moustache, officer tunic: high collar, epaulettes, buttons
+    st.push(S([[-72, -90], [-70, -140], [-30, -168], [20, -166], [62, -146], [74, -100]]));
+    st.push(S([[-20, -166], [-10, -130], [30, -122], [74, -104]], { lw: 5 }));
+    st.push(S([[0, -30], [-20, -34], [-42, -16]], { lw: 6 })); st.push(S([[0, -30], [20, -34], [42, -16]], { lw: 6 }));
+    st.push(P([[-46, 40], [-44, 76], [44, 76], [46, 40]], { color: BLUE, lw: 6 }));
+    st.push(S([[-44, 76], [-130, 96], [-186, 160], [-200, 270]], { color: BLUE }));
+    st.push(S([[44, 76], [130, 96], [186, 160], [200, 270]], { color: BLUE }));
+    for (const sx of [-1, 1]) {
+      st.push(P([[sx * 80, 88], [sx * 170, 108], [sx * 176, 136], [sx * 86, 118], [sx * 80, 88]], { color: YEL, lw: 5 }));
+      for (let k = 0; k < 5; k++) st.push(P([[sx * (100 + k * 16), 122 + k * 3], [sx * (100 + k * 16), 146 + k * 3]], { color: YEL, lw: 3 }));
+    }
+    st.push(P([[0, 76], [0, 270]], { color: BLUE, lw: 5 }));
+    for (let k = 0; k < 4; k++) st.push(E(18, 110 + k * 44, 7, 7, { color: YEL, lw: 4 }));
+  } else {
+    // ybyrai: thick hair, full beard, coat, holding an open book
+    st.push(S([[-74, -80], [-76, -130], [-40, -170], [10, -172], [58, -150], [78, -100], [76, -70]]));
+    st.push(S([[-60, -40], [-54, 14], [-24, 50], [0, 58], [24, 50], [54, 14], [60, -40]], { lw: 6 }));
+    st.push(S([[-4, -26], [-22, -30], [-40, -18]], { lw: 5 })); st.push(S([[4, -26], [22, -30], [40, -18]], { lw: 5 }));
+    st.push(S([[-36, 54], [-120, 80], [-180, 150], [-200, 270]]));
+    st.push(S([[36, 54], [120, 80], [180, 150], [200, 270]]));
+    st.push(P([[-36, 54], [-10, 130]], { lw: 5 })); st.push(P([[36, 54], [10, 130]], { lw: 5 }));
+    // open book in front
+    st.push(P([[-130, 200], [0, 182], [130, 200], [130, 262], [0, 246], [-130, 262], [-130, 200]], { color: YEL, lw: 6 }));
+    st.push(P([[0, 182], [0, 246]], { color: YEL, lw: 4 }));
+    for (let k = 0; k < 3; k++) { st.push(P([[-110, 214 + k * 14], [-20, 202 + k * 14]], { lw: 2 })); st.push(P([[20, 202 + k * 14], [110, 214 + k * 14]], { lw: 2 })); }
+  }
+  return prep(st);
+}
+const B_ABAI = bust('abai'), B_SHOKAN = bust('shokan'), B_YBYRAI = bust('ybyrai');
+
+const MOUNTAINS = prep([
+  P([[-300, 60], [-200, -40], [-150, 10], [-60, -110], [20, -20], [80, -70], [190, 30], [300, 60]]),
+  P([[-60, -110], [-80, -60], [-40, -70], [-20, -40]], { lw: 4 }),
+  P([[80, -70], [70, -40], [100, -45]], { lw: 4 }),
+  P([[-320, 64], [320, 64]], { lw: 4 }),
+]);
+const YURT = prep([
+  S([[-90, 0], [-86, -60]]), S([[90, 0], [86, -60]]),
+  S([[-86, -60], [-40, -110], [0, -120], [40, -110], [86, -60]]),
+  P([[-92, 0], [92, 0]]),
+  P([[-26, 0], [-26, -50], [26, -50], [26, 0]], { color: YEL, lw: 5 }),
+  P([[-86, -60], [86, -60]], { lw: 3 }),
+  P([[-60, -40], [-30, -10]], { lw: 3 }), P([[60, -40], [30, -10]], { lw: 3 }),
+  E(0, -120, 14, 6, { lw: 4 }),
+]);
+
+// portrait frame (outline drawn with chalk)
+function frameRect(cx, cy, w, h, p, o = {}) {
+  const x0 = cx - w / 2, y0 = cy - h / 2;
+  drawStrokes(LC, prep([P([[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h], [x0, y0]], { lw: o.lw || 8, color: o.color }),
+    P([[x0 + 16, y0 + 16], [x0 + w - 16, y0 + 16], [x0 + w - 16, y0 + h - 16], [x0 + 16, y0 + h - 16], [x0 + 16, y0 + 16]], { lw: 3, color: o.color })]), p, { alpha: o.alpha });
+}
+function figAt(Fg, x, y, s, p, o = {}) { LC.save(); LC.translate(x, y); LC.scale(s, s); drawStrokes(LC, Fg, p, o); LC.restore(); }
+
+// photo drawn on the photo layer (world space), sepia already baked in
+function photo(key, cx, cy, w, h, o = {}) {
+  const im = IMG[key]; if (!im) return;
+  PC.save(); PC.translate(cx + (o.dx || 0), cy + (o.dy || 0)); PC.rotate((o.rot || 0) * Math.PI / 180);
+  const s = o.s || 1; PC.scale(s, s); PC.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  // drop shadow + white paper border
+  PC.shadowColor = 'rgba(0,0,0,.55)'; PC.shadowBlur = 30; PC.shadowOffsetY = 12;
+  PC.fillStyle = '#efe6d2'; PC.fillRect(-w / 2 - 14, -h / 2 - 14, w + 28, h + 28);
+  PC.shadowColor = 'transparent';
+  // slow push-in inside the frame
+  const z = o.z || 1, iw = w * z, ih = h * z;
+  PC.save(); PC.beginPath(); PC.rect(-w / 2, -h / 2, w, h); PC.clip();
+  PC.drawImage(im, -iw / 2, -ih / 2 - (ih - h) * 0.15, iw, ih); PC.restore();
+  if (o.tape) {   // two strips of tape at the top corners
+    PC.globalAlpha *= clamp(o.tape);
+    PC.fillStyle = 'rgba(235,228,200,.72)';
+    for (const sx of [-1, 1]) { PC.save(); PC.translate(sx * (w / 2 - 20), -h / 2 - 6); PC.rotate(sx * 0.6); PC.fillRect(-60, -18, 120, 36); PC.restore(); }
+  }
+  PC.restore();
+}
+
+// options list: returns centre x and width of each row for circling
+const OPT_Y = [1135, 1285, 1435];
+function options(opts, t, starts, o = {}) {
+  const px = o.px || 92;
+  return opts.map((txt, i) => {
+    const p = starts ? seg(t, starts[i], starts[i] + 0.4) : 1;
+    const dim = o.right != null && i !== o.right ? 1 - 0.55 * seg(t, o.dimT || 0, (o.dimT || 0) + 0.4) : 1;
+    chalkText(LC, txt, CX, OPT_Y[i], px, p, { alpha: dim });
+    LC.font = font(px); return LC.measureText(txt).width;
+  });
+}
+function circleOpt(i, w, p, tickP) {
+  const y = OPT_Y[i];
+  drawStrokes(LC, prep([E(CX, y + 6, w / 2 + 50, 70, { color: YEL, lw: 8 }, -Math.PI * 0.6, Math.PI * 1.48)]), p);
+  const x = CX + w / 2 + 70;
+  drawStrokes(LC, prep([P([[x, y], [x + 26, y + 34], [x + 80, y - 44]], { color: YEL, lw: 11 })]), tickP);
+}
+// countdown timer: circle that empties over 3 s, digits 3-2-1
+function timer(x, y, r, lt, t0, dur = 3, appear = 0) {
+  const ap = seg(lt, appear, appear + 0.4);
+  if (ap <= 0) return;
+  drawStrokes(LC, prep([E(x, y, r, r, { lw: 5, alpha: .6 })]), ap, { alpha: 0.55 });
+  const q = clamp((lt - t0) / dur), left = 1 - q;
+  if (lt >= t0) {
+    LC.save(); LC.strokeStyle = left < 0.34 ? PINK : YEL; LC.lineWidth = 14; LC.lineCap = 'round';
+    LC.beginPath(); LC.arc(x, y, r - 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); LC.stroke(); LC.restore();
+    if (q < 1) {
+      const n = Math.ceil(dur * left - 1e-6), fr = (dur * left) % 1, pop = 1 + 0.18 * Math.max(0, fr - 0.8) * 5;
+      chalkText(LC, String(n), x, y + 6, 120 * pop, 1, { color: left < 0.34 ? PINK : CHALK });
+      glowText(String(n), x, y + 6, 120 * pop, 0.25, left < 0.34 ? PINK : YEL);
+    }
+  } else chalkText(LC, '3', x, y + 6, 120, ap);
+}
+// rag wipe: erase left -> right on chalk, ui and photo layers
+function ragWipe(p) {
+  if (p <= 0) return;
+  const x = lerp(-200, W + 260, ease(p));
+  for (const c of [LC, UC, PC]) {
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out';
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(x, 0);
+    for (let y = 0; y <= H; y += 80) c.lineTo(x - 60 + 40 * Math.sin(y * 0.013 + 1), y);
+    c.lineTo(0, H); c.closePath(); c.fill(); c.restore();
+  }
+  LC.save(); LC.setTransform(1, 0, 0, 1, 0, 0); LC.fillStyle = 'rgba(240,240,230,0.05)'; LC.fillRect(0, 0, Math.max(0, x - 80), H); LC.restore();
+  if (p < 1) for (let k = 0; k < 4; k++) rag(UC, [x - 40, 260 + k * 460 + 60 * Math.sin(p * 9 + k)]);
+}
+function rag(ctx, q) {
+  ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(0.2);
+  ctx.fillStyle = 'rgb(214,178,92)'; ctx.strokeStyle = 'rgb(120,90,40)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.roundRect(-70, -130, 140, 260, 26); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgb(90,70,50)'; ctx.beginPath(); ctx.roundRect(22, -130, 48, 260, 16); ctx.fill();
+  ctx.restore();
+}
+function tick(x, y, s, p, col = YEL) { drawStrokes(LC, prep([P([[x - 40 * s, y], [x - 6 * s, y + 40 * s], [x + 60 * s, y - 56 * s]], { color: col, lw: 12 * s })]), p); }
+function fitPx(txt, px, maxW) { UC.font = font(px); const w = UC.measureText(txt).width; return w > maxW ? px * maxW / w : px; }
+
+let MK = {};   // marks of this language (final time)
+const FR = { x: CX, y: 640, w: 440, h: 560 };
+
+// ---------- question scene factory (s3, s5, s7) ----------
+function qScene(Bst, qTxt, opts, optMarks, qMark, extra) {
+  return {
+    cam: (t, d) => ({ s: lerp(1, 1.05, ease(t / d)), x: 0, y: lerp(0, -60, ease(t / d)) }),
+    draw(t, d, s) {
+      frameRect(FR.x, FR.y, FR.w, FR.h, seg(t, 0, 0.5));
+      figAt(Bst, FR.x, FR.y + 10, 1, seg(t, 0.3, 2.2));
+      const st = optMarks ? optMarks.map(k => MK[k] - s.start) : [0.7, 1.0, 1.3];
+      options(opts, t, st);
+      timer(CX, 1690, 110, t, MK[qMark] - s.start, 3, st[0]);
+      headline(qTxt, t, { t0: 0.05, dur: 0.8, px: 96, y: 200 });
+      if (extra) extra(t, d, s);
+    }
+  };
+}
+// ---------- answer scene pieces ----------
+function answerHead(txt, t, t0) {
+  const px = fitPx(txt, 130, 820);
+  const p = seg(t, t0, t0 + 0.6);
+  UC.font = font(px); const w = UC.measureText(txt).width;
+  chalkText(UC, txt, CX - 50, 205, px, p, { color: YEL });
+  if (p >= 1) glows.push({ txt, x: CX - 50, y: 205, px, alpha: 0.3 + 0.08 * Math.sin(t * 5), color: YEL, fam: 'Chalk', screen: true });
+  // tick drawn on the UI layer next to the word
+  const x = CX - 50 + w / 2 + 70;
+  drawStrokes(UC, prep([P([[x - 34, 200], [x - 4, 236], [x + 52, 160]], { color: YEL, lw: 12 })]), seg(t, t0 + 0.55, t0 + 0.8));
+}
+
+const SCN = {};
+SCN.s1 = {
+  cam: (t, d) => { const z = easeOut(seg(t, 0.9, 2.2)); return { s: lerp(1, 1.5, z), x: lerp(0, -290, z), y: lerp(0, 60, z) }; },
+  draw(t, d) {
+    chalkText(LC, 'АБАЙ', 340, 900, 230, seg(t, 0.05, 0.6));
+    chalkText(LC, '=', 640, 905, 200, seg(t, 0.55, 0.75), { color: CHALK });
+    chalkText(LC, '?', 830, 900, 260, seg(t, 0.75, 0.95), { color: YEL });
+    drawStrokes(LC, prep([E(830, 900, 110, 150, { color: YEL, lw: 8 }, -1.9, 4.5), E(832, 904, 124, 160, { color: YEL, lw: 5 }, -1.6, 4.6)]), seg(t, 0.95, 1.7));
+    if (t > 1.7) glowText('?', 830, 900, 260, 0.3 + 0.1 * Math.sin(t * 7), YEL);
+    ragWipe(seg(t, d - 0.5, d));
+  }
+};
+SCN.s2 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    [200, 540, 880].forEach((x, i) => {
+      const t0 = i * 0.25;
+      frameRect(x, 720, 260, 330, seg(t, t0, t0 + 0.45), { lw: 6 });
+      drawStrokes(LC, prep([E(x, 690, 52, 64, { lw: 5 }), S([[x - 100, 885], [x - 70, 800], [x, 778], [x + 70, 800], [x + 100, 885]], { lw: 5 })]), seg(t, t0 + 0.3, t0 + 0.8));
+      chalkText(LC, '?', x, 970, 110, seg(t, t0 + 0.6, t0 + 0.8), { color: PINK });
+    });
+    timer(CX, 1300, 120, t, 99, 3, 1.0);
+    headline(TX.s2, t, { t0: 0.6, dur: 0.8, px: 100, y: 1600 });
+  }
+};
+SCN.s3 = qScene(B_ABAI, TX.q1, TX.o1, ['o1a', 'o1b', 'o1c'], 'q1');
+SCN.s4 = {
+  cam: (t, d) => ({ s: lerp(1.05, 1.07, t / d), x: 0, y: -60 }),
+  draw(t, d) {
+    frameRect(FR.x, FR.y, FR.w, FR.h, 1);
+    figAt(B_ABAI, FR.x, FR.y + 10, 1, 1, { alpha: 1 - seg(t, 0.25, 0.6) });
+    const ws = options(TX.o1, t, null, { right: 0, dimT: 0.1 });
+    circleOpt(0, ws[0], seg(t, 0.05, 0.5), seg(t, 0.5, 0.75));
+    answerHead(TX.a1, t, 0.05);
+    // photo taped into the frame (Abai, 1896, Semey)
+    const ip = seg(t, 0.3, 0.7);
+    if (ip > 0) photo('abai', FR.x, FR.y, 380, 506, { rot: 3, s: lerp(1.25, 1, easeOut(ip)), alpha: ease(ip * 1.5), tape: seg(t, 0.7, 0.9), z: lerp(1, 1.08, seg(t, 0.7, d)) });
+    chalkText(LC, TX.c1, CX, 990, 80, seg(t, 0.9, 1.5), { color: YEL });
+    const nt = MK.nick - SC.start;
+    chalkText(LC, TX.n1, CX, 1590, fitPx(TX.n1, 66, 900), seg(t, nt, nt + 0.8), { alpha: .9 });
+    figAt(MOUNTAINS, CX, 1760, 0.9, seg(t, 1.3, 2.4));
+    chalkText(LC, TX.mnt, CX + 230, 1700, 50, seg(t, 2.2, 2.6), { alpha: .8 });
+    ragWipe(seg(t, d - 0.5, d));
+  }
+};
+SCN.s5 = qScene(B_SHOKAN, TX.q2, TX.o2, ['o2a', 'o2b', 'o2c'], 'q2');
+SCN.s6 = {
+  cam: (t, d) => ({ s: lerp(1.05, 1.07, t / d), x: 0, y: -60 }),
+  draw(t, d) {
+    frameRect(FR.x, FR.y, FR.w, FR.h, 1);
+    figAt(B_SHOKAN, FR.x, FR.y + 10, 1, 1, { alpha: 1 - seg(t, 0.35, 0.7) });
+    const ws = options(TX.o2, t, null, { right: 1, dimT: 0.1 });
+    circleOpt(1, ws[1], seg(t, 0.05, 0.5), seg(t, 0.5, 0.75));
+    answerHead(TX.a2, t, 0.05);
+    // photo flies in from the right edge and lands in the frame, chalk traces its outline
+    const ip = easeOut(seg(t, 0.3, 0.85));
+    if (ip > 0) photo('shokan', FR.x, FR.y, 380, 506, { dx: lerp(900, 0, ip), rot: lerp(18, -2, ip), z: lerp(1, 1.06, seg(t, 0.9, d)) });
+    drawStrokes(LC, prep([P([[FR.x - 206, FR.y - 266], [FR.x + 206, FR.y - 266], [FR.x + 206, FR.y + 266], [FR.x - 206, FR.y + 266], [FR.x - 206, FR.y - 266]], { color: YEL, lw: 6 })]), seg(t, 0.9, 1.5));
+    // little arrow to option A: father's name
+    const ft = MK.father - SC.start;
+    chalkText(LC, TX.father, 880, 1035, 56, seg(t, ft, ft + 0.5), { color: PINK });
+    arrow(LC, [[800, 1060], [760, 1090], [CX + ws[0] / 2 + 20, OPT_Y[0] - 10]], seg(t, ft + 0.3, ft + 0.7), { color: PINK, lw: 5 });
+    const ht = MK.home - SC.start;
+    chalkText(LC, TX.n2, CX, 1610, fitPx(TX.n2, 66, 900), seg(t, ht, ht + 0.8), { alpha: .9 });
+    ragWipe(seg(t, d - 0.5, d));
+  }
+};
+SCN.s7 = qScene(B_YBYRAI, TX.q3, TX.o3, null, 'q3', (t) => {
+  figAt(YURT, 930, 860, 0.75, seg(t, 1.6, 2.6));
+  chalkText(LC, TX.hard, 880, 335, 60, seg(t, 0.9, 1.3), { color: PINK });
+});
+SCN.s8 = {
+  cam: (t, d) => { const z = ease(seg(t, 0.8, 1.6)); return { s: lerp(1.05, 1, z), x: 0, y: lerp(-60, 0, z) }; },
+  draw(t, d) {
+    const out = seg(t, 0.8, 1.2);       // question layout fades, wide layout comes in
+    if (out < 1) {
+      const a = 1 - out;
+      frameRect(FR.x, FR.y, FR.w, FR.h, 1, { alpha: a });
+      figAt(B_YBYRAI, FR.x, FR.y + 10, 1, 1, { alpha: a });
+      figAt(YURT, 930, 860, 0.75, 1, { alpha: a });
+      LC.save(); LC.globalAlpha = a;
+      const ws = options(TX.o3, t, null, { right: 2, dimT: 0.1 });
+      circleOpt(2, ws[2], seg(t, 0.05, 0.5), seg(t, 0.5, 0.75));
+      LC.restore();
+    }
+    answerHead(TX.a1, t, 0.05);
+    // three frames: Abai and Ybyrai photos slide towards each other, Shokan dimmed in the middle
+    const fy = 640, fw = 290, fh = 380;
+    const ip = easeOut(seg(t, 1.0, 1.7));
+    if (ip > 0) {
+      frameRect(190, fy, fw + 30, fh + 30, ip, { lw: 6 });
+      frameRect(540, fy, fw + 30, fh + 30, ip, { lw: 6, alpha: 0.5 });
+      frameRect(890, fy, fw + 30, fh + 30, ip, { lw: 6 });
+      photo('abai', 190, fy, fw - 30, fh - 40, { dx: lerp(-500, 0, ip), rot: -2, z: 1.02 });
+      photo('ybyrai', 890, fy, fw - 30, fh - 40, { dx: lerp(500, 0, ip), rot: 2, z: 1.02 });
+      photo('shokan', 540, fy, fw - 30, fh - 40, { alpha: 0.45 * ip, z: 1.02 });
+      TX.names.forEach((n, i) => chalkText(LC, n, [190, 540, 890][i], 880, 58, seg(t, 1.5 + i * 0.1, 1.9 + i * 0.1), { alpha: i === 1 ? 0.5 : 1 }));
+      // chalk arc with "=" between the first and the third frame
+      drawStrokes(LC, prep([S([[190, 420], [360, 360], [540, 345], [720, 360], [890, 420]], { color: YEL, lw: 6 })]), seg(t, 1.7, 2.2));
+      chalkText(LC, '=', 540, 335, 190, seg(t, 2.1, 2.3), { color: YEL });
+      if (t > 2.3) glowText('=', 540, 335, 190, 0.35, YEL);
+    }
+    const et = MK.eq - SC.start;
+    chalkText(LC, TX.eq1, CX, 1120, 130, seg(t, et, et + 0.7));
+    chalkText(LC, TX.eq2, CX, 1300, 130, seg(t, et + 0.8, et + 1.4), { color: YEL });
+    if (t > et + 1.4) glowText(TX.eq2, CX, 1300, 130, 0.3, YEL);
+  }
+};
+SCN.s9 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  fadeIn: true,
+  draw(t, d) {
+    chalkText(LC, TX.ent, CX - 40, 760, 280, seg(t, 0.1, 0.7));
+    tick(CX + 250, 760, 1.6, seg(t, 0.7, 1.0));
+    if (t > 1.0) glowText(TX.ent, CX - 40, 760, 280, 0.2, YEL);
+    arrow(LC, [[CX, 560], [CX + 20, 420], [CX + 260, 230]], seg(t, 1.2, 1.8), { color: YEL, lw: 8 });
+    chalkText(LC, TX.e1, CX, 1030, 92, seg(t, 0.9, 1.6));
+    chalkText(LC, TX.e2, CX, 1150, 80, seg(t, 1.5, 2.1), { color: YEL });
+    const ct = MK.cta - SC.start;
+    chalkText(LC, TX.cta[0], CX, 1380, 76, seg(t, ct, ct + 0.7));
+    chalkText(LC, TX.cta[1], CX, 1470, 76, seg(t, ct + 0.6, ct + 1.2));
+  }
+};
+// end card (brand): navy, big logo, amber CTA — last ~2 s
+function endCard(ctx, T, dur) {
+  const t0 = MK.voend + 0.05, p = seg(T, t0, t0 + 0.35);
+  if (p <= 0) return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = p; ctx.fillStyle = NAVY; ctx.fillRect(0, 0, W, H);
+  const lg = IMG.logo;
+  if (lg) { const s = lerp(0.92, 1, easeOut(seg(T, t0, t0 + 0.6))), h = 420 * s, w = h * lg.width / lg.height; ctx.drawImage(lg, CX - w / 2, 800 - h / 2, w, h); }
+  ctx.globalAlpha = p * seg(T, t0 + 0.2, t0 + 0.6);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = AMBER;
+  ctx.font = '800 58px Mont';
+  ctx.fillText(TX.cta[0], CX, 1210); ctx.fillText(TX.cta[1], CX, 1290);
+  ctx.restore();
+}
+function logoCorner(ctx, T, dur) {
+  const lg = IMG.logo; if (!lg) return;
+  const h = 70, w = h * lg.width / lg.height;
+  ctx.save(); ctx.globalAlpha = 0.8; ctx.drawImage(lg, W - 48 - w, 48, w, h); ctx.restore();
+}
+
+// ---------- timeline + frame render ----------
+let TL = null, SC = null;
+function renderScene(ctx, s, t, d) {
+  const sc = SCN[s.id]; SC = s;
+  glows = [];
+  for (const c of [LC, UC, PC]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H); }
+  const cam = sc.cam(t, d);
+  const camT = c => { c.translate(CX, CY); c.scale(cam.s, cam.s); c.translate(-CX + cam.x, -CY + cam.y); };
+  LC.save(); camT(LC); PC.save(); camT(PC);
+  sc.draw(t, d, s);
+  LC.restore(); PC.restore();
+  // chalk grain (not on the photos)
+  for (const c of [LC, UC]) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out'; c.drawImage(grain, 0, 0); c.restore(); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(bg, 0, 0);
+  ctx.drawImage(L, 0, 0);
+  ctx.drawImage(PH, 0, 0);
+  if (glows.length) {
+    for (const g of glows) {
+      ctx.save(); if (!g.screen) camT(ctx); ctx.globalCompositeOperation = 'lighter';
+      ctx.font = font(g.px, 700, g.fam); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = g.color; ctx.shadowBlur = 40; ctx.fillStyle = g.color; ctx.globalAlpha = clamp(g.alpha) * 0.6;
+      ctx.fillText(g.txt, g.x, g.y); ctx.restore();
+    }
+  }
+  ctx.drawImage(U, 0, 0);
+}
+window.render = function (T) {
+  const sc = TL.scenes;
+  let i = sc.findIndex(s => T >= s.start && T < s.end); if (i < 0) i = sc.length - 1;
+  const s = sc[i], lt = T - s.start, d = s.end - s.start, sd = SCN[s.id];
+  M.setTransform(1, 0, 0, 1, 0, 0); M.globalAlpha = 1;
+  renderScene(M, s, lt, d);
+  let fade = 0;
+  if (s.id === 's8') fade = Math.max(fade, seg(lt, d - 0.4, d));
+  if (sd.fadeIn) fade = Math.max(fade, 1 - seg(lt, 0, 0.4));
+  if (fade > 0) { M.fillStyle = `rgba(0,0,0,${fade})`; M.fillRect(0, 0, W, H); }
+  logoCorner(M, T, TL.dur);
+  endCard(M, T, TL.dur);
+};
+window.ready = (async () => {
+  TL = await (await fetch(`timeline_${LANG}.json`)).json(); MK = TL.marks;
+  await Promise.all([loadImg('abai', 'photos/abai_c.jpg'), loadImg('shokan', 'photos/shokan_c.jpg'), loadImg('ybyrai', 'photos/ybyrai_c.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  await document.fonts.load(font(80)); await document.fonts.load('800 58px Mont'); await document.fonts.ready;
+  window.render(0); return true;
+})();
+</script>
+</body></html>
