@@ -1,0 +1,5 @@
+ru sfx + music 63.74 s
+mix_ru.wav: -14.4 LUFS, peak -1.5 dBFS, master +5.9 dB | voice gain +11.3 dB, music gain -8.7 dB | while the narrator speaks the voice leads by: median 18.0 dB, 5% worst 6.0 dB, least -3.0 dB (22.8 s, 25.8 s, 45.6 s, 49.6 s); in the speech band: median 27.7 dB, 5% worst 13.1 dB, least 5.4 dB
+mix_ru_no_music.wav: -14.4 LUFS, peak -1.5 dBFS, master +5.8 dB | voice gain +11.3 dB | while the narrator speaks the voice leads by: median 29.1 dB, 5% worst 7.8 dB, least -1.9 dB (22.8 s, 25.8 s, 45.6 s, 49.6 s); in the speech band: median 38.2 dB, 5% worst 13.9 dB, least 5.7 dB
+-rw-r--r-- 1 root root 70699954 Nov 16 14:52 reforma_ru.mp4
+-rw-r--r-- 1 root root 70700178 Nov 16 14:52 reforma_ru_no_music.mp4
