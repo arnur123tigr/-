@@ -1,0 +1,711 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style>
+</head><body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Как казахскую степь разрезали на части» — parchment map story, 1080x1920. render(T) is deterministic. ?lang=ru|kk
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const WD = 1080, HT = 1920, MCY = 930;
+// ------------------------------------------------------------------ palette (JAS EDUCATION + map inks)
+const BR = { navy: '#130B54', acc: '#FEB300', white: '#FFFFFF', loss: '#E8502F' };
+const C = { ink: '#3A2414', red: '#A51E19', redD: '#6E0F0C', paper: '#EBDDBB', sep: '#2A1A0E',
+  ob: { ural: '#C98760', turgay: '#BFA052', akmola: '#7E9C6C', semey: '#6A8DA8', zhetisu: '#A97898', syr: '#D2A84A', bukey: '#9A9A92' } };
+// ------------------------------------------------------------------ texts
+const L = {
+ ru: { steppe: 'КАЗАХСКАЯ СТЕПЬ', h1a: '2 БУМАГИ', h1b: '6 ОБЛАСТЕЙ', paper: ['ПОЛОЖЕНИЕ', 'ПОЛОЖЕНИЕ'],
+   orta: 'Средний жуз', kishi: 'Младший жуз', s1822: ['Устав о сибирских', 'киргизах', 'М. Сперанский · 1822'], s1824: ['Устав об оренбургских', 'киргизах', 'П. Эссен · 1824'],
+   khan: 'ХАНСКАЯ ВЛАСТЬ УПРАЗДНЕНА', sper: 'М. М. Сперанский', alex: 'Александр II', alexSub: 'император',
+   ob: { ural: 'Уральская', turgay: 'Тургайская', akmola: 'Акмолинская', semey: 'Семипалатинская', zhetisu: 'Семиреченская', syr: 'Сырдарьинская' }, obl: 'область',
+   gg: { turk: 'Туркестанское генерал-губернаторство', oren: 'Оренбургское генерал-губернаторство', sib: 'Западно-Сибирское генерал-губернаторство' },
+   center: 'центр — Ташкент', bukey: 'Букеевская Орда', astr: 'Астраханская губерния', h3: ['Семиречье', 'Сырдарья'], h4: ['Уральская', 'Тургайская', 'Акмолинская', 'Семипалатинская'],
+   arch: 'Карта Средней Азии, Дж. Эрроусмит, 1872',
+   ladder: [['Генерал-губернаторство', 'генерал-губернатор'], ['Область', 'военный губернатор'], ['Уезд', 'уездный начальник'], ['Волость', 'волостной управитель'], ['Аул', 'аульный старшина']],
+   tagTop: 'русский чиновник', tagLow: 'выборные, на 3 года', h5a: '5 СТУПЕНЕЙ', h5b: 'верхние 3 — русские чиновники',
+   h6a: 'КИБИТОЧНЫЙ НАЛОГ', h6b: '3 рубля с юрты', coin: '3 р.', coinS: '2,75', counter: 'кибиточный налог', cur: 'руб.',
+   sult: ['Султаны:', 'без налога', '+ пенсия'], ent: 'ЗАПОМНИ ДЛЯ ЕНТ', entL: ['1867–1868', '3 генерал-губернаторства', '6 областей'],
+   link: ['Ссылка', 'в шапке профиля'], cta: 'Перейдите по ссылке в шапке профиля',
+   cities: { tash: 'Ташкент', vern: 'Верный', oren: 'Оренбург', omsk: 'Омск', ural: 'Уральск', sem: 'Семипалатинск', akm: 'Акмолинск', turg: 'Тургай', astr: 'Астрахань' },
+   seas: { casp: 'Каспийское море', aral: 'Аральское море', balk: 'оз. Балхаш' } },
+ kk: { steppe: 'ҚАЗАҚ ДАЛАСЫ', h1a: '2 ҚАҒАЗ', h1b: '6 ОБЛЫС', paper: ['ЕРЕЖЕ', 'ЕРЕЖЕ'],
+   orta: 'Орта жүз', kishi: 'Кіші жүз', s1822: ['Сібір қазақтары', 'туралы Жарғы', 'М. Сперанский · 1822'], s1824: ['Орынбор', 'Жарғысы', 'П. Эссен · 1824'],
+   khan: 'ХАН БИЛІГІ ЖОЙЫЛДЫ', sper: 'М. М. Сперанский', alex: 'ІІ Александр', alexSub: 'патша',
+   ob: { ural: 'Орал', turgay: 'Торғай', akmola: 'Ақмола', semey: 'Семей', zhetisu: 'Жетісу', syr: 'Сырдария' }, obl: 'облысы',
+   gg: { turk: 'Түркістан генерал-губернаторлығы', oren: 'Орынбор генерал-губернаторлығы', sib: 'Батыс Сібір генерал-губернаторлығы' },
+   center: 'орталығы — Ташкент', bukey: 'Бөкей Ордасы', astr: 'Астрахан губерниясы', h3: ['Жетісу', 'Сырдария'], h4: ['Орал', 'Торғай', 'Ақмола', 'Семей'],
+   arch: 'Орта Азия картасы, Дж. Эрроусмит, 1872',
+   ladder: [['Генерал-губернаторлық', 'генерал-губернатор'], ['Облыс', 'әскери губернатор'], ['Уезд', 'уезд бастығы'], ['Болыс', 'болыс басқарушысы'], ['Ауыл', 'ауыл старшыны']],
+   tagTop: 'орыс шенеунігі', tagLow: 'сайланады, 3 жылға', h5a: '5 САТЫ', h5b: 'жоғарғы 3-еуі орыс шенеуніктері',
+   h6a: 'ТҮТІН САЛЫҒЫ', h6b: '3 сом әр үйден', coin: '3 сом', coinS: '2,75', counter: 'түтін салығы', cur: 'сом',
+   sult: ['Сұлтандар:', 'салықсыз', '+ зейнетақы'], ent: 'ҰБТ-ҒА ЕСТЕ САҚТА', entL: ['1867–1868', '3 генерал-губернаторлық', '6 облыс'],
+   link: ['Сілтеме', 'профиль шапкасында'], cta: 'Профиль шапкасындағы сілтемеге өтіңіз',
+   cities: { tash: 'Ташкент', vern: 'Верный', oren: 'Орынбор', omsk: 'Омбы', ural: 'Орал', sem: 'Семей', akm: 'Ақмола', turg: 'Торғай', astr: 'Астрахан' },
+   seas: { casp: 'Каспий теңізі', aral: 'Арал теңізі', balk: 'Балқаш көлі' } } }[LANG];
+const CITY = { tash: [69.25, 41.3, 'syr'], vern: [76.9, 43.25, 'zhetisu'], oren: [55.1, 51.77, 'ural'], omsk: [73.37, 54.98, 'akmola'], ural: [51.37, 51.23, 'ural'],
+  sem: [80.23, 50.41, 'semey'], akm: [71.43, 51.13, 'akmola'], turg: [63.6, 49.63, 'turgay'], astr: [48.03, 46.35, 'bukey'] };
+// ------------------------------------------------------------------ helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eo = t => 1 - Math.pow(1 - clamp(t), 3), ei = t => clamp(t) ** 3, eio = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const back = t => { t = clamp(t); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const lerp = (a, b, u) => a + (b - a) * u;
+const fade = (T, a, b, fi = .3, fo = .3) => Math.min(seg(T, a, a + fi), 1 - seg(T, b - fo, b));
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+let SH, B, M, IMG = {};
+const P = (lon, lat) => [(lon - SH.LON0) * SH.KX * SH.P, (SH.LAT1 - lat) * SH.P];
+function loadImg(n, src) { return new Promise(r => { const i = new Image(); i.onload = () => { IMG[n] = i; r(); }; i.src = src; }); }
+async function init() {
+  const fonts = [['Mont', 'fonts/Montserrat-Black.ttf', '900'], ['MontX', 'fonts/Montserrat-ExtraBold.ttf', '800'], ['Ser', 'fonts/PT_Serif-Web-Regular.ttf', '400'],
+    ['SerI', 'fonts/PT_Serif-Web-Italic.ttf', '400'], ['SerB', 'fonts/PTSerif-Bold.ttf', '700'], ['SerBI', 'fonts/PTSerif-BoldItalic.ttf', '700'], ['Inter', 'fonts/Inter.ttf', '100 900']];
+  for (const [n, f, w] of fonts) { const ff = new FontFace(n, `url(${f})`, { weight: w }); await ff.load(); document.fonts.add(ff); }
+  SH = await (await fetch('shapes.json')).json();
+  const BJ = await (await fetch('beats.json')).json(); B = BJ[LANG]; M = B.m;
+  await Promise.all([loadImg('base', 'tex/base.jpg'), loadImg('arch', 'tex/archive.png'), loadImg('sper', 'tex/speransky.png'), loadImg('alex', 'tex/alexander.png'),
+    loadImg('paper', 'tex/paper.jpg'), loadImg('logo', 'brand/logo_white_transparent.png'), loadImg('logoY', 'brand/logo_yellow_transparent.png')]);
+  prepare(); window.ready = true;
+}
+// ------------------------------------------------------------------ precomputed geometry
+let PATH = {}, YURTS = [], CHUNKS = [], OFF2 = null, OFF2X = null;
+function ringsPath(rings) { const p = new Path2D(); for (const r of rings) { p.moveTo(r[0][0], r[0][1]); for (let i = 1; i < r.length; i++) p.lineTo(r[i][0], r[i][1]); p.closePath(); } return p; }
+function inside(r, x, y) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function prepare() {
+  for (const k in SH.ob) PATH[k] = ringsPath(SH.ob[k]);
+  for (const k in SH.zhuz) PATH['z_' + k] = ringsPath(SH.zhuz[k]);
+  for (const k in SH.gg) PATH['g_' + k] = ringsPath(SH.gg[k]);
+  PATH.kz = ringsPath(SH.kz);
+  // yurts: points spread inside the six oblasts (seeded), kept apart
+  const want = { ural: 6, turgay: 7, akmola: 6, semey: 7, zhetisu: 5, syr: 6 }; let n = 0;
+  for (const k in want) {
+    const r = SH.ob[k][0]; let xs = r.map(p => p[0]), ys = r.map(p => p[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    let got = 0, tries = 0;
+    while (got < want[k] && tries < 4000) {
+      tries++; n++; const x = lerp(x0, x1, hash(n * 3.1)), y = lerp(y0, y1, hash(n * 7.7 + 1));
+      if (!inside(r, x, y)) continue;
+      // keep away from the edge and from other yurts
+      let ok = true; for (const q of YURTS) if (Math.hypot(q.x - x, q.y - y) < 150) ok = false;
+      for (let a = 0; a < 6 && ok; a++) if (!inside(r, x + 55 * Math.cos(a), y + 55 * Math.sin(a))) ok = false;
+      if (!ok) continue;
+      YURTS.push({ x, y, k, south: k === 'zhetisu' || k === 'syr', i: YURTS.length }); got++;
+    }
+  }
+  YURTS.sort((a, b) => a.x - b.x);
+  // caption chunks
+  for (const w of B.words) { let c = CHUNKS[CHUNKS.length - 1]; if (!c || c.k !== w.k) { c = { k: w.k, w: [] }; CHUNKS.push(c); } c.w.push(w); }
+  for (const c of CHUNKS) { c.t0 = c.w[0].t0; c.t1 = c.w[c.w.length - 1].t1; }
+  OFF2 = document.createElement('canvas'); OFF2.width = WD; OFF2.height = HT; OFF2X = OFF2.getContext('2d');
+}
+// ------------------------------------------------------------------ camera
+function V(lon, lat, z) { const [x, y] = P(lon, lat); return { x, y, z }; }
+let CAM = { x: 0, y: 0, z: .4, r: 0 };
+function camAt(T) {
+  const full = V(66.2, 48.0, .40), full2 = V(66.5, 48.0, .45), north = V(71.5, 50.2, .64), north2 = V(69.5, 49.9, .68), west = V(57.5, 47.8, .66), west2 = V(57.0, 47.6, .70),
+    south = V(71.2, 43.9, .80), south2 = V(71.6, 44.0, .85), full3 = V(66.2, 48.1, .42), full4 = V(66.4, 48.0, .45);
+  const K = [[0, V(66.5, 48.0, .40)], [M.S2 - .05, full2], [M.S2 + .55, north], [M.y1824 - .05, north2], [M.y1824 + 1.1, west], [M.S3 - .05, west2],
+    [M.S3 + 1.7, south], [M.S4 - .05, south2], [M.S4 + 1.8, full], [M.S5 - .05, full3], [M.S6 + .01, full3], [M.S7 - .05, full4], [M.S7 + .01, full4], [B.end, full4]];
+  let i = 0; while (i < K.length - 2 && T > K[i + 1][0]) i++;
+  const [ta, a] = K[i], [tb, b] = K[i + 1]; const u = eio(seg(T, ta, tb));
+  // zoom in log space so speed feels even
+  const z = Math.exp(lerp(Math.log(a.z), Math.log(b.z), u));
+  let x = lerp(a.x, b.x, u), y = lerp(a.y, b.y, u);
+  // shakes: paper drops, seals
+  let sh = 0; const hits = [[.72, 1], [1.12, 1], [M.ural + .15, .5], [M.turg + .15, .5], [M.akm + .15, .5], [M.sem + .15, .5], [M.S7, .7]];
+  for (const [t0, g] of hits) { const d = T - t0; if (d > 0 && d < .45) sh += g * Math.exp(-d * 9) * 10; }
+  const sx = sh * Math.sin(T * 91), sy = sh * Math.cos(T * 77);
+  return { x, y, z, r: 0, sx, sy };
+}
+function applyCam(c) { X.setTransform(c.z, 0, 0, c.z, WD / 2 - c.x * c.z + c.sx, MCY - c.y * c.z + c.sy); }
+const toScreen = (c, x, y) => [WD / 2 + (x - c.x) * c.z + c.sx, MCY + (y - c.y) * c.z + c.sy];
+// ------------------------------------------------------------------ drawing primitives
+function font(f, s) { X.font = `${s}px ${f}`; }
+function rr(x, y, w, h, r) { X.beginPath(); X.moveTo(x + r, y); X.arcTo(x + w, y, x + w, y + h, r); X.arcTo(x + w, y + h, x, y + h, r); X.arcTo(x, y + h, x, y, r); X.arcTo(x, y, x + w, y, r); X.closePath(); }
+function inkText(t, x, y, f, s, col = C.ink, halo = 'rgba(240,228,200,.85)', hw = 6, align = 'center') {
+  font(f, s); X.textAlign = align; X.textBaseline = 'middle'; X.lineJoin = 'round';
+  if (halo) { X.strokeStyle = halo; X.lineWidth = hw; X.strokeText(t, x, y); }
+  X.fillStyle = col; X.fillText(t, x, y);
+}
+function spaced(t, sp) { return t.split('').join(String.fromCharCode(8202).repeat(sp)); }
+// wax seal (screen space)
+function seal(x, y, r, a, label, rot = 0, sc = 1, arrow = false) {
+  if (a <= 0) return;
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.rotate(rot); X.scale(sc, sc);
+  X.shadowColor = 'rgba(40,10,0,.45)'; X.shadowBlur = 14; X.shadowOffsetY = 6;
+  X.beginPath();
+  for (let i = 0; i <= 40; i++) { const t = i / 40 * Math.PI * 2; const rr2 = r * (1 + .07 * Math.sin(t * 5 + 1) + .05 * Math.sin(t * 9 + 2) + .03 * Math.sin(t * 17)); X.lineTo(Math.cos(t) * rr2, Math.sin(t) * rr2); }
+  const g = X.createRadialGradient(-r * .3, -r * .35, r * .1, 0, 0, r * 1.1); g.addColorStop(0, '#D23A2E'); g.addColorStop(.55, '#A51E19'); g.addColorStop(1, '#5E0C09');
+  X.fillStyle = g; X.fill(); X.shadowColor = 'transparent';
+  // embossed ring
+  X.lineWidth = r * .07; X.strokeStyle = 'rgba(60,5,3,.55)'; X.beginPath(); X.arc(0, 0, r * .72, 0, Math.PI * 2); X.stroke();
+  X.strokeStyle = 'rgba(255,160,140,.28)'; X.beginPath(); X.arc(r * .02, r * .03, r * .76, Math.PI * 1.1, Math.PI * 1.9); X.stroke();
+  if (arrow) {
+    X.fillStyle = 'rgba(70,6,4,.7)'; X.beginPath(); X.moveTo(0, -r * .5); X.lineTo(r * .36, -r * .05); X.lineTo(r * .13, -r * .05); X.lineTo(r * .13, r * .45); X.lineTo(-r * .13, r * .45); X.lineTo(-r * .13, -r * .05); X.lineTo(-r * .36, -r * .05); X.closePath(); X.fill();
+    X.translate(-r * .03, -r * .03); X.fillStyle = 'rgba(255,190,170,.35)'; X.fill();
+  } else if (label) {
+    font('Mont', r * .42); X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillStyle = 'rgba(70,6,4,.75)'; X.fillText(label, r * .03, r * .05); X.fillStyle = 'rgba(255,190,170,.38)'; X.fillText(label, -r * .02, -r * .02);
+  }
+  // specular
+  const s = X.createRadialGradient(-r * .4, -r * .45, 0, -r * .4, -r * .45, r * .55); s.addColorStop(0, 'rgba(255,230,220,.45)'); s.addColorStop(1, 'rgba(255,230,220,0)');
+  X.fillStyle = s; X.beginPath(); X.arc(0, 0, r, 0, Math.PI * 2); X.fill();
+  X.restore();
+}
+// paper sheet with text lines (screen space)
+function sheet(x, y, w, h, rot, a, title, seed) {
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.rotate(rot);
+  X.shadowColor = 'rgba(30,15,5,.5)'; X.shadowBlur = 30; X.shadowOffsetY = 16;
+  X.fillStyle = '#E9DCB8'; X.fillRect(-w / 2, -h / 2, w, h); X.shadowColor = 'transparent';
+  X.globalAlpha = a * .9; X.drawImage(IMG.paper, 0, 0, 500, 500 * h / w, -w / 2, -h / 2, w, h); X.globalAlpha = a;
+  const g = X.createLinearGradient(-w / 2, 0, w / 2, 0); g.addColorStop(0, 'rgba(120,80,40,.18)'); g.addColorStop(.5, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(120,80,40,.22)');
+  X.fillStyle = g; X.fillRect(-w / 2, -h / 2, w, h);
+  X.strokeStyle = 'rgba(90,55,25,.6)'; X.lineWidth = 2; X.strokeRect(-w / 2 + 14, -h / 2 + 14, w - 28, h - 28);
+  inkText(title, 0, -h / 2 + 58, 'SerB', 34, '#3A2414', null);
+  X.strokeStyle = 'rgba(58,36,20,.55)'; X.lineWidth = 2.2;
+  for (let i = 0; i < 11; i++) {
+    const yy = -h / 2 + 105 + i * 26; const len = (w - 80) * (i % 4 === 3 ? .55 : .9 + .1 * hash(seed + i));
+    X.beginPath(); for (let k = 0; k <= 24; k++) { const xx = -w / 2 + 40 + len * k / 24; X.lineTo(xx, yy + 2.5 * Math.sin(k * 1.7 + i + seed) * hash(k + i * 3 + seed)); } X.stroke();
+  }
+  // signature
+  X.beginPath(); for (let k = 0; k <= 40; k++) { const u = k / 40; X.lineTo(w * .05 + u * w * .32, h / 2 - 70 + 12 * Math.sin(u * 14 + seed) * (1 - u)); } X.stroke();
+  X.restore();
+}
+// rolled scroll card (screen space)
+function scroll(x, y, w, lines, a, sc = 1, rot = 0) {
+  if (a <= 0) return; const h = 190;
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.rotate(rot); X.scale(sc, sc);
+  X.shadowColor = 'rgba(30,15,5,.45)'; X.shadowBlur = 22; X.shadowOffsetY = 10;
+  X.fillStyle = '#ECDDB6'; X.fillRect(-w / 2, -h / 2, w, h); X.shadowColor = 'transparent';
+  X.drawImage(IMG.paper, 100, 100, 500, 200, -w / 2, -h / 2, w, h);
+  for (const s of [-1, 1]) {   // rolled ends
+    const g = X.createLinearGradient(s * w / 2 - 18, 0, s * w / 2 + 18, 0); g.addColorStop(0, '#B89A68'); g.addColorStop(.5, '#F2E4C2'); g.addColorStop(1, '#8F7146');
+    X.fillStyle = g; rr(s * w / 2 - 18, -h / 2 - 14, 36, h + 28, 16); X.fill();
+  }
+  inkText(lines[0], 0, -48, 'SerBI', 38, C.ink, null); inkText(lines[1], 0, -4, 'SerBI', 38, C.ink, null);
+  X.strokeStyle = 'rgba(165,30,25,.7)'; X.lineWidth = 2; X.beginPath(); X.moveTo(-w * .3, 26); X.lineTo(w * .3, 26); X.stroke();
+  inkText(lines[2], 0, 56, 'Ser', 30, '#5A3A20', null);
+  X.restore();
+}
+// crown (screen space); u = 0 whole, 1 shattered
+function crown(x, y, s, a, u) {
+  if (a <= 0) return;
+  const parts = [[-1, 0], [-.5, 0], [0, 0], [.5, 0], [1, 0]];
+  X.save(); X.translate(x, y); X.scale(s, s);
+  for (let i = 0; i < 5; i++) {
+    const dx = (i - 2) * 60 * eo(u) * (1 + hash(i)), dy = 260 * u * u + (-80 * eo(u)), rot = (hash(i * 5) - .5) * 3 * u;
+    X.save(); X.globalAlpha = a * (1 - seg(u, .5, 1)); X.translate(dx + (i - 2) * 22, dy); X.rotate(rot);
+    X.beginPath(); X.moveTo(-11, 30); X.lineTo(-11, -4); X.lineTo(0, i % 2 ? -26 : -40); X.lineTo(11, -4); X.lineTo(11, 30); X.closePath();
+    const g = X.createLinearGradient(0, -40, 0, 30); g.addColorStop(0, '#FFD45A'); g.addColorStop(1, '#B07A12'); X.fillStyle = g; X.fill();
+    X.lineWidth = 2.5; X.strokeStyle = '#4A2E08'; X.stroke();
+    X.fillStyle = i % 2 ? '#A51E19' : '#2E6FA0'; X.beginPath(); X.arc(0, i % 2 ? -26 : -40, 6, 0, 7); X.fill(); X.stroke();
+    X.restore();
+  }
+  if (u < .02) { X.globalAlpha = a; X.fillStyle = '#C8961E'; X.strokeStyle = '#4A2E08'; X.lineWidth = 2.5; rr(-66, 26, 132, 20, 4); X.fill(); X.stroke(); }
+  X.restore();
+}
+function yurt(x, y, s, a) {
+  if (a <= 0) return;
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.scale(s, s);
+  X.shadowColor = 'rgba(40,20,5,.35)'; X.shadowBlur = 6; X.shadowOffsetY = 3;
+  X.fillStyle = '#F4EAD2'; X.beginPath(); X.moveTo(-24, 14); X.lineTo(-24, -2); X.quadraticCurveTo(-20, -24, 0, -26); X.quadraticCurveTo(20, -24, 24, -2); X.lineTo(24, 14); X.closePath(); X.fill();
+  X.shadowColor = 'transparent'; X.lineWidth = 3; X.strokeStyle = C.ink; X.stroke();
+  X.beginPath(); X.moveTo(-24, -2); X.lineTo(24, -2); X.stroke();
+  X.fillStyle = C.ink; rr(-6, 0, 12, 14, 2); X.fill();
+  X.beginPath(); X.moveTo(-14, -2); X.lineTo(-10, -18); X.moveTo(14, -2); X.lineTo(10, -18); X.lineWidth = 1.6; X.stroke();
+  X.restore();
+}
+function coin(x, y, r, a, txt, sc = 1) {
+  if (a <= 0) return;
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.scale(sc, sc);
+  X.shadowColor = 'rgba(40,20,0,.45)'; X.shadowBlur = 8; X.shadowOffsetY = 4;
+  const g = X.createRadialGradient(-r * .35, -r * .4, r * .1, 0, 0, r); g.addColorStop(0, '#FFE27A'); g.addColorStop(.6, '#E2A72A'); g.addColorStop(1, '#9A6A0E');
+  X.fillStyle = g; X.beginPath(); X.arc(0, 0, r, 0, 7); X.fill(); X.shadowColor = 'transparent';
+  X.lineWidth = r * .1; X.strokeStyle = '#7A5208'; X.stroke(); X.beginPath(); X.arc(0, 0, r * .78, 0, 7); X.lineWidth = r * .05; X.stroke();
+  font('Mont', r * (txt.length > 3 ? .48 : .62)); X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillStyle = '#5A3A04'; X.fillText(txt, 0, r * .05);
+  X.restore();
+}
+// quill nib at a point (screen space)
+function nib(x, y, a) {
+  if (a <= 0) return; X.save(); X.globalAlpha = a; X.translate(x, y); X.rotate(-.75);
+  X.fillStyle = '#2A1A0E'; X.beginPath(); X.moveTo(0, 0); X.lineTo(-7, -26); X.lineTo(0, -60); X.lineTo(7, -26); X.closePath(); X.fill();
+  X.strokeStyle = '#E8D7B0'; X.lineWidth = 1.5; X.beginPath(); X.moveTo(0, -4); X.lineTo(0, -30); X.stroke();
+  const g = X.createLinearGradient(0, -60, 0, -240); g.addColorStop(0, '#F6EEDC'); g.addColorStop(1, 'rgba(246,238,220,.0)');
+  X.fillStyle = g; X.beginPath(); X.moveTo(-2, -60); X.quadraticCurveTo(-34, -150, -6, -250); X.quadraticCurveTo(26, -150, 2, -60); X.fill();
+  X.restore();
+}
+// point along a ring at fraction u (base px)
+function along(r, u, len) { let need = u * len, acc = 0; for (let i = 0; i < r.length - 1; i++) { const d = Math.hypot(r[i + 1][0] - r[i][0], r[i + 1][1] - r[i][1]); if (acc + d >= need) { const f = (need - acc) / d; return [lerp(r[i][0], r[i + 1][0], f), lerp(r[i][1], r[i + 1][1], f)]; } acc += d; } return r[r.length - 1]; }
+// ------------------------------------------------------------------ map layers (in camera space)
+function drawBase(c) {
+  applyCam(c); X.drawImage(IMG.base, 0, 0);
+}
+function fillOb(k, a, col = C.ob[k]) {
+  if (a <= 0) return; X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = a * .55; X.fillStyle = col; X.fill(PATH[k]); X.restore();
+}
+function redBorder(k, u, c, wpx = 3.6) {    // draw the oblast border in red ink, revealed 0..1
+  if (u <= 0) return; const rings = SH.ob[k], lens = SH.len[k];
+  X.save(); X.lineJoin = 'round'; X.lineCap = 'round';
+  for (let i = 0; i < rings.length; i++) {
+    const len = lens[i]; X.setLineDash(u >= 1 ? [] : [len * u, len * 2]);
+    X.strokeStyle = 'rgba(165,30,25,.25)'; X.lineWidth = wpx * 2.4 / c.z; X.stroke(ringsPath([rings[i]]));
+    X.strokeStyle = C.red; X.lineWidth = wpx / c.z; X.stroke(ringsPath([rings[i]]));
+  }
+  X.restore();
+  return u < 1 ? along(rings[0], u, lens[0]) : null;
+}
+function ggFrame(k, u, c, a = 1) {
+  if (u <= 0 || a <= 0) return; const r = SH.gg[k][0], len = SH.glen[k][0];
+  X.save(); X.globalAlpha = a; X.lineJoin = 'round';
+  X.setLineDash([22 / c.z * Math.min(1, u * 9), 12 / c.z]); X.lineDashOffset = 0;
+  const p = ringsPath([r]);
+  X.save(); X.beginPath(); X.rect(-1e5, -1e5, 2e5, 2e5);  // reveal by clipping a growing wedge is costly; use dash trick on a copy
+  X.restore();
+  X.setLineDash(u >= 1 ? [20 / c.z, 10 / c.z] : [20 / c.z, 10 / c.z]);
+  X.strokeStyle = 'rgba(19,11,84,.85)'; X.lineWidth = 3.2 / c.z;
+  if (u < 1) { X.save(); X.setLineDash([]); X.globalCompositeOperation = 'source-over'; X.restore(); }
+  // progressive reveal: stroke only the first u of the perimeter
+  if (u < 1) { const pts = []; const n = 160; for (let i = 0; i <= n * u; i++) pts.push(along(r, i / n, len)); X.beginPath(); pts.forEach((q, i) => i ? X.lineTo(q[0], q[1]) : X.moveTo(q[0], q[1])); X.stroke(); }
+  else X.stroke(p);
+  X.restore();
+}
+function obLabel(k, a, c, sz = 30, dy = 0) {
+  if (a <= 0) return; const [cx, cy] = SH.cen[k]; const off = { ural: [0, 30], turgay: [10, 0], akmola: [-30, 40], semey: [20, 40], zhetisu: [80, -20], syr: [-60, -10] }[k] || [0, 0];
+  const [x, y] = toScreen(c, cx + off[0], cy + off[1]); X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a;
+  inkText(L.ob[k], x, y + dy - sz * .55, 'SerBI', sz, '#3A1E10', 'rgba(242,230,204,.9)', 7);
+  inkText(L.obl, x, y + dy + sz * .5, 'SerI', sz * .72, '#5A3A20', 'rgba(242,230,204,.85)', 6);
+  X.restore();
+}
+function cityDot(id, a, c, side = 1, noText = false) {
+  if (a <= 0) return; const [lon, lat] = CITY[id]; const [bx, by] = P(lon, lat); const [x, y] = toScreen(c, bx, by);
+  X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a;
+  X.fillStyle = '#F3E6C6'; X.strokeStyle = C.ink; X.lineWidth = 3; X.beginPath(); X.arc(x, y, 8, 0, 7); X.fill(); X.stroke();
+  X.fillStyle = C.ink; X.beginPath(); X.arc(x, y, 3.2, 0, 7); X.fill();
+  if (!noText) inkText(L.cities[id], x + side * 16, y - 2, 'SerI', 26, C.ink, 'rgba(242,230,204,.9)', 6, side > 0 ? 'left' : 'right');
+  X.restore();
+}
+function seaLabels(c, a) {
+  if (a <= 0) return; X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a * .85;
+  const s = [[L.seas.casp, 50.6, 43.2, -1.2], [L.seas.aral, 60.0, 45.0, -1.05], [L.seas.balk, 76.0, 45.6, -.35]];
+  for (const [t, lon, lat, rot] of s) { const [x, y] = toScreen(c, ...P(lon, lat)); X.save(); X.translate(x, y); X.rotate(rot); inkText(t, 0, 0, 'SerI', 24 * Math.min(1.4, c.z / .45), '#34474A', null); X.restore(); }
+  X.restore();
+}
+// ------------------------------------------------------------------ HUD (screen space)
+function pill(cx, cy, parts, size, a, bg = 'rgba(19,11,84,.86)', padX = 30, h = null, font_ = 'Mont') {
+  if (a <= 0) return 0; font(font_, size);
+  const ws = parts.map(p => X.measureText(p[0]).width), W = ws.reduce((s, v) => s + v, 0) + padX * 2, Hh = h || size * 1.55;
+  { const tf = X.getTransform(); if (Math.abs(tf.a - 1) < 1e-6 && tf.e === 0 && tf.b === 0) cx = clamp(cx, W / 2 + 16, WD - W / 2 - 16); }
+  X.save(); X.globalAlpha = a; X.shadowColor = 'rgba(0,0,0,.35)'; X.shadowBlur = 18; X.shadowOffsetY = 6;
+  X.fillStyle = bg; rr(cx - W / 2, cy - Hh / 2, W, Hh, Math.min(20, Hh / 2)); X.fill(); X.shadowColor = 'transparent';
+  X.strokeStyle = 'rgba(254,179,0,.35)'; X.lineWidth = 2; X.stroke();
+  let x = cx - W / 2 + padX; X.textAlign = 'left'; X.textBaseline = 'middle';
+  parts.forEach((p, i) => { X.fillStyle = p[1] || '#fff'; X.fillText(p[0], x, cy + size * .04); x += ws[i]; });
+  X.restore(); return W;
+}
+function yearBadge(T, txt, a, y = 300, pop = 0) {
+  if (a <= 0) return; const s = 1 + .25 * (1 - eo(pop));
+  X.save(); X.translate(WD / 2, y); X.scale(s, s); pill(0, 0, [[txt, BR.acc]], 92, a, 'rgba(19,11,84,.9)', 40, 128); X.restore();
+}
+function vignette() {
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  let g = X.createLinearGradient(0, 0, 0, HT * .26); g.addColorStop(0, 'rgba(30,16,6,.82)'); g.addColorStop(1, 'rgba(30,16,6,0)'); X.fillStyle = g; X.fillRect(0, 0, WD, HT * .26);
+  g = X.createLinearGradient(0, HT * .70, 0, HT); g.addColorStop(0, 'rgba(30,16,6,0)'); g.addColorStop(1, 'rgba(30,16,6,.85)'); X.fillStyle = g; X.fillRect(0, HT * .70, WD, HT * .30);
+  g = X.createRadialGradient(WD / 2, HT * .48, HT * .25, WD / 2, HT * .48, HT * .75); g.addColorStop(0, 'rgba(40,20,5,0)'); g.addColorStop(1, 'rgba(40,20,5,.45)'); X.fillStyle = g; X.fillRect(0, 0, WD, HT);
+  // warm light from the top left
+  g = X.createRadialGradient(WD * .2, HT * .2, 0, WD * .2, HT * .2, HT * .7); g.addColorStop(0, 'rgba(255,236,190,.10)'); g.addColorStop(1, 'rgba(255,236,190,0)'); X.fillStyle = g; X.fillRect(0, 0, WD, HT);
+}
+function logo(a = .82) { X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a; const h = 70, w = h * IMG.logo.width / IMG.logo.height; X.drawImage(IMG.logo, WD - 48 - w, 48, w, h); X.globalAlpha = 1; }
+function captions(T) {
+  if (T > M.End - .05) return;
+  let c = null; for (const ch of CHUNKS) if (T >= ch.t0 - .08 && T < ch.t1 + .25) c = ch; if (!c) return;
+  const nxt = CHUNKS[CHUNKS.indexOf(c) + 1]; if (nxt && T >= nxt.t0 - .08) return;
+  const a = Math.min(seg(T, c.t0 - .08, c.t0 + .04), 1 - seg(T, c.t1 + .12, c.t1 + .25));
+  const size = 54, y = 1585; font('Mont', size);
+  const words = c.w.map(w => w.w), sp = 16; const ws = words.map(w => X.measureText(w).width); const tot = ws.reduce((s, v) => s + v, 0) + sp * (words.length - 1);
+  let lines = [[0, words.length]]; if (tot > 900) { let acc = 0, cut = 1; for (let i = 0; i < words.length; i++) { acc += ws[i] + sp; if (acc > tot / 2) { cut = Math.max(1, i); break; } } lines = [[0, cut], [cut, words.length]]; }
+  X.save(); X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a; X.textBaseline = 'middle'; X.textAlign = 'left';
+  lines.forEach(([i0, i1], li) => {
+    const lw = ws.slice(i0, i1).reduce((s, v) => s + v, 0) + sp * (i1 - i0 - 1); let x = WD / 2 - lw / 2; const yy = y + (li - (lines.length - 1) / 2) * size * 1.25;
+    X.fillStyle = 'rgba(19,11,84,.72)'; rr(x - 22, yy - size * .72, lw + 44, size * 1.44, 18); X.fill();
+    for (let i = i0; i < i1; i++) {
+      const w = c.w[i]; const on = T >= w.t0 - .05; const cur = on && T < w.t1;
+      X.fillStyle = w.c === 'a' ? (on ? BR.acc : 'rgba(255,255,255,.95)') : w.c === 'r' ? (on ? '#FF6B4A' : '#fff') : (cur ? BR.acc : '#fff');
+      X.shadowColor = 'rgba(0,0,0,.4)'; X.shadowBlur = 6; X.fillText(w.w, x, yy + 2); x += ws[i] + sp;
+    }
+  });
+  X.restore();
+}
+// ------------------------------------------------------------------ scene content
+function world(T, c) {
+  drawBase(c);
+  // Kazakh steppe outline + soft wash (scene 1-2)
+  const kzA = 1 - seg(T, M.S3, M.S3 + 1);
+  if (kzA > 0) {
+    X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = .12 * kzA; X.fillStyle = '#B07A3A'; X.fill(PATH.kz); X.restore();
+    X.save(); X.globalAlpha = .7 * kzA; X.strokeStyle = '#5A3A20'; X.lineWidth = 2.6 / c.z; X.setLineDash([10 / c.z, 6 / c.z]); X.stroke(PATH.kz); X.restore();
+  }
+  const ORDER = ['ural', 'turgay', 'akmola', 'semey', 'zhetisu', 'syr'];
+  // ---- scene 1: cracks spread from the two seals, then a flash of the six oblasts
+  const crackU = eo(seg(T, M.cut - .35, M.cut + .9));
+  const crackA = 1 - seg(T, M.S2 + .05, M.S2 + .45);
+  if (crackU > 0 && crackA > 0) {
+    X.save(); X.globalAlpha = crackA; X.lineJoin = 'round'; X.lineCap = 'round';
+    SH.cracks.forEach((r, i) => {
+      const len = SH.clen[i], d0 = hash(i * 13) * .35, u = clamp((crackU - d0) / (1 - d0) * 1.25);
+      if (u <= 0) return; const n = Math.max(2, Math.floor(r.length * u));
+      X.beginPath(); for (let j = 0; j < n; j++) { const jx = (hash(i * 31 + j) - .5) * 7 / c.z * (1 - crackU * .6), jy = (hash(i * 17 + j * 3) - .5) * 7 / c.z * (1 - crackU * .6); j ? X.lineTo(r[j][0] + jx, r[j][1] + jy) : X.moveTo(r[j][0] + jx, r[j][1] + jy); }
+      X.strokeStyle = 'rgba(110,15,12,.35)'; X.lineWidth = 7 / c.z; X.stroke(); X.strokeStyle = C.red; X.lineWidth = 3.2 / c.z; X.stroke();
+    });
+    X.restore();
+  }
+  const flash1 = Math.min(seg(T, M.cut + .5, M.cut + 1.1), 1 - seg(T, M.S2 - .1, M.S2 + .3));
+  ORDER.forEach(k => fillOb(k, flash1 * .8));
+  // ---- scene 2: zhuz glow, crowns
+  const z1 = fade(T, M.S2 + .35, M.S3 + .1, .6, .4), z2 = fade(T, M.y1824 + .2, M.S3 + .1, .6, .4);
+  for (const [k, a] of [['z_orta', z1], ['z_kishi', z2]]) {
+    if (a <= 0) continue;
+    X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = a * .32; X.fillStyle = '#E2A63A'; X.fill(PATH[k]); X.restore();
+    X.save(); X.globalAlpha = a * .9; X.strokeStyle = 'rgba(176,110,20,.9)'; X.lineWidth = 3 / c.z; X.stroke(PATH[k]); X.restore();
+  }
+  // ---- scene 3 and 4: oblasts drawn in red ink
+  const sched = { zhetisu: [M.zhet - .1, 1.3], syr: [M.syr - .05, 1.3], ural: [M.ural - .1, .6], turgay: [M.turg - .1, .6], akmola: [M.akm - .1, .6], semey: [M.sem - .1, .6] };
+  const showFrom = M.S3 - .1; let heads = [];
+  if (T > showFrom) {
+    for (const k of ORDER) {
+      const [t0, d] = sched[k]; if (T < t0) continue; const u = eio(seg(T, t0, t0 + d));
+      const freeze = T > M.S5 && T < M.S6 ? .55 : 1;
+      fillOb(k, seg(T, t0 + d * .6, t0 + d + .4) * freeze);
+    }
+    // the Bukey Horde: grey, lifts off and slides towards Astrakhan
+    const bu = eio(seg(T, M.buk, M.buk + 1.2));
+    if (T > M.sem) {
+      X.save(); const dx = -95 * bu, dy = -18 * bu; X.translate(dx, dy);
+      if (bu > 0) { X.save(); X.shadowColor = 'rgba(40,20,5,.5)'; X.shadowBlur = 20 / c.z * c.z; X.shadowOffsetY = 10; X.fillStyle = 'rgba(205,195,170,.9)'; X.fill(PATH.bukey); X.restore(); }
+      fillOb('bukey', seg(T, M.sem, M.sem + .6) * .9, bu > 0 ? '#8C8C84' : '#B9B4A6');
+      X.strokeStyle = 'rgba(70,60,50,.9)'; X.lineWidth = 2.6 / c.z; X.setLineDash([8 / c.z, 6 / c.z]); X.stroke(PATH.bukey); X.setLineDash([]);
+      X.restore();
+    }
+    for (const k of ORDER) {
+      const [t0, d] = sched[k]; if (T < t0) continue; const u = eio(seg(T, t0, t0 + d));
+      const h = redBorder(k, u, c); if (h) heads.push(h);
+    }
+    // general-governorships: dashed navy frames
+    ggFrame('turk', seg(T, M.syr + 1.0, M.syr + 2.0), c, 1 - seg(T, M.S5 - .2, M.S5 + .2) + (T > M.S6 ? seg(T, M.S7, M.S7 + .4) : 0));
+    ggFrame('oren', seg(T, M.gg, M.gg + 1.0), c, 1 - seg(T, M.S5 - .2, M.S5 + .2) + (T > M.S6 ? seg(T, M.S7, M.S7 + .4) : 0));
+    ggFrame('sib', seg(T, M.gg + .3, M.gg + 1.3), c, 1 - seg(T, M.S5 - .2, M.S5 + .2) + (T > M.S6 ? seg(T, M.S7, M.S7 + .4) : 0));
+  }
+  // archive map lies over and settles onto our borders
+  const arA = fade(T, M.gg + .1, M.gg + 3.8, .7, .7);
+  if (arA > 0) {
+    const s = 1 + .07 * (1 - eo(seg(T, M.gg + .1, M.gg + 1.3))), rot = .05 * (1 - eo(seg(T, M.gg + .1, M.gg + 1.3)));
+    const cx = SH.W / 2, cy = SH.H / 2; X.save(); X.translate(cx, cy); X.rotate(rot); X.scale(s, s); X.translate(-cx, -cy);
+    X.globalAlpha = arA * .62; X.drawImage(IMG.arch, 0, 0, SH.W, SH.H); X.restore();
+  }
+  return heads;
+}
+function labels(T, c) {
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  seaLabels(c, 1 - seg(T, M.S5 - .2, M.S5 + .1) + (T > M.S6 ? 1 : 0));
+  // steppe title (scene 1)
+  const sa = fade(T, .2, M.S2 + .2, .5, .4);
+  if (sa > 0) { const [x, y] = toScreen(c, ...P(67.5, 48.6)); X.save(); X.globalAlpha = sa * (1 - seg(T, M.cut - .2, M.cut + .3) * .7); inkText(spaced(L.steppe, 3), x, y, 'SerB', 46, '#4A2C14', 'rgba(242,230,204,.8)', 8); X.restore(); }
+  // zhuz labels
+  const z1 = fade(T, M.S2 + .6, M.S3 + .1, .4, .4), z2 = fade(T, M.y1824 + .4, M.S3 + .1, .4, .4);
+  if (z1 > 0) { const [x, y] = toScreen(c, ...P(72, 50.4)); X.globalAlpha = z1; inkText(L.orta, x, y + 60, 'SerBI', 46, '#5A3208', 'rgba(242,230,204,.9)', 8); X.globalAlpha = 1; }
+  if (z2 > 0) { const [x, y] = toScreen(c, ...P(56.5, 48.2)); X.globalAlpha = z2; inkText(L.kishi, x, y + 60, 'SerBI', 46, '#5A3208', 'rgba(242,230,204,.9)', 8); X.globalAlpha = 1; }
+  // oblast labels and centres
+  const ORDER = { zhetisu: M.zhet, syr: M.syr, ural: M.ural, turgay: M.turg, akmola: M.akm, semey: M.sem };
+  const hide = T > M.S5 - .2 && T < M.S6 + .1 ? 1 - Math.min(seg(T, M.S5 - .2, M.S5 + .1), 1 - seg(T, M.S6 - .2, M.S6 + .1)) : 1;
+  const big = c.z > .7 ? 34 : 27;
+  for (const k in ORDER) { const a = seg(T, ORDER[k] + .3, ORDER[k] + .7) * hide * (T > M.S6 && T < M.S7 ? .55 : 1); obLabel(k, a, c, big); }
+  const cd = (id, t, side) => cityDot(id, seg(T, t, t + .4) * hide * (T > M.S6 && T < M.S7 ? .5 : 1), c, side);
+  cd('vern', M.zhet + .6, -1); cd('tash', M.syr + .6, -1); cd('oren', M.gg + .3, 1);
+  cityDot('astr', fade(T, M.buk + .3, M.S5 - .1, .4, .3), c, -1, true);
+  // Turkestan GG name + centre
+  const ta = fade(T, M.syr + 1.6, M.S4 + 1.2, .5, .5);
+  if (ta > 0) { const [x, y] = toScreen(c, ...P(69.5, 39.9)); X.globalAlpha = ta; inkText(L.gg.turk, x, y, 'SerB', 34, BR.navy, 'rgba(242,230,204,.92)', 8); inkText(L.center, x, y + 40, 'SerI', 28, BR.navy, 'rgba(242,230,204,.92)', 7); X.globalAlpha = 1; }
+  // three GG names (scene 4, after the frames)
+  const ga = fade(T, M.gg + .8, M.S5 - .1, .5, .3) + (T > M.S7 ? seg(T, M.S7 + .2, M.S7 + .6) * (1 - seg(T, M.S8, M.S8 + .3)) : 0);
+  if (ga > 0) {
+    const G = [[L.gg.oren, 56.5, 53.6], [L.gg.sib, 78.5, 55.6], [L.gg.turk, 69.5, 40.0]];
+    X.globalAlpha = Math.min(1, ga); for (const [t, lo, la] of G) { const [x, y] = toScreen(c, ...P(lo, la)); wrapInk(t, x, y, 24); } X.globalAlpha = 1;
+  }
+  // Bukey -> Astrakhan arrow
+  const ba = fade(T, M.buk + .2, M.S5 - .1, .4, .3);
+  if (ba > 0) {
+    const [x0, y0] = toScreen(c, ...P(47.6, 49.4)), [x1, y1] = toScreen(c, ...P(48.03, 46.35));
+    X.globalAlpha = ba; inkText(L.bukey, Math.max(130, x0), y0 - 60, 'SerBI', 30, '#3A2A1A', 'rgba(242,230,204,.92)', 7);
+    X.strokeStyle = '#3A2A1A'; X.lineWidth = 3; X.setLineDash([9, 7]); X.beginPath(); X.moveTo(x0 - 20, y0 - 36); X.quadraticCurveTo(x0 - 70, y0 + 60, x1 - 6, y1 - 14); X.stroke(); X.setLineDash([]);
+    pill(x1 + 10, y1 + 62, [[L.astr, '#fff']], 26, ba, 'rgba(19,11,84,.85)', 18);
+    X.globalAlpha = 1;
+  }
+}
+function wrapInk(t, x, y, s) {
+  const words = t.split(' '); let lines = [t]; if (words.length > 1) { const half = Math.ceil(words.length / 2); lines = words.length === 2 ? words : [words.slice(0, half).join(' '), words.slice(half).join(' ')]; }
+  lines.forEach((ln, i) => inkText(ln, x, y + (i - (lines.length - 1) / 2) * s * 1.2, 'SerB', s, BR.navy, 'rgba(242,230,204,.92)', 7));
+}
+// ------------------------------------------------------------------ overlays per scene (screen space)
+function scene1(T) {
+  // two sheets fall onto the map and are sealed
+  for (const [i, t0, x, y, rot] of [[0, .15, 330, 760, -.12], [1, .55, 760, 820, .1]]) {
+    const u = seg(T, t0, t0 + .55), a = (T < t0 ? 0 : 1) * (1 - seg(T, M.cut - .3, M.cut + .2));
+    if (a <= 0) continue; const fall = eo(u);
+    const yy = lerp(-400, y, fall), r2 = rot + (1 - fall) * (i ? -.6 : .6), sc = lerp(1.25, 1, fall);
+    X.save(); X.translate(x, yy); X.scale(sc, sc); X.translate(-x, -yy); sheet(x, yy, 360, 470, r2, a, L.paper[i], i * 9); X.restore();
+    const st = seg(T, t0 + .5, t0 + .62);
+    if (st > 0) seal(x + 90, yy + 160, 52, a, i ? '1868' : '1867', r2, lerp(1.6, 1, eo(st)));
+  }
+  // top text: 2 ҚАҒАЗ -> 6 ОБЛЫС
+  const a1 = fade(T, .55, M.S2 + .05, .3, .3), a2 = fade(T, M.cut, M.S2 + .05, .3, .3);
+  if (a1 > 0) {
+    font('Mont', 70); const w1 = X.measureText(L.h1a).width, w2 = X.measureText(L.h1b).width, gap = 110; const tot = w1 + gap + (a2 > 0 ? w2 : 0);
+    const fs = Math.min(1, 980 / (w1 + gap + w2)); const x0 = WD / 2 - lerp(w1 / 2, tot / 2, eo(seg(T, M.cut - .2, M.cut + .3)));
+    X.save(); X.translate(WD / 2, 310); X.scale(fs, fs); X.translate(-WD / 2, -310); X.globalAlpha = a1; X.textAlign = 'left'; X.textBaseline = 'middle'; X.shadowColor = 'rgba(0,0,0,.6)'; X.shadowBlur = 16;
+    X.fillStyle = '#fff'; X.fillText(L.h1a, x0, 310);
+    if (a2 > 0) { X.globalAlpha = a2; X.fillStyle = BR.acc; font('Mont', 64); X.fillText('→', x0 + w1 + 24, 306); font('Mont', 70); X.fillStyle = BR.acc; X.fillText(L.h1b, x0 + w1 + gap, 310); }
+    X.restore();
+  }
+}
+function scene2(T, c) {
+  // rewind: year counter 1868 -> 1822
+  const rw = seg(T, M.S2 - .05, M.S2 + .65);
+  const yr = T < M.y1824 ? Math.round(lerp(1868, 1822, eio(rw))) : 1824;
+  const ya = fade(T, M.S2, M.S3 + .05, .2, .3);
+  if (T < M.S3 + .05) yearBadge(T, String(yr), ya, 300, T < M.y1824 ? seg(T, M.S2 + .55, M.S2 + .9) : seg(T, M.y1824, M.y1824 + .35));
+  if (rw > 0 && rw < 1) { X.save(); X.globalAlpha = .5 * Math.sin(rw * Math.PI); X.fillStyle = '#F3E3BC'; X.fillRect(0, 0, WD, HT); X.globalAlpha = .9 * Math.sin(rw * Math.PI); font('Mont', 120); X.fillStyle = '#5A3A20'; X.textAlign = 'center'; X.fillText('◀◀', WD / 2, 980); X.restore(); }
+  // crowns over the zhuz, shattering when the khan's power ends
+  const [ox, oy] = toScreen(c, ...P(71.5, 50.4)), [kx, ky] = toScreen(c, ...P(56.5, 48.2));
+  crown(ox, oy - 40, 1.1, fade(T, M.S2 + .7, M.S3, .3, .2), seg(T, M.orta + .1, M.orta + 1.2));
+  crown(kx, ky - 40, 1.1, fade(T, M.y1824 + .6, M.S3, .3, .2), seg(T, M.kishi + .05, M.kishi + 1.1));
+  // statutes fly out
+  const s1 = seg(T, M.S2 + .9, M.S2 + 1.4), s1a = fade(T, M.S2 + .9, M.y1824 + .2, .2, .4);
+  scroll(lerp(WD / 2, 560, eo(s1)), lerp(1000, 1265, eo(s1)), 520, L.s1822, s1a, lerp(.3, 1, back(s1)), -.03);
+  const s2 = seg(T, M.y1824 + .5, M.y1824 + 1.0), s2a = fade(T, M.y1824 + .5, M.S3 + .05, .2, .3);
+  scroll(lerp(WD / 2, 600, eo(s2)), lerp(1000, 1265, eo(s2)), 520, L.s1824, s2a, lerp(.3, 1, back(s2)), .025);
+  // Speransky: torn cut-out lands next to the scroll
+  const sp = seg(T, M.sper - .1, M.sper + .45), spa = fade(T, M.sper - .1, M.y1824 + .35, .15, .4);
+  if (spa > 0) {
+    const w = 300, h = w * IMG.sper.height / IMG.sper.width, x = 220, y = lerp(560, 640, eo(sp)), rot = lerp(-.25, -.07, eo(sp)), sc = lerp(1.35, 1, eo(sp));
+    X.save(); X.globalAlpha = spa; X.translate(x, y); X.rotate(rot); X.scale(sc, sc);
+    X.shadowColor = 'rgba(30,15,5,.5)'; X.shadowBlur = 26 * sc; X.shadowOffsetX = 10 * (sc - .6); X.shadowOffsetY = 16 * sc; X.drawImage(IMG.sper, -w / 2, -h / 2, w, h); X.shadowColor = 'transparent';
+    inkText(L.sper, 0, h / 2 + 30, 'SerBI', 30, '#fff', 'rgba(30,16,6,.85)', 8); X.restore();
+  }
+  // "khan's power abolished" stamp
+  const ka = fade(T, M.kishi + .5, M.S3 + .05, .2, .3), kp = seg(T, M.kishi + .5, M.kishi + .75);
+  if (ka > 0) { X.save(); X.translate(WD / 2, 445); X.rotate(-.04); X.scale(lerp(1.5, 1, eo(kp)), lerp(1.5, 1, eo(kp))); pill(0, 0, [[L.khan, '#fff']], 44, ka, 'rgba(165,30,25,.95)', 28, 76); X.restore(); }
+}
+function scene3(T, c) {
+  const a = fade(T, M.S3, M.S4 + .1, .3, .3);
+  if (a <= 0) return;
+  yearBadge(T, '1867', a, 300, seg(T, M.S3, M.S3 + .35));
+  const h = fade(T, M.zhet - .1, M.S4 + .1, .3, .3);
+  if (h > 0) pill(WD / 2, 430, [[L.h3[0], '#fff'], [' + ', BR.acc], [T > M.syr - .1 ? L.h3[1] : '', '#fff']], 44, h, 'rgba(19,11,84,.86)', 26, 74);
+  // Alexander II: oval portrait develops out of sepia in the corner, holds ~4 s, melts away
+  const pa = fade(T, M.S3 + .35, M.S3 + 4.9, .25, .7), dev = seg(T, M.S3 + .35, M.S3 + 1.6);
+  if (pa > 0) {
+    const cx = 230, cy = 700, rx = 150, ry = 196;
+    X.save(); X.globalAlpha = pa;
+    X.shadowColor = 'rgba(30,15,5,.55)'; X.shadowBlur = 30; X.shadowOffsetY = 14;
+    X.beginPath(); X.ellipse(cx, cy, rx + 22, ry + 22, 0, 0, 7); const gf = X.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry); gf.addColorStop(0, '#F3D27A'); gf.addColorStop(.5, '#A87A22'); gf.addColorStop(1, '#E8C060'); X.fillStyle = gf; X.fill();
+    X.shadowColor = 'transparent'; X.lineWidth = 3; X.strokeStyle = '#4A2E08'; X.stroke();
+    X.beginPath(); X.ellipse(cx, cy, rx + 9, ry + 9, 0, 0, 7); X.strokeStyle = 'rgba(80,50,10,.7)'; X.lineWidth = 4; X.stroke();
+    X.save(); X.beginPath(); X.ellipse(cx, cy, rx, ry, 0, 0, 7); X.clip();
+    const iw = rx * 2.25, ih = iw * IMG.alex.height / IMG.alex.width; X.drawImage(IMG.alex, cx - iw / 2, cy - ry * 1.02, iw, ih);
+    X.globalAlpha = pa * (1 - eo(dev)) * .92; X.fillStyle = '#E9D9B2'; X.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);   // develops out of the paper
+    X.restore();
+    X.globalAlpha = pa; pill(cx, cy + ry + 54, [[L.alex, BR.acc]], 34, pa, 'rgba(19,11,84,.88)', 22, 58);
+    X.restore();
+  }
+}
+function scene4(T, c) {
+  const a = fade(T, M.S4, M.S5 + .05, .3, .3); if (a <= 0) return;
+  yearBadge(T, '1868', a, 300, seg(T, M.S4, M.S4 + .35));
+  const keys = [M.ural, M.turg, M.akm, M.sem]; const n = keys.filter(t => T > t - .05).length;
+  if (n > 0) {
+    for (let row = 0; row < 2; row++) { const parts = []; L.h4.slice(row * 2, Math.min(n, row * 2 + 2)).forEach((t, i) => { if (i) parts.push([' · ', BR.acc]); parts.push([t, '#fff']); }); if (parts.length) pill(WD / 2, 430 + row * 78, parts, 38, a, 'rgba(19,11,84,.86)', 24, 66); }
+  }
+  // seals on each new oblast
+  const SL = { ural: M.ural, turgay: M.turg, akmola: M.akm, semey: M.sem };
+  for (const k in SL) { const [x, y] = toScreen(c, ...SH.cen[k]); const st = seg(T, SL[k] + .05, SL[k] + .2); if (st > 0) seal(x + 40, y - 70, 34, fade(T, SL[k], M.S5 - .1, .05, .3), '1868', -.2 + hash(x) * .4, lerp(2, 1, eo(st))); }
+  // the archive map caption
+  const ar = fade(T, M.gg + .3, M.gg + 3.8, .4, .6);
+  if (ar > 0) { X.globalAlpha = ar; inkText(L.arch, WD / 2, 1430, 'SerI', 28, '#fff', 'rgba(30,16,6,.85)', 8); X.globalAlpha = 1; }
+}
+function scene5(T) {
+  const a = fade(T, M.S5 - .1, M.S6 + .15, .35, .35); if (a <= 0) return;
+  X.save(); X.globalAlpha = a * .62; X.fillStyle = '#24140A'; X.fillRect(0, 0, WD, HT); X.restore();
+  pill(WD / 2, 300, [[L.h5a, BR.acc]], 64, a, 'rgba(19,11,84,.92)', 34, 104);
+  const hb = fade(T, M.top, M.S6 + .15, .3, .3); if (hb > 0) pill(WD / 2, 410, [[L.h5b, '#fff']], 34, hb * a, 'rgba(165,30,25,.92)', 22, 60);
+  // the sheet with the ladder rises out of the map; the view pans from the top step down to the bottom one
+  const rise = eo(seg(T, M.S5 - .1, M.S5 + .5));
+  const pan = eio(seg(T, M.S5 + 1.0, M.low + 1.2)) * 330;
+  const top = lerp(HT, 500, rise) - pan, W = 980, H = 1450, x0 = (WD - W) / 2;
+  X.save(); X.globalAlpha = a; X.beginPath(); X.rect(0, 470, WD, 1050); X.clip();
+  X.shadowColor = 'rgba(0,0,0,.5)'; X.shadowBlur = 40; X.shadowOffsetY = 18; X.fillStyle = '#EADCB8'; X.fillRect(x0, top, W, H); X.shadowColor = 'transparent';
+  X.drawImage(IMG.paper, 0, 0, 900, 900, x0, top, W, H);
+  X.strokeStyle = 'rgba(90,55,25,.6)'; X.lineWidth = 3; X.strokeRect(x0 + 18, top + 18, W - 36, H - 36); X.lineWidth = 1.2; X.strokeRect(x0 + 28, top + 28, W - 56, H - 56);
+  const st = [M.S5 + .15, M.S5 + .5, M.S5 + .85, M.S5 + 1.2, M.S5 + 1.55];
+  for (let i = 0; i < 5; i++) {
+    const u = eo(seg(T, st[i], st[i] + .35)); if (u <= 0) continue;
+    const sx = x0 + 70 + i * 112, sy = top + 110 + i * 255, sw = W - 140 - i * 112;
+    X.globalAlpha = a * u;
+    // step: ink block with hatching shadow
+    X.fillStyle = i < 3 ? 'rgba(165,30,25,.10)' : 'rgba(254,179,0,.16)'; X.fillRect(sx, sy, sw, 196);
+    X.strokeStyle = C.ink; X.lineWidth = 4; X.beginPath(); X.moveTo(sx, sy + 196); X.lineTo(sx, sy); X.lineTo(sx + sw * u, sy); X.stroke();
+    X.lineWidth = 1.4; X.strokeStyle = 'rgba(58,36,20,.45)'; for (let k = 0; k < sw * u; k += 14) { X.beginPath(); X.moveTo(sx + k, sy + 196); X.lineTo(sx + k + 14, sy + 182); X.stroke(); }
+    // connector to the next step
+    if (i < 4) { X.strokeStyle = C.ink; X.lineWidth = 3; X.beginPath(); X.moveTo(sx + 40, sy + 196); X.lineTo(sx + 40, sy + 255); X.lineTo(sx + 112, sy + 255); X.stroke(); X.beginPath(); X.moveTo(sx + 100, sy + 247); X.lineTo(sx + 112, sy + 255); X.lineTo(sx + 100, sy + 263); X.stroke(); }
+    font('Mont', 30); X.fillStyle = C.ink; X.textAlign = 'left'; X.textBaseline = 'middle';
+    X.beginPath(); X.arc(sx + 46, sy + 62, 28, 0, 7); X.fillStyle = BR.navy; X.fill(); X.fillStyle = BR.acc; X.textAlign = 'center'; X.fillText(String(i + 1), sx + 46, sy + 64);
+    inkText(L.ladder[i][0], sx + 92, sy + 50, 'SerB', i === 0 ? 40 : 46, C.ink, null, 0, 'left');
+    inkText(L.ladder[i][1], sx + 92, sy + 100, 'SerI', 32, '#5A3A20', null, 0, 'left');
+    // tags
+    const tg = i < 3 ? seg(T, M.top + i * .15, M.top + i * .15 + .25) : seg(T, M.low + (i - 3) * .2, M.low + (i - 3) * .2 + .25);
+    if (tg > 0) {
+      const lbl = i < 3 ? L.tagTop : L.tagLow; X.save(); X.translate(sx + 92, sy + 152); X.rotate(i < 3 ? -.02 : .02); X.scale(lerp(1.6, 1, eo(tg)), lerp(1.6, 1, eo(tg)));
+      font('Mont', 26); const tw = X.measureText(lbl).width + 36;
+      X.globalAlpha = a * eo(tg); X.fillStyle = i < 3 ? 'rgba(165,30,25,.95)' : 'rgba(19,11,84,.92)'; rr(0, -24, tw, 48, 10); X.fill();
+      X.fillStyle = i < 3 ? '#fff' : BR.acc; X.textAlign = 'left'; X.fillText(lbl, 18, 2); X.restore();
+    }
+  }
+  X.restore();
+}
+function scene6(T, c) {
+  const a = fade(T, M.S6, M.S7 + .1, .3, .2); if (a <= 0) return;
+  pill(WD / 2, 300, [[L.h6a, BR.acc]], 60, a, 'rgba(19,11,84,.92)', 32, 100);
+  const hb = fade(T, M.three - .1, M.S7 + .1, .3, .2); if (hb > 0) pill(WD / 2, 408, [[L.h6b, '#fff']], 38, hb * a, 'rgba(19,11,84,.86)', 24, 66);
+  let sum = 0;
+  YURTS.forEach((y, i) => {
+    const t0 = M.S6 + .1 + i * .045, [x, yy] = toScreen(c, y.x, y.y); const u = seg(T, t0, t0 + .25);
+    yurt(x, yy, lerp(.3, .82, back(u)), a * Math.min(1, u * 3));
+    const tc = M.tax + .15 + i * .04, cu = seg(T, tc, tc + .3);
+    if (cu > 0) { coin(x + 20, yy - 44 - 14 * eo(cu), 25, a * Math.min(1, cu * 3), y.south ? L.coinS : '3', lerp(.4, 1, back(cu))); sum += y.south ? 2.75 : 3; }
+  });
+  // counter
+  if (sum > 0) {
+    const txt = sum.toFixed(2).replace('.', ',').replace(',00', '');
+    pill(WD / 2, 1440, [[L.counter + ': ', '#fff'], [txt + ' ' + L.cur, BR.acc]], 36, a, 'rgba(19,11,84,.9)', 26, 66);
+  }
+  // sultans: free of tax, with a pension
+  const sa = fade(T, M.sult, M.S7 + .1, .3, .2), sp = seg(T, M.sult, M.sult + .45);
+  if (sa > 0) {
+    X.save(); X.globalAlpha = sa; X.translate(lerp(WD + 300, WD - 250, eo(sp)), 640);
+    X.shadowColor = 'rgba(0,0,0,.45)'; X.shadowBlur = 22; X.shadowOffsetY = 8; X.fillStyle = 'rgba(19,11,84,.94)'; rr(-210, -150, 420, 300, 22); X.fill(); X.shadowColor = 'transparent';
+    X.strokeStyle = 'rgba(254,179,0,.5)'; X.lineWidth = 2; X.stroke();
+    // a little figure in a fur hat
+    X.fillStyle = BR.acc; X.beginPath(); X.arc(-130, -40, 34, 0, 7); X.fill(); X.beginPath(); X.moveTo(-180, 60); X.quadraticCurveTo(-130, -10, -80, 60); X.closePath(); X.fill();
+    X.fillStyle = '#fff'; rr(-168, -90, 76, 26, 10); X.fill();
+    font('Mont', 34); X.textAlign = 'left'; X.textBaseline = 'middle'; X.fillStyle = '#fff'; X.fillText(L.sult[0], -70, -70);
+    font('MontX', 32); X.fillStyle = BR.acc; X.fillText('✓ ' + L.sult[1], -70, -10); X.fillText('✓ ' + L.sult[2].replace('+ ', ''), -70, 44);
+    X.restore();
+  }
+}
+function scene7(T) {
+  const a = fade(T, M.S7, M.S8 + .2, .25, .3); if (a <= 0) return;
+  // flash into the freeze frame
+  const fl = 1 - seg(T, M.S7 - .05, M.S7 + .35); if (fl > 0 && fl < 1) { X.fillStyle = `rgba(255,246,225,${fl * .85})`; X.fillRect(0, 0, WD, HT); }
+  X.save(); X.globalAlpha = a * .25; X.fillStyle = '#3A2010'; X.fillRect(0, 0, WD, HT); X.restore();
+  pill(WD / 2, 300, [[L.ent, BR.acc]], 56, a, 'rgba(19,11,84,.92)', 32, 96);
+  // the red plaque
+  const pu = seg(T, M.S7 + .1, M.S7 + .45);
+  X.save(); X.globalAlpha = a; X.translate(WD / 2, 1300); X.rotate(-.02); X.scale(lerp(1.4, 1, eo(pu)), lerp(1.4, 1, eo(pu)));
+  X.shadowColor = 'rgba(0,0,0,.5)'; X.shadowBlur = 30; X.shadowOffsetY = 12;
+  const g = X.createLinearGradient(0, -170, 0, 170); g.addColorStop(0, '#B8261F'); g.addColorStop(1, '#7E120E'); X.fillStyle = g; rr(-430, -170, 860, 340, 24); X.fill(); X.shadowColor = 'transparent';
+  X.strokeStyle = 'rgba(255,220,180,.55)'; X.lineWidth = 3; rr(-414, -154, 828, 308, 16); X.stroke();
+  font('Mont', 40); X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillStyle = '#fff'; X.fillText(LANG === 'kk' ? 'ҰБТ' : 'ЕНТ', 0, -112);
+  const ys = [-40, 30, 98], ts = [M.d, M.g3, M.o6];
+  L.entL.forEach((t, i) => { const u = seg(T, ts[i] - .05, ts[i] + .25); if (u <= 0) return; X.globalAlpha = a * eo(u); font('Mont', i ? 46 : 64); X.fillStyle = i ? '#fff' : BR.acc; X.fillText(t, 0, ys[i] + 12 * (1 - eo(u))); if (i) { const w = X.measureText(t).width; font('Mont', 46); X.fillStyle = BR.acc; X.fillText(t.split(' ')[0], -w / 2 + X.measureText(t.split(' ')[0]).width / 2, ys[i] + 12 * (1 - eo(u))); } });
+  X.restore();
+  seal(WD / 2 + 400, 1150, 50, a * seg(T, M.S7 + .35, M.S7 + .5), LANG === 'kk' ? 'ҰБТ' : 'ЕНТ', .25, lerp(1.8, 1, eo(seg(T, M.S7 + .35, M.S7 + .55))));
+}
+// scene 8: the map rolls up into a scroll; a seal with an arrow; the link line; then the end card
+function scene8(T, mapCanvas) {
+  const ru = eio(seg(T, M.S8, M.S8 + 1.0));
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  // background: dark paper desk
+  const bg = X.createRadialGradient(WD / 2, HT * .45, 100, WD / 2, HT * .45, HT * .8); bg.addColorStop(0, '#4A3220'); bg.addColorStop(1, '#1C1009'); X.fillStyle = bg; X.fillRect(0, 0, WD, HT);
+  // the flat part of the map shrinks towards the roll on the left
+  const rollX = lerp(WD + 40, 470, ru), rad = lerp(30, 70, ru);
+  const left = lerp(0, 470, ru);
+  if (rollX - left > 4) X.drawImage(mapCanvas, left, 0, WD - left, HT, left, 0, rollX - left, HT);
+  // the roll (cylinder)
+  const cy0 = lerp(0, 380, ru), cy1 = lerp(HT, 1480, ru);
+  if (ru > 0) {
+    const g = X.createLinearGradient(rollX - rad, 0, rollX + rad, 0); g.addColorStop(0, '#8A6A40'); g.addColorStop(.35, '#F3E5C4'); g.addColorStop(.6, '#D9C397'); g.addColorStop(1, '#6E5230');
+    X.fillStyle = g; rr(rollX - rad, cy0 - 20, rad * 2, cy1 - cy0 + 40, rad * .6); X.fill();
+    X.strokeStyle = 'rgba(80,50,20,.35)'; X.lineWidth = 2; for (let k = 1; k < 4; k++) { X.beginPath(); X.ellipse(rollX, cy0 - 20 + rad * .3, rad * (1 - k * .2), rad * .25, 0, 0, 7); X.stroke(); }
+  }
+  // when rolled: a scroll standing in the middle, a ribbon, a seal with an up arrow
+  const done = seg(T, M.S8 + .9, M.S8 + 1.3);
+  if (done > 0) {
+    X.save(); X.globalAlpha = done;
+    X.fillStyle = 'rgba(165,30,25,.95)'; X.fillRect(rollX - rad - 6, 900, rad * 2 + 12, 46);
+    X.restore();
+    const sp = seg(T, M.S8 + 1.15, M.S8 + 1.35); seal(rollX, 923, 74, sp > 0 ? 1 : 0, '', 0, lerp(2.2, 1, eo(sp)), true);
+  }
+  // the link line with an arrow up
+  const la = fade(T, M.link - .1, M.End + .3, .3, .3);
+  if (la > 0) {
+    const bob = Math.sin(T * 6) * 8;
+    X.save(); X.globalAlpha = la; X.fillStyle = BR.acc; X.translate(780, 560 + bob);
+    X.beginPath(); X.moveTo(0, -110); X.lineTo(70, -30); X.lineTo(26, -30); X.lineTo(26, 70); X.lineTo(-26, 70); X.lineTo(-26, -30); X.lineTo(-70, -30); X.closePath(); X.fill(); X.restore();
+    font('Mont', 58); X.globalAlpha = la; X.textAlign = 'center'; X.fillStyle = '#fff'; X.fillText(L.link[0], 780, 720); X.fillStyle = BR.acc; font('Mont', 44);
+    const words = L.link[1].split(' '); X.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), 780, 790); X.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), 780, 846);
+    X.globalAlpha = 1;
+  }
+}
+function endCard(T) {
+  const a = seg(T, M.End, M.End + .45); if (a <= 0) return;
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = a; X.fillStyle = BR.navy; X.fillRect(0, 0, WD, HT);
+  const s = lerp(.9, 1, eo(seg(T, M.End, M.End + .7))); const w = 440 * s, h = w * IMG.logo.height / IMG.logo.width;
+  X.drawImage(IMG.logo, WD / 2 - w / 2, 860 - h / 2, w, h);
+  font('Mont', 46); X.fillStyle = BR.acc; X.textAlign = 'center'; X.textBaseline = 'middle';
+  const words = L.cta.split(' '); const half = Math.ceil(words.length / 2);
+  X.fillText(words.slice(0, half).join(' '), WD / 2, 860 + h / 2 + 90); X.fillText(words.slice(half).join(' '), WD / 2, 860 + h / 2 + 150);
+  X.globalAlpha = 1;
+}
+// ------------------------------------------------------------------ main
+let MAPC = null;
+function frameMap(T) {
+  const c = camAt(T); CAM = c;
+  X.setTransform(1, 0, 0, 1, 0, 0); X.fillStyle = '#E5D3A8'; X.fillRect(0, 0, WD, HT);
+  const heads = world(T, c);
+  labels(T, c);
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  for (const h of heads) { const [x, y] = toScreen(c, h[0], h[1]); nib(x, y, 1); }
+  return c;
+}
+function render(T) {
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1; X.globalCompositeOperation = 'source-over'; X.setLineDash([]); X.shadowColor = 'transparent';
+  if (T >= M.S8) {
+    // freeze of the map at the start of scene 8 (drawn once into the spare canvas)
+    if (!MAPC) { frameMap(M.S8 - .01); vignette(); scene7(M.S8 - .01); MAPC = document.createElement('canvas'); MAPC.width = WD; MAPC.height = HT; MAPC.getContext('2d').drawImage(cv, 0, 0); }
+    scene8(T, MAPC); vignette(); logo(); captions(T); endCard(T); return;
+  }
+  // page turn between scene 2 and scene 3: the old page (frozen) is lifted off from the bottom right corner
+  const pt = seg(T, M.S3 - .05, M.S3 + .55);
+  const c = frameMap(T);
+  vignette();
+  if (T < M.S3 + .6) { scene1(T); scene2(T, c); }
+  scene3(T, c); scene4(T, c); scene5(T); scene6(T, c); scene7(T);
+  if (pt > 0 && pt < 1) pageTurn(T, pt);
+  logo(); captions(T); endCard(T);
+}
+function pageTurn(T, u) {
+  // draw the frozen previous page (scene 2 end) with a moving fold line
+  if (!window._PG) {
+    const keep = X.getImageData(0, 0, WD, HT);
+    const T0 = M.S3 - .06; const c = frameMap(T0); vignette(); scene1(T0); scene2(T0, c);
+    const pg = document.createElement('canvas'); pg.width = WD; pg.height = HT; pg.getContext('2d').drawImage(cv, 0, 0); window._PG = pg; X.putImageData(keep, 0, 0);
+  }
+  const e = eio(u), f = lerp(WD + HT + 60, -320, e);       // fold line x + y = f moves from the bottom right corner to the top left
+  X.save(); X.setTransform(1, 0, 0, 1, 0, 0);
+  X.beginPath(); X.moveTo(0, 0); X.lineTo(f, 0); X.lineTo(0, f); X.closePath();
+  X.save(); X.clip(); X.drawImage(window._PG, 0, 0); X.restore();
+  // shadow along the fold and the curled back of the page
+  const nx = 1 / Math.SQRT2; const gx = f / 2, gy = f / 2;
+  const g = X.createLinearGradient(gx - 60 * nx, gy - 60 * nx, gx + 120 * nx, gy + 120 * nx); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.4, 'rgba(0,0,0,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  X.fillStyle = g; X.fillRect(0, 0, WD, HT);
+  X.beginPath(); X.moveTo(f, 0); X.lineTo(f + 260, 0); X.lineTo(0, f + 260); X.lineTo(0, f); X.closePath();
+  const g2 = X.createLinearGradient(gx, gy, gx + 180 * nx, gy + 180 * nx); g2.addColorStop(0, '#CDB78A'); g2.addColorStop(.6, '#F1E3C0'); g2.addColorStop(1, 'rgba(241,227,192,0)');
+  X.fillStyle = g2; X.fill();
+  X.restore();
+}
+init();
+</script></body></html>
