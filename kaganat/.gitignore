@@ -1,0 +1,7 @@
+# downloaded sources (fetch_data.sh) and everything the scripts rebuild
+data/
+*.wav
+video_silent_*.mp4
+kaganat_*.mp4
+*.log
+__pycache__/
