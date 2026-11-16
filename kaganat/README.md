@@ -1,9 +1,13 @@
 # Тюркский каганат: от Алтая до Чёрного моря
 
-Vertical map story (1080x1920, 30 fps) in two languages: Russian (49.9 s) and Kazakh (56.1 s). A dark satellite globe of Eurasia:
+Vertical map story (1080x1920, 30 fps) in two languages: Russian (47.0 s) and Kazakh (54.0 s). A dark satellite globe of Eurasia:
 the lands of the Turks glow turquoise, the Rouran are dull red, the Silk Road is a golden line, the split of 603 leaves the east
 turquoise and the west blue. Text, numbers, panels, logo and the end card follow the JAS EDUCATION style guide
 (`references/STYLE_GUIDE.md`, pull request #26: navy `#130B54`, amber `#FEB300`, white; red-orange `#E8502F` only for the enemy and for loss).
+
+The reel ends with a call to follow the link in the profile header or in the description. The comment keyword («95») was dropped on
+2026-11-16: the Russian files were rebuilt and delivered again; the Kazakh files delivered before that still carry the keyword ending
+of the first commit, because only the Russian version was asked for.
 
 Everything is drawn by code. `render(T)` in `scene.html` is deterministic, so the video is recorded frame by frame in headless Chromium.
 
@@ -28,8 +32,8 @@ Quick preview frames: `LANG_Q=kk node snap.js out_dir 3.4 15.4 38.5`.
 | `scene.html` | The whole picture: a Three.js globe (NASA texture, relief, atmosphere) under a 2D canvas with fills, labels, counters, captions, the call to action and the end card. `?lang=ru` or `?lang=kk` |
 | `beats.json` | Timing for both languages: caption words with their times, named beats, scene cuts. Written by `timing.py`, read by the scene and by the sound scripts, so picture and sound follow the same marks |
 | `timing.py` | The script of the voiceover with caption and beat markup. Aligns it to the word times (`w_<lang>.json`), inserts the pauses, writes `vo_<lang>.wav` and `beats.json` |
-| `splice.py` | Puts the re-voiced call-to-action sentence (keyword «95», `cta95_<lang>.mp3`) into the full takes (`vo_<lang>_take.mp3`) |
-| `words.py` | Word timestamps of a voice file (faster-whisper), only needed after a new voice take |
+| `splice.py` | Cuts the "write the keyword in the comments" sentence out of the full takes (`vo_<lang>_take.mp3`), so that the voice ends with the link sentence alone |
+| `words.py` | Word timestamps of a voice file (faster-whisper), only needed after a new voice take. The committed `w_<lang>.json` come from the takes before the cut: the words of the cut sentence were taken out and the later ones moved up, so the scenes before it keep their timing |
 | `sfx.py` | Synthesised effects and the music bed |
 | `mix.py` | The mix: the voice is evened out and leads, effects and music are ducked under it, -14 LUFS. Prints by how many dB the voice leads while the narrator speaks |
 | `record.js`, `snap.js` | Recording of the silent video and single preview frames |
@@ -40,7 +44,7 @@ Quick preview frames: `LANG_Q=kk node snap.js out_dir 3.4 15.4 38.5`.
 
 - Colours: `BR` and `C` at the top of the script in `scene.html`. The map layer uses `C.turk`, `C.rouran`, `C.blue`; everything else uses the brand's `C.acc`.
 - Texts on screen: the `L` table in `scene.html`. Voiceover text, captions and pauses: `SCRIPT` in `timing.py`.
-- Call-to-action keyword: `KEYWORD` in `scene.html` (the voice says it in `cta95_<lang>.mp3`).
+- Call to action: only the link in the profile header or in the description, no comment keyword. Picture: `cta()` and `endCard()` in `scene.html`, texts `L.go`, `L.where`, `L.or`, `L.endA`, `L.endB`.
 - Territories and the Silk Road: the hand-placed outlines in `prep_map.py` (`python3 prep_map.py vec` rewrites `shapes.json`). Borders of the sixth century are approximate.
 
 ## Sources

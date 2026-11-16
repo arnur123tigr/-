@@ -73,20 +73,19 @@ const L = KK ? {
   bumin: 'Бумын', bumincap: 'БУМЫН ҚАҒАН', kaganat: 'Түрік қағанаты', istemi: 'Иштеми қаған', zhet: 'Жетісу', decade: '-жж.',
   silk: 'Ұлы Жібек жолы', changan: 'Чанъань', samarkand: 'Самарқанд', konst: 'Константинополь', embassy: 'Маниах елшілігі', cap568a: 'МАНИАХ', cap568b: 'ВИЗАНТИЯ',
   east: 'Шығыс Түрік қағанаты', west: 'Батыс Түрік қағанаты', capE: 'ШЫҒЫС', capW: 'БАТЫС',
-  remember: 'ҰБТ-ҒА ЕСТЕ САҚТА', founded: 'құрылды', split: 'екіге бөлінді', comment: 'Пікірге жаз', your: 'сенің пікірің',
-  linkword: 'сілтеме', linkA: 'Сілтеме профиль шапкасында', linkB: 'немесе сипаттамада',
-  endA: 'Пікірге ', endB: ' деп жаз', credit: 'Шекаралар шамамен көрсетілген · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
+  remember: 'ҰБТ-ҒА ЕСТЕ САҚТА', founded: 'құрылды', split: 'екіге бөлінді',
+  go: [['Сілтемеге', 1], [' өт', 0]], linkword: 'сілтеме', where: 'профиль шапкасында', or: 'немесе сипаттамада',
+  endA: 'Сілтемеге өт', endB: 'профиль шапкасында немесе сипаттамада', credit: 'Шекаралар шамамен көрсетілген · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
 } : {
   series: 'ТЮРКСКИЙ КАГАНАТ', t1a: 'Одно племя →', t1b: 'Империя', altai: 'Алтай', huang: 'Хуанхэ', black: 'Чёрное море',
   s2a: 'VI век', s2b: 'Алтай', turks: 'Тюрки', rouran: 'Жужаньский каганат', vassal: 'подчиняются жужаням',
   bumin: 'Бумын', bumincap: 'БУМЫН КАГАН', kaganat: 'Тюркский каганат', istemi: 'Истеми каган', zhet: 'Жетысу', decade: '-е',
   silk: 'Великий Шёлковый путь', changan: 'Чанъань', samarkand: 'Самарканд', konst: 'Константинополь', embassy: 'Посольство Маниаха', cap568a: 'МАНИАХ', cap568b: 'ВИЗАНТИЯ',
   east: 'Восточно-Тюркский каганат', west: 'Западно-Тюркский каганат', capE: 'ВОСТОЧНЫЙ', capW: 'ЗАПАДНЫЙ',
-  remember: 'ЗАПОМНИ К ЕНТ', founded: 'основан', split: 'раскол', comment: 'Напиши в комментариях', your: 'твой комментарий',
-  linkword: 'ссылка', linkA: 'Ссылка в шапке профиля', linkB: 'или в описании',
-  endA: 'Напиши ', endB: ' в комментариях', credit: 'Границы примерные · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
+  remember: 'ЗАПОМНИ К ЕНТ', founded: 'основан', split: 'раскол',
+  go: [['Переходи ', 0], ['по ссылке', 1]], linkword: 'ссылка', where: 'в шапке профиля', or: 'или в описании',
+  endA: 'Переходи по ссылке', endB: 'в шапке профиля или в описании', credit: 'Границы примерные · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
 };
-const KEYWORD = '95';
 // the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
 const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
 function scaled(img, w) {
@@ -95,7 +94,7 @@ function scaled(img, w) {
   while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
   if (cw !== w) draw(w, h); return c;
 }
-const LOGO = scaled(LOGO0, 75), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 50);
+const LOGO = scaled(LOGO0, 75), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
 
 // ---------------------------------------------------------------- globe
 const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
@@ -699,10 +698,10 @@ function hud(T, sc) {
     ctx.save(); ctx.globalAlpha = Math.max(e, w2); line([['•', C.turk, e], [L.capE, 'rgba(255,255,255,.9)', e], ['    ', '#fff', 0], ['•', C.blue, w2], [L.capW, 'rgba(255,255,255,.9)', w2]], W / 2, CAP_Y, { size: 31, weight: 700, fam: 'IN', ls: 5, sb: 12 }); ctx.restore();
   }
 }
-// scene 7: what to remember + the call to action (comment «95», link in the profile header or in the description); panels in the brand's navy and amber
+// scene 7: what to remember + the call to action (go to the link in the profile header or in the description); panels in the brand's navy and amber
 function cta(T) {
-  const dim = ease(seg(T, M.S7, M.S7 + .6));
-  ctx.fillStyle = rgba('#0c0738', .7 * dim); ctx.fillRect(0, 0, W, H);                       // the map sinks into navy
+  const dim = ease(seg(T, M.S7, M.S7 + .6)), dim2 = ease(seg(T, M.link - .2, M.link + .5));
+  ctx.fillStyle = rgba('#0c0738', .7 * dim + .14 * dim2); ctx.fillRect(0, 0, W, H);          // the map sinks into navy, and deeper still under the link
   const a = ap(T, M.S7 + .1, .35), X = W / 2;
   if (a > 0) { ctx.fillStyle = rgba(C.acc, a); rr(ctx, X - 30, 204, 60, 6, 3); ctx.fill(); txt(L.remember, X, 256 + (1 - a) * 10, { size: 30, weight: 700, ls: 7, color: C.acc, alpha: a, sb: 10 }); }
   const n = ap(T, M.nm - .05, .35); if (n > 0) txt(L.kaganat, X, 346 + (1 - n) * 14, { size: 78, weight: 800, fam: 'IT', alpha: n });
@@ -713,55 +712,38 @@ function cta(T) {
   date('552', x0 + w1 / 2, d1, C.acc); date('–', x0 + w1 + wd / 2, d2, C.acc); date('603', x0 + w1 + wd + w2 / 2, d2, C.acc);
   if (d1 > 0) txt(L.founded, x0 + w1 / 2, 584, { size: 29, weight: 600, color: 'rgba(255,255,255,.8)', alpha: d1, sb: 10 });
   if (d2 > 0) txt(L.split, x0 + w1 + wd + w2 / 2, 584, { size: 29, weight: 600, color: 'rgba(255,255,255,.8)', alpha: d2, sb: 10 });
-  // comment card: the keyword is typed in
-  const c = ap(T, M.cta - .18, .4);
-  if (c > 0) {
-    const cy = 782 + (1 - c) * 40, cw = 800, ch = 168, cx = X - cw / 2;
-    ctx.save(); ctx.globalAlpha = c;
-    txt(L.comment, X, cy - ch / 2 - 30, { size: 40, weight: 700, sb: 12 });
-    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cy - ch / 2, cw, ch, 20); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
-    const press = Math.exp(-Math.max(0, T - M.key - .95) * 7) * (T > M.key + .95 ? 1 : 0);
-    ctx.strokeStyle = rgba(C.acc, .35 + .55 * press); ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx + 78, cy, 44, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fill();      // the viewer's avatar
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(cx + 78, cy - 10, 15, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx + 78, cy + 32, 27, 18, 0, Math.PI, 0); ctx.fill();
-    txt(L.your, cx + 152, cy - 30, { size: 27, weight: 500, align: 'left', color: 'rgba(255,255,255,.55)', shadow: 0 });
-    const typed = T < M.key + .02 ? '' : T < M.key + .3 ? KEYWORD[0] : KEYWORD;
-    font(ctx, 78, 800, 'IT'); const tw = ctx.measureText(typed).width;
-    txt(typed, cx + 150, cy + 46, { size: 78, weight: 800, fam: 'IT', align: 'left', color: C.acc, shadow: 0 });
-    if (Math.floor(T * 2.6) % 2 === 0 || T < M.key + .5) { ctx.fillStyle = '#fff'; ctx.fillRect(cx + 156 + tw, cy - 10, 5, 60); }
-    const sx = cx + cw - 78, sr = 42 * (1 + .14 * press), full = typed.length === KEYWORD.length;      // send button
-    ctx.beginPath(); ctx.arc(sx, cy, sr, 0, 7); ctx.fillStyle = full ? C.acc : 'rgba(255,255,255,.14)'; ctx.fill();
-    ctx.strokeStyle = full ? BR.navy : 'rgba(255,255,255,.5)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(sx, cy + 16); ctx.lineTo(sx, cy - 16); ctx.moveTo(sx - 14, cy - 3); ctx.lineTo(sx, cy - 17); ctx.lineTo(sx + 14, cy - 3); ctx.stroke();
-    ctx.restore();
-    if (press > .01) glowDot(sx, cy, 150, C.acc, .5 * press);
-  }
-  // link: a little profile header (ours: the logo is the avatar) with the link row lit, an arrow up to it
+  // the call to action is the link alone: a little profile header (ours: the logo is the avatar) with the link row lit, an arrow up to it
   const l = ap(T, M.link - .12, .4);
   if (l > 0) {
-    const cw = 700, ch = 172, cx = X - cw / 2, cy = 1004 + (1 - l) * 40, hi = ap(T, M.bio - .25, .3);
+    const cw = 840, ch = 206, cx = X - cw / 2, cy = 944 + (1 - l) * 40, hi = ap(T, M.bio - .25, .3);
     ctx.save(); ctx.globalAlpha = l;
-    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 36; ctx.shadowOffsetY = 10; rr(ctx, cx, cy - ch / 2, cw, ch, 20); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
-    ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx + 88, cy, 52, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx + 88, cy, 43, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
-    ctx.drawImage(LOGO_AV, cx + 88 - LOGO_AV.width / 2, cy - LOGO_AV.height / 2);
-    txt('JAS EDUCATION', cx + 172, cy - 36, { size: 30, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
-    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 172, cy - 20, 420, 14, 7); ctx.fill();
-    const lx = cx + 166, ly = cy + 12, lw = 300, lh = 50;                                     // the link row
-    rr(ctx, lx, ly, lw, lh, 25); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.strokeStyle = C.acc; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
-    ctx.save(); ctx.translate(lx + 36, ly + lh / 2); ctx.rotate(-.7); rr(ctx, -19, -7, 22, 14, 7); ctx.stroke(); rr(ctx, -3, -7, 22, 14, 7); ctx.stroke(); ctx.restore();
-    txt(L.linkword, lx + 68, ly + lh / 2 + 10, { size: 29, weight: 700, align: 'left', color: C.acc, shadow: 0 });
+    line(L.go.map(p => [p[0], p[1] ? C.acc : '#fff']), X, cy - ch / 2 - 46, { size: 56, sb: 14 });
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cy - ch / 2, cw, ch, 24); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cy, 62, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cy, 51, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
+    ctx.drawImage(LOGO_AV, cx + 106 - LOGO_AV.width / 2, cy - LOGO_AV.height / 2);
+    txt('JAS EDUCATION', cx + 206, cy - 43, { size: 36, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 206, cy - 24, 504, 17, 8.5); ctx.fill();
+    const lx = cx + 199, ly = cy + 14, lw = 360, lh = 60, mx = lx + lw / 2, my = ly + lh / 2;       // the link row
+    rr(ctx, lx, ly, lw, lh, 30); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineWidth = 5.4; ctx.lineCap = 'round';
+    ctx.save(); ctx.translate(lx + 43, my); ctx.rotate(-.7); rr(ctx, -23, -8.5, 26.5, 17, 8.5); ctx.stroke(); rr(ctx, -3.5, -8.5, 26.5, 17, 8.5); ctx.stroke(); ctx.restore();
+    txt(L.linkword, lx + 82, my + 12, { size: 35, weight: 700, align: 'left', color: C.acc, shadow: 0 });
     ctx.restore();
-    if (hi > 0) {
-      glowDot(lx + lw / 2, ly + lh / 2, 190, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6)));
-      const ay = cy + ch / 2 + 44 + 9 * Math.sin(T * 6.5);                                    // arrow up
-      ctx.save(); ctx.globalAlpha = hi; ctx.strokeStyle = C.acc; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 18;
-      ctx.beginPath(); ctx.moveTo(X, ay + 26); ctx.lineTo(X, ay - 22); ctx.moveTo(X - 24, ay + 2); ctx.lineTo(X, ay - 24); ctx.lineTo(X + 24, ay + 2); ctx.stroke(); ctx.restore();
-      txt(L.linkA, X, 1218 + (1 - hi) * 10, { size: 42, weight: 700, alpha: hi, sb: 12 });
+    for (const dl of [0, .16]) {                                                                // a tap on the link when the voice names it
+      const u = (T - M.go - dl) / .6; if (u <= 0 || u >= 1) continue;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .75 * (1 - u) ** 2); ctx.lineWidth = 5 - 3 * u;
+      const g = 6 + 74 * easeOut(u); rr(ctx, lx - g, ly - g, lw + 2 * g, lh + 2 * g, 30 + g); ctx.stroke(); ctx.restore();
     }
-    const de = ap(T, M.desc - .3, .3); if (de > 0) txt(L.linkB, X, 1268 + (1 - de) * 10, { size: 34, weight: 600, color: 'rgba(255,255,255,.72)', alpha: de, sb: 10 });
+    if (hi > 0) {
+      glowDot(mx, my, 230, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6)));
+      const ay = cy + ch / 2 + 56 + 10 * Math.sin(T * 6.5);                                     // arrow up
+      ctx.save(); ctx.globalAlpha = hi; ctx.strokeStyle = C.acc; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 20;
+      ctx.beginPath(); ctx.moveTo(X, ay + 30); ctx.lineTo(X, ay - 26); ctx.moveTo(X - 28, ay + 2); ctx.lineTo(X, ay - 28); ctx.lineTo(X + 28, ay + 2); ctx.stroke(); ctx.restore();
+      txt(L.where.toUpperCase(), X, 1204 + (1 - hi) * 10, { size: 38, weight: 700, ls: 5, alpha: hi, sb: 12 });
+    }
+    const de = ap(T, M.desc - .3, .3); if (de > 0) txt(L.or.toUpperCase(), X, 1258 + (1 - de) * 10, { size: 31, weight: 600, ls: 5, color: 'rgba(255,255,255,.72)', alpha: de, sb: 10 });
   }
 }
 // the brand in the frame: the small logo top right (where the references carry their handle), a line of small print at the very bottom,
@@ -775,8 +757,8 @@ function endCard(T) {
   const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
   ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
   const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
-  if (c > 0) txt(L.endA + '«' + KEYWORD + '»' + L.endB, W / 2, cy + 322 + (1 - c) * 12, { size: 62, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
-  if (d > 0) txt(L.linkA, W / 2, cy + 394 + (1 - d) * 12, { size: 34, weight: 600, color: 'rgba(255,255,255,.82)', alpha: d, shadow: 0 });
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
 }
 
 // ---------------------------------------------------------------- captions: the chunk being spoken, word by word

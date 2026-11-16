@@ -59,7 +59,7 @@ def pop():
     t = tt(.2); f = 500 + 900 * np.exp(-t * 30); return norm(np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 18))
 def tick(f=3200):                                            # one step of the year counter
     t = tt(.03); return norm(band(rng.standard_normal(len(t)), f * .6, f * 1.8) * np.exp(-t * 190) + .5 * np.sin(2 * np.pi * f * t) * np.exp(-t * 260))
-def key():                                                   # a key of the on-screen keyboard
+def tap():                                                   # a tap on the screen
     t = tt(.07); return norm(band(rng.standard_normal(len(t)), 500, 3200) * np.exp(-t * 85) + .6 * np.sin(2 * np.pi * 1150 * t) * np.exp(-t * 120))
 def coin():                                                  # a few coins: bright metal pings
     out = np.zeros(int(SR * .9))
@@ -178,17 +178,16 @@ add(s, m('Crack'), crack(), 1.0); add(s, m('Crack'), boom(42, 2.0, 2.4), .9); ad
 add(s, m('Crack') + .12, whoosh(.95, 240, 2200), .42)
 add(s, m('east'), pop(), .3); add(s, m('westk'), pop(), .3)
 
-# 7. what to remember, the comment, the link
+# 7. what to remember, the link
 add(s, m('S7'), sub(80, 35, 1.2), .4); add(s, m('S7'), whoosh(.7, 200, 1200), .25)
 add(s, m('nm') - .05, pop(), .3)
 add(s, m('d1') - .03, drum(75, .6, 7), .7); add(s, m('d1') - .03, tick(2400), .3)
 add(s, m('d2') - .03, drum(60, .7, 6), .8); add(s, m('d2') - .03, tick(2000), .3)
-add(s, m('cta') - .18, whoosh(.45, 300, 2600), .3)
-add(s, m('key') + .02, key(), .5); add(s, m('key') + .3, key(), .5)
-add(s, m('key') + .95, pop(), .5); add(s, m('key') + .97, chime(1760, .9), .22)
 add(s, m('link') - .12, whoosh(.45, 300, 2600), .3)
 add(s, m('bio') - .25, pop(), .3); add(s, m('bio') - .22, chime(1319, .9), .2)
 add(s, m('desc') - .3, pop(), .25)
+if abs(m('go') - (m('bio') - .25)) > .35:                    # the tap on the link, unless it lands on the pop of the row lighting up
+    add(s, m('go'), tap(), .45); add(s, m('go') + .16, tap(), .3); add(s, m('go') + .02, chime(1760, .9), .18)
 # the end card (navy, the logo): air, a soft low landing, three notes of the home chord
 e0 = m('last') - .1
 add(s, e0 - .2, whoosh(.6, 240, 2200), .3); add(s, e0 + .05, boom(52, 1.6, 2.6), .45); add(s, e0 + .05, sub(72, 36, 1.2), .3)
