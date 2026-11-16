@@ -1,0 +1,187 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «В географии у всего есть противоположность» — remake, RU, voice Egor. Times below are voice times; the voice starts at OFF.
+const OFF = .3, V = x => x + OFF, END = V(48.32) + 2.4;
+let SH = null;
+const CARDS = { peninsula: 'ПОЛУОСТРОВ', gulf: 'ЗАЛИВ', isthmus: 'ПЕРЕШЕЕК', strait: 'ПРОЛИВ', island: 'ОСТРОВ', lake: 'ОЗЕРО',
+  archipelago: 'АРХИПЕЛАГ', lakes: 'СИСТЕМА ОЗЁР', cape: 'МЫС', bay: 'БУХТА' };
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+const REG = { panama: [-86, -74, 4, 13], gib: [-9, -1.5, 33.5, 39], arctic: [-112, -70, 66, 80], lakes: [-95, -72, 38, 52],
+  maldives: [70.5, 75.5, -1.5, 8], finland: [20, 33, 59, 66], safrica: [10, 36, -37, -18], india: [66, 100, 4, 32] };
+for (const k in REG) TEX.push({ k, l0: REG[k][0], l1: REG[k][1], b0: REG[k][2], b1: REG[k][3], minppd: 28 });
+const ATOLLS = [[6.95, 72.93, .12, .1], [6.6, 73.05, .2, .1], [5.95, 73.3, .25, .12], [5.55, 72.95, .2, .1], [5.2, 73.05, .15, .1], [5.4, 73.55, .12, .1],
+  [4.4, 73.45, .3, .1], [3.95, 73.45, .28, .1], [3.9, 72.85, .3, .14], [3.5, 73.65, .3, .1], [2.95, 73.55, .2, .09], [3.15, 72.95, .2, .08],
+  [2.75, 73.0, .17, .08], [2.3, 73.2, .18, .14], [1.85, 73.4, .15, .1], [0.5, 73.25, .35, .3], [-0.3, 73.43, .05, .05], [-0.63, 73.15, .1, .1]];
+
+// camera keys [t, lon, lat, ppd, easing]
+const CAMK = [
+  [0, 95, 28, 9], [V(3.3), 22, 30, 10.5],
+  [V(3.3), 22, 30, 10.5], [V(8.6), 14, 33, 12.5, 'l'],
+  [V(8.6), 34, 22, 11], [V(10.2), 40, 20, 12, 'l'],
+  [V(10.2), -80.0, 9.0, 150], [V(12.0), -79.6, 8.9, 175, 'l'],
+  [V(12.0), -5.6, 36.0, 330], [V(13.75), -5.5, 35.95, 380, 'l'],
+  [V(13.75), -98.8, 72.7, 82], [V(17.6), -98.9, 72.6, 96, 'l'],
+  [V(18.05), -84.5, 45.3, 58], [V(20.4), -84.3, 45.0, 64, 'l'],
+  [V(20.4), -25, 52, 9.5], [V(22.45), -18, 50, 10.5, 'l'],
+  [V(22.45), 73.2, 3.3, 175], [V(23.85), 73.2, 3.3, 190, 'l'],
+  [V(23.85), 27.0, 62.4, 140], [V(25.6), 27.0, 62.4, 150, 'l'],
+  [V(25.6), 22, -20, 14], [V(26.75), 23, -22, 15, 'l'],
+  [V(26.75), 23, -28.5, 42], [V(29.0), 22, -29.5, 46, 'l'],
+  [V(29.0), 85, 16, 40], [V(31.65), 86, 17, 42, 'l'],
+  [V(31.65), 82, 22, 20], [V(37.75), 80, 21, 23, 'l'],
+  [V(37.75), 60, 35, 9], [END, 50, 38, 10, 'l'],
+];
+function whip(t) { return (t > V(17.6) && t < V(18.05)) ? 1 : 0; }   // island -> lakes is a fast pan
+
+function card(k, cx, cy, size, a, o = {}) {
+  if (a <= 0) return; const im = IM['c_' + k];
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(cx, cy); const s = o.scale ?? 1; ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10; ctx.fillStyle = '#0b0b0b';
+  ctx.fillRect(-size / 2 - 5, -size / 2 - 5, size + 10, size + 10); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  if (im) ctx.drawImage(im, -size / 2, -size / 2, size, size);
+  if (o.dim) { ctx.fillStyle = `rgba(0,0,0,${o.dim})`; ctx.fillRect(-size / 2, -size / 2, size, size); }
+  if (o.label !== false) {
+    const ls = o.ls || Math.max(34, size * .12), ly = o.below ? size / 2 + ls * .95 : -size / 2 - ls * .8;
+    txt(CARDS[k], 0, ly, ls, '#fff', 'MB', { stroke: ls * .16, blur: 10 });
+  }
+  ctx.restore();
+}
+function pair(t, a, b, tA, tB, tEnd, focus) {   // two cards flying in from the sides; focus: [[t0,t1,'a'|'b'], ...]
+  const S = 430, y = H * .5;
+  const pa = eout(ap(t, tA - .15, .45)), pb = eout(ap(t, tB - .15, .45)), out = ap(t, tEnd - .3, .3);
+  let fa = 0, fb = 0;
+  for (const [f0, f1, w] of focus || []) { const k = win(t, f0, f1, .25); if (w === 'a') fa = Math.max(fa, k); else fb = Math.max(fb, k); }
+  card(a, lerp(-300, W * .27, pa) - out * 700, y, S, pa * (1 - out), { scale: 1 + .12 * fa - .06 * fb, dim: .45 * fb });
+  card(b, lerp(W + 300, W * .73, pb) + out * 700, y, S, pb * (1 - out), { scale: 1 + .12 * fb - .06 * fa, dim: .45 * fa });
+}
+function bigLabel(s, x, y, a, sub, size = 92) {
+  if (a <= 0) return; const p = back(clamp(a * 1.6));
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(p, p);
+  txt(s, 0, 0, size, '#fff', 'MB', { stroke: size * .14, blur: 16 });
+  if (sub) txt(sub, 0, size * .78, size * .42, BR.acc, 'MX', { stroke: 8, blur: 10 });
+  ctx.restore();
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t);
+  if (whip(t)) {             // motion blur: average a few camera samples
+    ctx.globalAlpha = 1; drawMap();
+    for (let i = 1; i <= 4; i++) { CAM = camAt(CAMK, t - i * .012); ctx.save(); ctx.globalAlpha = .35; for (const T of TEX) drawTex(T); ctx.restore(); }
+    CAM = camAt(CAMK, t);
+  } else drawMap(t > V(22.45) && t < V(23.85) ? .35 : 0);
+  vignette(.45);
+
+  // 0. intro title
+  { const a = win(t, .1, V(3.35), .3);
+    if (a > 0) {
+      const p1 = eout(ap(t, .15, .4)), p2 = eout(ap(t, V(.86), .4)), p3 = back(ap(t, V(1.6), .5));
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.globalAlpha = a * p1; txt('В географии', W / 2, H * .36, 76, '#fff', 'MB', { stroke: 10 });
+      ctx.globalAlpha = a * p2; txt('у всего есть', W / 2, H * .36 + 96, 76, '#fff', 'MB', { stroke: 10 });
+      ctx.globalAlpha = a; ctx.translate(W / 2, H * .36 + 220); ctx.scale(p3, p3); txt('ПРОТИВОПОЛОЖНОСТЬ', 0, 0, Math.min(82, 82 * 980 / tw('ПРОТИВОПОЛОЖНОСТЬ', 82, 'MB')), BR.acc, 'MB', { stroke: 11 });
+      ctx.restore();
+    } }
+  // 1. peninsula / gulf
+  if (t > V(3.2) && t < V(8.9)) {
+    pair(t, 'peninsula', 'gulf', V(3.52), V(4.44), V(8.62), [[V(5.12), V(6.85), 'a'], [V(6.85), V(8.62), 'b']]);
+    pill('вдаётся в море', W * .27, H * .5 + 300, 40, win(t, V(5.4), V(8.6), .25) * (t < V(6.85) ? 1 : .55));
+    pill('вдаётся в сушу', W * .73, H * .5 + 300, 40, win(t, V(7.2), V(8.6), .25));
+  }
+  // 2. isthmus / strait
+  if (t > V(8.5) && t < V(10.3)) pair(t, 'isthmus', 'strait', V(8.74), V(9.52), V(10.25), []);
+  // 3. Panama
+  if (t >= V(10.2) && t < V(12.0)) {
+    const p = ap(t, V(10.3), 1.1); for (const l of SH.panama) polyPartial(l, p, { lw: 5 });
+    bigLabel('ПЕРЕШЕЕК', W / 2, H * .3, ap(t, V(10.35), .35), 'Панамский перешеек');
+    pill('соединяет сушу', W / 2, H * .74, 46, ap(t, V(10.8), .3));
+  }
+  // 4. Gibraltar
+  if (t >= V(12.0) && t < V(13.75)) {
+    const p = ap(t, V(12.05), 1.0); for (const l of SH.gib) polyPartial(l, p, { lw: 6 });
+    bigLabel('ПРОЛИВ', W / 2, H * .28, ap(t, V(12.1), .35), 'Гибралтарский пролив');
+    pill('соединяет воду', W / 2, H * .74, 46, ap(t, V(12.48), .3));
+  }
+  // 5. island
+  if (t >= V(13.75) && t < V(17.9)) {
+    const a = ap(t, V(13.85), .5); glowFill(SH.island, BR.acc, a, { fill: .55 });
+    bigLabel('ОСТРОВ', W / 2, H * .3, ap(t, V(13.8), .35), 'остров Принца Уэльского');
+    pill('суша, окружённая водой', W / 2, H * .74, 44, ap(t, V(16.0), .3));
+  }
+  // 6. lake
+  if (t >= V(17.9) && t < V(20.45)) {
+    const a = ap(t, V(18.0), .5); glowFill(SH.lakes, '#3fe0f0', a, { fill: .6 });
+    bigLabel('ОЗЕРО', W / 2, H * .27, ap(t, V(17.95), .35), 'Великие озёра');
+    pill('вода, окружённая сушей', W / 2, H * .74, 44, ap(t, V(18.6), .3));
+  }
+  // 7. archipelago / system of lakes
+  if (t > V(20.3) && t < V(22.5)) pair(t, 'archipelago', 'lakes', V(20.5), V(21.42), V(22.45), []);
+  // 8. Maldives
+  if (t >= V(22.45) && t < V(23.85)) {
+    ATOLLS.forEach((A, i) => {
+      const a = eout(ap(t, V(22.5) + i * .035, .3)); if (a <= 0) return;
+      const [x, y] = P(A[1], A[0]); const rx = A[3] * CAM.ppd * KX(), ry = A[2] * CAM.ppd;
+      ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.ellipse(x, y, Math.max(8, rx), Math.max(8, ry), 0, 0, 7);
+      ctx.fillStyle = 'rgba(254,179,0,.55)'; ctx.fill(); ctx.shadowColor = BR.acc; ctx.shadowBlur = 22; ctx.strokeStyle = BR.acc; ctx.lineWidth = 4; ctx.stroke(); ctx.restore();
+    });
+    bigLabel('АРХИПЕЛАГ', W / 2, H * .2, ap(t, V(22.5), .35), 'Мальдивы');
+    pill('много островов в воде', W / 2, H * .8, 44, ap(t, V(22.7), .3));
+  }
+  // 9. Finland lakes
+  if (t >= V(23.85) && t < V(25.6)) {
+    glowFill(SH.finlakes, '#3fe0f0', ap(t, V(23.9), .5), { fill: .65, lw: 3, blur: 14 });
+    bigLabel('СИСТЕМА ОЗЁР', W / 2, H * .25, ap(t, V(23.95), .35), 'Финляндия — «страна озёр»', 84);
+    pill('много озёр на суше', W / 2, H * .76, 44, ap(t, V(24.2), .3));
+  }
+  // 10. cape / bay cards
+  if (t > V(25.5) && t < V(26.8)) pair(t, 'cape', 'bay', V(25.74), V(26.34), V(26.75), []);
+  // 11. cape on the map
+  if (t >= V(26.75) && t < V(29.0)) {
+    const [x0, y0] = P(10, -33.0), [x1] = P(36, -33.0);
+    ctx.save(); ctx.globalAlpha = ap(t, V(26.85), .3); ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(lerp(x0, x1, eout(ap(t, V(26.85), .6))), y0); ctx.stroke(); ctx.restore();
+    const [cx, cy] = P(18.47, -34.36), [ax, ay] = P(20.0, -34.83);
+    arrow(cx - 150, y0 - 60, cx - 10, cy + 20, cx - 140, cy - 40, ap(t, V(27.4), .6));
+    arrow(ax + 170, y0 - 60, ax + 10, ay + 10, ax + 150, ay - 60, ap(t, V(27.6), .6));
+    dot(18.47, -34.36, ap(t, V(27.9), .3));
+    bigLabel('МЫС', W / 2, y0 - 120, ap(t, V(26.85), .35), 'мыс Доброй Надежды');
+    pill('торчит, как копьё', W / 2, H * .8, 46, ap(t, V(28.1), .3));
+  }
+  // 12. bay (card)
+  if (t >= V(29.0) && t < V(31.75)) {
+    const p = eout(ap(t, V(29.0), .5)); const out = ap(t, V(31.45), .3);
+    card('bay', W / 2, H * .5, 760, p * (1 - out), { scale: .85 + .15 * p, label: false });
+    arrow(W / 2 - 240, H * .5 + 480, W / 2 - 120, H * .5 - 40, W / 2 - 300, H * .5 + 150, ap(t, V(29.7), .7), 1 - out, 12);
+    arrow(W / 2 + 240, H * .5 + 480, W / 2 + 120, H * .5 - 40, W / 2 + 300, H * .5 + 150, ap(t, V(29.85), .7), 1 - out, 12);
+    bigLabel('БУХТА', W / 2, H * .5 - 500, ap(t, V(29.1), .35) * (1 - out));
+    pill('изгибается, как чаша', W / 2, H * .5 + 560, 46, ap(t, V(30.3), .3) * (1 - out));
+  }
+  // 13. all ten
+  if (t >= V(31.7) && t < V(37.85)) {
+    const ks = Object.keys(CARDS), S = 300, gx = [W * .27, W * .73];
+    const dim = ap(t, V(34.2), .4) * (1 - ap(t, V(37.5), .3));
+    ks.forEach((k, i) => {
+      const p = back(ap(t, V(31.75) + i * .12, .4)); const r = Math.floor(i / 2);
+      card(k, gx[i % 2], 205 + r * 372, S, clamp(p) * (1 - ap(t, V(37.5), .3)), { scale: p, below: true, ls: 32, dim: dim * .5 });
+    });
+    if (dim > 0) {
+      ctx.save(); ctx.globalAlpha = dim; rr(70, H * .42, W - 140, 300, 40); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(254,179,0,.5)'; ctx.lineWidth = 3; ctx.stroke();
+      txt('География —', W / 2, H * .42 + 95, 70, '#fff', 'MB', { blur: 0 });
+      txt('это закономерности', W / 2, H * .42 + 200, 70, BR.acc, 'MB', { blur: 0 }); ctx.restore();
+    }
+  }
+  // 14. CTA + end card
+  cta(t, { t0: V(37.86), tk: V(44.86), tl: V(45.62), kw: 'гео' });
+  logo(.8);
+  endCard(t, V(48.1), 'гео');
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('logo', 'brand/logo_white_transparent.png'),
+    ...Object.keys(REG).map(k => loadImg(k, `tex/${k}.jpg`)), ...Object.keys(CARDS).map(k => loadImg('c_' + k, `cards/${k}.jpg`))]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
