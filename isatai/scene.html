@@ -1,0 +1,718 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:PS2P;src:url(fonts/PressStart2P-Regular.ttf)}
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#000}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Isatai POV reel: 16-bit pixel art drawn at 270x480, shown x4 (1080x1920). render(T) is deterministic.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const W = 270, H = 480, S = 4, OW = 1080, OH = 1920;
+const BR = { navy: '#130B54', amber: '#FEB300', white: '#FFFFFF', red: '#E8502F' };
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const lo = document.createElement('canvas'); lo.width = W; lo.height = H; const g = lo.getContext('2d');
+const loB = document.createElement('canvas'); loB.width = W; loB.height = H; const gB = loB.getContext('2d');
+const pc = document.createElement('canvas'); const pg = pc.getContext('2d');   // photo pixelation buffer
+let B, M, IMG = {};
+
+const L = {
+ ru: { p1: '1837 · БУКЕЕВСКАЯ ОРДА', bar: 'ПАСТБИЩА', edil: 'ВОЛГА', zhaiyk: 'УРАЛ', orda: 'БУКЕЕВСКАЯ ОРДА', lg1: 'земли хана и султанов', lg2: 'пастбища аула',
+       zh: 'ХАН ЖАНГИР', zh2: 'Букеевская Орда', isa: 'ИСАТАЙ', mah: 'МАХАМБЕТ', mahF: 'МАХАМБЕТ УТЕМИСОВ', mah2: 'поэт', q1: 'НОВОЕ ЗАДАНИЕ', q2: 'ИДИ К СТАВКЕ ХАНА',
+       sar: 'ВОИНЫ', p5: '15 НОЯБРЯ · ТАСТОБЕ', win: 'ПОБЕДА', p6: '13 ДЕКАБРЯ', bounty: 'ЗА ИСАТАЯ — 1000 РУБЛЕЙ', wanted: 'РОЗЫСК', cur: 'РУБ',
+       p7: '1838 · ИЮЛЬ · АКБУЛАК', res: 'ИТОГИ', r: ['1836–1838', 'ТАСТОБЕ · 15.11.1837', 'АКБУЛАК · 07.1838', 'ЗЕМЕЛЬНЫЙ ВОПРОС'], ent: 'ЕНТ: ТАСТОБЕ + АКБУЛАК',
+       next: 'СЛЕДУЮЩИЙ УРОВЕНЬ ↑', cta: ['Перейдите по ссылке', 'в шапке профиля'], src: 'Фото: AyanaS83, CC BY-SA 3.0', mon: 'Памятник Исатаю и Махамбету, Атырау' },
+ kk: { p1: '1837 · БӨКЕЙ ОРДАСЫ', bar: 'ЖАЙЫЛЫМ', edil: 'ЕДІЛ', zhaiyk: 'ЖАЙЫҚ', orda: 'БӨКЕЙ ОРДАСЫ', lg1: 'хан мен сұлтандардың жері', lg2: 'ауыл жайылымы',
+       zh: 'ЖӘҢГІР ХАН', zh2: 'Бөкейұлы', isa: 'ИСАТАЙ', mah: 'МАХАМБЕТ', mahF: 'МАХАМБЕТ ӨТЕМІСҰЛЫ', mah2: 'ақын', q1: 'ЖАҢА ТАПСЫРМА', q2: 'ХАН ОРДАСЫНА БАР',
+       sar: 'САРБАЗ', p5: '15 ҚАРАША · ТАСТӨБЕ', win: 'ЖЕҢІС', p6: '13 ЖЕЛТОҚСАН', bounty: 'ИСАТАЙҒА 1000 СОМ СЫЙАҚЫ', wanted: 'ІЗДЕУ', cur: 'СОМ',
+       p7: '1838 · ШІЛДЕ · АҚБҰЛАҚ', res: 'ҚОРЫТЫНДЫ', r: ['1836–1838', 'ТАСТӨБЕ · 15.11.1837', 'АҚБҰЛАҚ · 07.1838', 'ЖЕР МӘСЕЛЕСІ'], ent: 'ҰБТ: ТАСТӨБЕ + АҚБҰЛАҚ',
+       next: 'КЕЛЕСІ ДЕҢГЕЙ ↑', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'], src: 'Фото: AyanaS83, CC BY-SA 3.0', mon: 'Исатай мен Махамбет ескерткіші, Атырау' }
+}[LANG];
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eob = x => { x = clamp(x); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const hash = (a, b = 0, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16);
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const U = h => { const [r, gg, b] = hex(h); return (255 << 24 | b << 16 | gg << 8 | r) >>> 0; };
+const R = (gx, x, y, w, h, col) => { gx.fillStyle = col; gx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+let ID, P32;
+function beginPx() { ID = g.createImageData(W, H); P32 = new Uint32Array(ID.data.buffer); }
+function endPx() { g.putImageData(ID, 0, 0); }
+const px = (x, y, u) => { if (x >= 0 && x < W && y >= 0 && y < H) P32[y * W + x] = u; };
+// vertical dithered gradient through a list of colours
+function gradV(y0, y1, cols) {
+  const us = cols.map(U);
+  for (let y = y0; y < y1; y++) {
+    const f = (y - y0) / Math.max(1, y1 - y0 - 1) * (us.length - 1), i = Math.min(us.length - 2, Math.floor(f)), fr = f - i;
+    for (let x = 0; x < W; x++) P32[y * W + x] = fr > BAY[(y & 3) * 4 + (x & 3)] ? us[i + 1] : us[i];
+  }
+}
+const q = (t, fps = 12) => Math.floor(t * fps) / fps;   // retro step time
+
+// sprites: strings + palette; s = size of one sprite pixel in low-res pixels
+function spr(gx, rows, pal, x, y, s = 1, flip = false, keep = null) {
+  const w = rows[0].length;
+  for (let j = 0; j < rows.length; j++) for (let i = 0; i < w; i++) {
+    const ch = rows[j][flip ? w - 1 - i : i]; if (ch === '.' || ch === undefined) continue;
+    if (keep && !keep(i, j)) continue;
+    gx.fillStyle = pal[ch]; gx.fillRect(Math.round(x + i * s), Math.round(y + j * s), s, s);
+  }
+}
+const PALC = { k: '#1a1020', s: '#e8b48a', S: '#b9805c', h: '#5a3a22', H: '#7a4e2c', m: '#c9ccd6', e: '#3a2416', r: '#a8322c', R: '#7c2020', b: '#d9a441', w: '#f1e6c8', p: '#2b1d16', u: '#2f5aa8', U: '#1f3c78', g: '#8a6a40' };
+const ISA = [
+ "......kk......",
+ ".....kmmk.....",
+ "....kmmmmk....",
+ "...khhhhhhk...",
+ "..khHHHHHHhk..",
+ "...kssssssk...",
+ "...kskssksk...",
+ "...kssssssk...",
+ "...keSSSSek...",
+ "....keeeek....",
+ "..kkrrwwrrkk..",
+ ".krrrrwwrrrrk.",
+ ".krrrrwwrrrrk.",
+ ".ksRrrwwrrRsk.",
+ ".ksRbbbbbbRsk.",
+ "..kRrrwwrrRk..",
+ "..krrrwwrrrk..",
+ "..krrrwwrrrk..",
+ "..kRrrwwrrRk..",
+ "..krrrrrrrrk..",
+ "...kpp..ppk...",
+ "...kpp..ppk...",
+ "..kppp..pppk..",
+];
+const MAH = [
+ "..............",
+ "......kk......",
+ ".....khhk.....",
+ "...khhhhhhk...",
+ "..khHHHHHHhk..",
+ "...kssssssk...",
+ "...kskssksk...",
+ "...kssssssk...",
+ "...ksseessk...",
+ "....kssssk....",
+ "..kkuuwwuukk..",
+ ".kuuuuwwuuuuk.",
+ ".kuuuuwwuuuuk.",
+ ".ksUuuwwuuUsk.",
+ ".ksUbbbbbbUsk.",
+ "..kUuuwwuuUk..",
+ "..kuuuwwuuuk..",
+ "..kuuuwwuuuk..",
+ "..kUuuwwuuUk..",
+ "..kuuuuuuuuk..",
+ "...kpp..ppk...",
+ "...kpp..ppk...",
+ "..kppp..pppk..",
+];
+// rider seen from behind (scene 4)
+const RIDB = [
+ "....kkkk....",
+ "...khhhhk...",
+ "...kHHHHk...",
+ "...kppppk...",
+ "..krrrrrrk..",
+ ".krrRrrRrrk.",
+ ".krrrrrrrrk.",
+ "kkbbbbbbbbkk",
+ "kHHHHHHHHHHk",
+ "kHHHHeeHHHHk",
+ ".kHHHeeHHHk.",
+ ".kHk.ee.kHk.",
+ ".kHk....kHk.",
+ ".kk......kk.",
+];
+const RIDB2 = RIDB.slice(0, 11).concat([".kHk.ee.kHk.", "..kHk..kHk..", "..kk....kk.."]);
+// rider from the side, facing right (scene 6); two leg frames
+const RIDS = [
+ ".........kk.........",
+ "........khhk........",
+ "........kssk........",
+ ".......krrrrk.......",
+ ".......krrrsk.......",
+ "......kbbbbbk...kk..",
+ "...kkkHHHHHHHkkkHHk.",
+ "..kHHHHHHHHHHHHHHHHk",
+ ".keHHHHHHHHHHHHHkkk.",
+ ".keHHHHHHHHHHHHk....",
+ "..kHHHHHHHHHHHk.....",
+];
+const LEG1 = ["...kHk..kHk.kHk.kHk.", "...kHk..kHk.kHk.kHk.", "...kk...kk..kk..kk.."];
+const LEG2 = ["..kHk....kHkkHk..kHk", ".kHk......kHkkHk..kH", ".kk........kk.kk..kk"];
+
+// ---------- hi-res text ----------
+function px8(sz) { return `${sz}px PS2P`; }
+function hudText(t, x, y, sz, col, align = 'center') {
+  ctx.font = px8(sz); ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillText(t, x + sz / 8 * 2, y + sz / 8 * 2);
+  ctx.fillStyle = col; ctx.fillText(t, x, y);
+}
+// stepped (pixel) panel
+function panel(x, y, w, h, fill = BR.navy, edge = BR.amber, a = 1, bw = 8) {
+  ctx.save(); ctx.globalAlpha *= a;
+  x = Math.round(x / 4) * 4; y = Math.round(y / 4) * 4; w = Math.round(w / 4) * 4; h = Math.round(h / 4) * 4;
+  ctx.fillStyle = edge;
+  ctx.fillRect(x + bw, y, w - 2 * bw, h); ctx.fillRect(x, y + bw, w, h - 2 * bw);
+  ctx.fillStyle = fill;
+  ctx.fillRect(x + bw, y + bw, w - 2 * bw, h - 2 * bw);
+  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(x + bw, y + bw, w - 2 * bw, 8);
+  ctx.restore();
+}
+// date plaque that drops in from the top
+function plaque(t, u, out = 99, y0 = 250) {
+  if (u < 0 || u > out) return;
+  const k = eob(clamp(u / .35)), ko = clamp((out - u) / .25);
+  ctx.font = px8(34); const w = ctx.measureText(t).width + 80;
+  const y = y0 - (1 - k) * 260;
+  ctx.save(); ctx.globalAlpha = ko;
+  panel(OW / 2 - w / 2, y - 44, w, 88, 'rgba(19,11,84,.92)');
+  hudText(t, OW / 2, y + 2, 34, BR.white);
+  ctx.restore();
+}
+function nameTag(t, x, y, a = 1, col = BR.white, sz = 24) {
+  ctx.font = px8(sz); const w = ctx.measureText(t).width + 40;
+  ctx.save(); ctx.globalAlpha = a; panel(x - w / 2, y - sz - 6, w, sz * 2 + 12, 'rgba(19,11,84,.9)', BR.amber, 1, 4);
+  hudText(t, x, y + 1, sz, col); ctx.restore();
+}
+
+// ---------- photo card: pixelated, then sharp ----------
+function pixPhoto(img, x, y, w, h, res, crop) {
+  const [sx, sy, sw, sh] = crop || [0, 0, img.width, img.height];
+  if (res >= 1) { ctx.imageSmoothingEnabled = true; ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h); return; }
+  const rw = Math.max(4, Math.round(w * res)), rh = Math.max(4, Math.round(h * res));
+  pc.width = rw; pc.height = rh; pg.imageSmoothingEnabled = true; pg.drawImage(img, sx, sy, sw, sh, 0, 0, rw, rh);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(pc, 0, 0, rw, rh, x, y, w, h); ctx.imageSmoothingEnabled = true;
+}
+const RES = [.02, .035, .06, .1, .18, .32, 1];
+function resAt(k) { return RES[Math.min(RES.length - 1, Math.floor(clamp(k) * RES.length))]; }
+function card(img, cx, cy, w, h, u, dur, title, sub, pop = 'drop') {
+  if (!img || u < 0 || u > dur) return;
+  const a = Math.min(clamp(u / .2), clamp((dur - u) / .3));
+  const k = pop === 'drop' ? eob(clamp(u / .4)) : 1;
+  const ww = w * (pop === 'pop' ? eob(clamp(u / .35)) : 1), hh = h * (pop === 'pop' ? eob(clamp(u / .35)) : 1);
+  const x = cx - ww / 2, y = cy - hh / 2 - (1 - k) * 120;
+  const res = u < 1.4 ? resAt(u / 1.4) : (u > dur - .5 ? resAt((dur - u) / .5) : 1);
+  ctx.save(); ctx.globalAlpha = a;
+  panel(x - 20, y - 20, ww + 40, hh + 150, BR.navy, BR.amber, 1, 8);
+  const ar = img.width / img.height, br = ww / hh; let crop;
+  if (ar > br) { const sw = img.height * br; crop = [(img.width - sw) / 2, 0, sw, img.height]; } else { const sh = img.width / br; crop = [0, 0, img.width, sh]; }
+  pixPhoto(img, x, y, ww, hh, res, crop);
+  hudText(title, cx, y + hh + 50, title.length > 14 ? Math.min(22, Math.floor((ww + 20) / title.length)) : 28, BR.amber);
+  ctx.font = '500 34px MX'; ctx.fillStyle = BR.white; ctx.textAlign = 'center'; ctx.fillText(sub, cx, y + hh + 100);
+  ctx.restore();
+}
+
+// ---------- mode-7 steppe ground (scenes 1 and 4) ----------
+function ground(hz, scroll, pal, rivers, sway = 0) {
+  const grassA = U(pal.a), grassB = U(pal.b), tuft = U(pal.t), water = U(pal.w), water2 = U(pal.w2), bank = U(pal.k);
+  for (let y = hz; y < H; y++) {
+    const dy = y - hz + 1, d = 900 / dy, z = d + scroll;
+    const band = (Math.floor(z * .045) & 1);
+    for (let x = 0; x < W; x++) {
+      const wx = (x - W / 2 + sway) * d / 60;
+      let col = band ? grassA : grassB;
+      if (hash(Math.floor(wx * .9), Math.floor(z * .35)) > .93) col = tuft;
+      if (rivers) for (const r of rivers) {
+        const cx = r.x + r.a * Math.sin(z * .004 + r.p), dw = Math.abs(wx - cx);
+        if (dw < r.w) col = (hash(Math.floor(wx), Math.floor(z * .2 + scroll * .02)) > .85) ? water2 : water;
+        else if (dw < r.w + 3) col = bank;
+      }
+      P32[y * W + x] = col;
+    }
+  }
+}
+
+// ---------- scenes ----------
+// each: draw(gx, u, d) on low-res, cam(u,d) -> {z, x, y}, hud(u, d) on hi-res
+const SC = {};
+
+SC.s1 = {
+  draw(gx, u, d) {
+    beginPx(); const hz = 210;
+    gradV(0, hz, ['#3d7fd6', '#6aa8ee', '#a8d4f2', '#f2e2b0']);
+    // far hills
+    for (let x = 0; x < W; x++) { const hh = 8 + 6 * Math.sin(x * .05) + 4 * Math.sin(x * .13 + 1); for (let y = hz - hh; y < hz; y++) px(x, Math.round(y), U(y < hz - hh + 2 ? '#8fa77a' : '#7d9468')); }
+    ground(hz, u * 520, { a: '#b9b45a', b: '#a9a650', t: '#7d8a3a', w: '#3d86c8', w2: '#9fd0f2', k: '#6f6a3a' }, [{ x: -62, w: 16, a: 14, p: 0 }, { x: 66, w: 14, a: 12, p: 2 }]);
+    endPx();
+    // POV: horse neck, mane, ears, hands on reins
+    const bob = Math.round(Math.sin(u * Math.PI * 2 * 1.7) * 3), ox = Math.round(Math.sin(u * Math.PI * 1.7) * 2);
+    const hy = 318 + bob;
+    gx.fillStyle = '#6b3f1f';
+    gx.beginPath(); gx.moveTo(80 + ox, H); gx.lineTo(112 + ox, hy + 10); gx.lineTo(158 + ox, hy + 10); gx.lineTo(190 + ox, H); gx.fill();
+    R(gx, 108 + ox, hy - 2, 54, 22, '#6b3f1f');
+    R(gx, 108 + ox, hy - 12, 8, 12, '#4d2c14'); R(gx, 154 + ox, hy - 12, 8, 12, '#4d2c14');   // ears
+    R(gx, 110 + ox, hy - 8, 4, 6, '#2a170a'); R(gx, 156 + ox, hy - 8, 4, 6, '#2a170a');
+    // shading strips
+    for (let y = hy + 12; y < H; y += 2) { const t = (y - hy) / (H - hy); const xl = 112 + ox - t * 32, xr = 158 + ox + t * 32; R(gx, xl, y, 4, 2, '#4d2c14'); R(gx, xr - 4, y, 4, 2, '#4d2c14'); }
+    // mane, flips with the step
+    for (let y = hy; y < H; y += 3) { const t = (y - hy) / (H - hy); const flick = (Math.floor(u * 12) + y) % 6 < 3 ? 1 : -1; R(gx, 129 + ox + flick * (1 + t * 3), y, 12 + t * 8, 3, y % 2 ? '#1e120a' : '#2c1a0e'); }
+    // reins
+    gx.fillStyle = '#2a170a';
+    for (let i = 0; i <= 20; i++) { const t = i / 20; R(gx, 60 + (110 - 60) * t + ox * t, 410 + (hy + 14 - 410) * t + bob * (1 - t), 2, 2, '#2a170a'); R(gx, 210 + (160 - 210) * t + ox * t, 410 + (hy + 14 - 410) * t + bob * (1 - t), 2, 2, '#2a170a'); }
+    // sleeves + hands
+    for (const [sx, dir] of [[40, -1], [230, 1]]) {
+      gx.fillStyle = '#a8322c'; gx.beginPath(); gx.moveTo(sx - 22, 420 + bob); gx.lineTo(sx + 22, 420 + bob); gx.lineTo(sx + 22 + dir * 30, H); gx.lineTo(sx - 22 + dir * 30, H); gx.fill();
+      R(gx, sx - 22, 418 + bob, 44, 6, '#d9a441');
+      R(gx, sx - 14, 398 + bob, 30, 22, '#e8b48a'); R(gx, sx - 14, 398 + bob, 30, 4, '#f3c9a3'); R(gx, sx - 14, 412 + bob, 30, 3, '#b9805c');
+      for (let k = 0; k < 4; k++) R(gx, sx - 12 + k * 7, 398 + bob, 1, 14, '#b9805c');
+    }
+  },
+  cam: () => ({ z: 1, x: W / 2, y: H / 2 }),
+  hud(u) { plaque(L.p1, u - .25); }
+};
+
+// scene 2: game map between the rivers
+const MAPX = 15, MAPY = 120, CELL = 10, MCOLS = 24, MROWS = 28;
+function riverX(r, row) { return r === 0 ? 3.2 + 1.6 * Math.sin(row * .35) + row * .06 : 19.6 + 1.3 * Math.sin(row * .3 + 1.5) - row * .04; }
+SC.s2 = {
+  draw(gx, u, d) {
+    beginPx(); gradV(0, H, ['#0d0a2a', '#17104a']);
+    // map frame
+    const prog = clamp((u - .6) / (d - 1.6));
+    const seeds = [[8, 6], [14, 11], [10, 17], [16, 20]];
+    for (let r = 0; r < MROWS; r++) for (let cI = 0; cI < MCOLS; cI++) {
+      const x0 = MAPX + cI * CELL, y0 = MAPY + r * CELL;
+      let col;
+      const l = riverX(0, r), rr = riverX(1, r);
+      const sea = r >= 24 && (cI > 2 && cI < 22 - (r - 24));
+      if (sea) col = (cI + r) % 2 ? '#2e64b0' : '#2a5ca4';
+      else if (Math.abs(cI - l) < .9 || Math.abs(cI - rr) < .9) col = '#3d86d8';
+      else if (cI < l || cI > rr) col = (cI + r) % 2 ? '#8a7a4a' : '#83734a';
+      else {
+        let near = 99; for (const [sx, sy] of seeds) near = Math.min(near, Math.hypot(cI - sx, (r - sy) * .9));
+        const gray = near + hash(cI, r) * 2.5 < prog * 13;
+        col = gray ? ((cI + r) % 2 ? '#8d8d96' : '#7e7e88') : ((cI + r) % 2 ? '#4caa4a' : '#43a043');
+      }
+      const uc = U(col), ue = U('#0d0a2a');
+      for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) px(x0 + x, y0 + y, (x === CELL - 1 || y === CELL - 1) ? ue : uc);
+    }
+    endPx();
+    // tiny yurts on the green and the khan's palace
+    const yurt = (x, y, col) => { R(gx, x, y + 2, 6, 4, col); R(gx, x + 1, y, 4, 2, col); R(gx, x + 2, y + 3, 2, 3, '#3a2416'); };
+    for (let i = 0; i < 9; i++) { const cI = 6 + Math.floor(hash(i, 9) * 11), r = 3 + Math.floor(hash(i, 4) * 19); yurt(MAPX + cI * CELL + 2, MAPY + r * CELL + 2, '#f1e6c8'); }
+    R(gx, MAPX + 8 * CELL - 2, MAPY + 6 * CELL - 4, 14, 10, '#d9a441'); R(gx, MAPX + 8 * CELL + 2, MAPY + 6 * CELL - 9, 6, 5, '#d9a441'); R(gx, MAPX + 8 * CELL + 4, MAPY + 6 * CELL - 13, 2, 4, '#a8322c');
+  },
+  cam: () => ({ z: 1, x: W / 2, y: H / 2 }),
+  hud(u, d) {
+    const prog = clamp((u - .6) / (d - 1.6)), pct = Math.round(100 - prog * 88);
+    // status bar
+    const a = clamp(u / .3);
+    ctx.save(); ctx.globalAlpha = a;
+    panel(60, 150, 960, 150, 'rgba(19,11,84,.95)');
+    const col = pct > 55 ? '#4caa4a' : pct > 30 ? BR.amber : BR.red;
+    const blink = pct <= 30 && Math.floor(u * 4) % 2;
+    hudText(`${L.bar}: ${pct}% ▼`, 100, 200, 30, blink ? BR.white : col, 'left');
+    ctx.fillStyle = '#0b0726'; ctx.fillRect(100, 236, 880, 36);
+    const n = Math.round(pct / 100 * 22);
+    for (let i = 0; i < n; i++) { ctx.fillStyle = col; ctx.fillRect(104 + i * 40, 240, 36, 28); }
+    ctx.restore();
+    // labels on the map
+    const tl = (t, lx, ly, k) => { const s = ly; nameTag(t, lx * S, s * S, clamp((u - k) / .3), BR.white, 20); };
+    tl(L.edil, MAPX + 4.5 * CELL, MAPY + 13 * CELL, .2); tl(L.zhaiyk, MAPX + 19.5 * CELL, MAPY + 22.5 * CELL, .35);
+    nameTag(L.orda, OW / 2, (MAPY + 9.8 * CELL) * S, clamp((u - .5) / .3), BR.amber, 22);
+    // legend
+    ctx.save(); ctx.globalAlpha = clamp((u - 1) / .3);
+    panel(60, 1300, 960, 150, 'rgba(19,11,84,.92)', BR.amber, 1, 6);
+    ctx.fillStyle = '#8d8d96'; ctx.fillRect(100, 1330, 36, 36); ctx.fillStyle = '#4caa4a'; ctx.fillRect(100, 1384, 36, 36);
+    ctx.font = '600 34px MX'; ctx.fillStyle = BR.white; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(L.lg1, 160, 1350); ctx.fillText(L.lg2, 160, 1404);
+    ctx.restore();
+    card(IMG.zh, OW / 2, 760, 420, 560, u - (M.zh - M.s2), 3.8, L.zh, L.zh2);
+  }
+};
+
+// scene 3: night camp fire
+SC.s3 = {
+  draw(gx, u, d) {
+    beginPx(); gradV(0, 300, ['#05041a', '#0e0b3a', '#1c1650']);
+    gradV(300, H, ['#1a1a14', '#262418', '#14130e']);
+    for (let i = 0; i < 70; i++) { const x = Math.floor(hash(i, 1) * W), y = Math.floor(hash(i, 2) * 280); if (hash(i, Math.floor(u * 3)) > .25) px(x, y, U(hash(i, 3) > .8 ? '#fff6c0' : '#c8c8ff')); }
+    // horizon hills
+    for (let x = 0; x < W; x++) { const hh = 10 + 7 * Math.sin(x * .04 + 2) + 3 * Math.sin(x * .17); for (let y = 300 - hh; y < 300; y++) px(x, Math.round(y), U('#0a0920')); }
+    // fire glow on the ground (dithered rings)
+    const fx = 135, fy = 372, fl = .85 + .15 * Math.sin(q(u, 10) * 9);
+    for (let y = 300; y < H; y++) for (let x = 0; x < W; x++) {
+      const dd = Math.hypot((x - fx) / 1.6, (y - fy) * 1.1) / fl;
+      if (dd < 95) { const lv = dd < 30 ? 3 : dd < 55 ? 2 : dd < 80 ? 1 : 0; const thr = BAY[(y & 3) * 4 + (x & 3)]; const f = (95 - dd) / 95; if (f > thr * .9) P32[y * W + x] = U(['#2c2414', '#4a3418', '#6e4a1c', '#8e5e20'][lv]); }
+    }
+    endPx();
+    // characters
+    spr(gx, ISA, PALC, 34, 300, 3);
+    R(gx, 84, 228, 3, 140, '#8a6a40'); R(gx, 82, 220, 7, 10, '#c9ccd6'); R(gx, 84, 214, 3, 6, '#c9ccd6'); R(gx, 81, 232, 9, 3, '#a8322c');   // spear
+    spr(gx, MAH, PALC, 196, 300, 3);
+    // dombra across the body
+    gx.save(); gx.translate(212, 352); gx.rotate(-.7);
+    R(gx, -2, -40, 4, 40, '#5a3a22'); R(gx, -8, 0, 16, 18, '#b07a3a'); R(gx, -6, 18, 12, 4, '#b07a3a'); R(gx, -2, 4, 4, 4, '#3a2416'); gx.restore();
+    // fire: logs + flames at 10 fps
+    R(gx, fx - 22, fy + 6, 44, 6, '#4a2c16'); R(gx, fx - 16, fy + 2, 32, 6, '#5a3a22');
+    const tq = q(u, 10);
+    for (let i = -10; i <= 10; i++) {
+      const hgt = (24 - Math.abs(i) * 2) * (.6 + .5 * hash(i + 20, Math.floor(tq * 10)));
+      for (let y = 0; y < hgt; y += 2) { const f = y / hgt; R(gx, fx + i * 2, fy + 2 - y, 2, 2, f < .3 ? '#fff2a0' : f < .6 ? '#ffb030' : f < .85 ? '#f06020' : '#a02818'); }
+    }
+    for (let i = 0; i < 6; i++) { const ph = (u * .8 + hash(i, 7)) % 1; R(gx, fx - 10 + hash(i, 8) * 20 + Math.sin(ph * 6 + i) * 4, fy - 20 - ph * 70, 2, 2, ph < .5 ? '#ffd060' : '#f06020'); }
+    // notes over Makhambet
+    for (let i = 0; i < 3; i++) {
+      const ph = (u * .55 + i / 3) % 1; if (u < .8) continue;
+      const nx = 214 + Math.sin(ph * 6 + i) * 10, ny = 280 - ph * 70; const col = ph > .8 ? '#8a6a20' : '#FEB300';
+      R(gx, nx, ny, 4, 3, col); R(gx, nx + 3, ny - 9, 1, 10, col); R(gx, nx + 3, ny - 9, 4, 2, col);
+    }
+  },
+  cam: (u, d) => ({ z: 1 + .16 * ease(u / d), x: 135, y: 330 }),
+  hud(u, d) {
+    const um0 = u - (M.mah - M.s3), a = clamp((u - .6) / .3) * (um0 > -.1 && um0 < 3.9 ? 0 : 1);
+    const p1 = toHi(55, 288), p2 = toHi(217, 288);
+    nameTag(L.isa, p1[0], p1[1] - 40, a, BR.amber, 22); nameTag(L.mah, p2[0], p2[1] - 40, a, BR.amber, 22);
+    const um = u - (M.mah - M.s3);
+    card(IMG.mah, OW / 2 + 110, 700, 380, 520, um, 3.8, L.mahF, L.mah2, 'pop');
+  }
+};
+
+// scene 4: the column gallops to the khan's horde
+SC.s4 = {
+  draw(gx, u, d) {
+    beginPx(); const hz = 200;
+    gradV(0, hz, ['#6f7f99', '#98a3b0', '#c9c3a8']);
+    ground(hz, u * 900, { a: '#b39a4a', b: '#a48c42', t: '#7e6a30', w: '#3d86c8', w2: '#9fd0f2', k: '#6f6a3a' }, null, Math.sin(u * 1.3) * 8);
+    endPx();
+    // the khan's horde on the horizon grows
+    const k = .5 + 1.6 * ease(u / d), bx = W / 2, by = hz;
+    const pr = (x, y, w, h, col) => R(gx, bx + x * k, by - y * k, w * k, h * k, col);
+    pr(-30, 26, 60, 26, '#d9c79a'); pr(-30, 26, 60, 3, '#8a6a40'); pr(-36, 36, 12, 36, '#d9c79a'); pr(24, 36, 12, 36, '#d9c79a');
+    pr(-36, 40, 12, 4, '#a8322c'); pr(24, 40, 12, 4, '#a8322c'); pr(-6, 44, 12, 18, '#d9c79a'); pr(-6, 48, 12, 4, '#2f5aa8');
+    for (let i = 0; i < 4; i++) pr(-24 + i * 14, 18, 6, 8, '#3a2416');
+    pr(-1, 58, 2, 10, '#3a2416'); pr(1, 58, 8 + Math.sin(u * 8) * 2, 5, '#FEB300');
+    for (let i = 0; i < 8; i++) { const yx = (i < 4 ? -80 - i * 22 : 50 + (i - 4) * 22); pr(yx, 10, 16, 10, '#f1e6c8'); pr(yx + 3, 14, 10, 4, '#f1e6c8'); }
+    // riders ahead, sorted far to near
+    const n = Math.round(8 + 22 * clamp(u / (M.cnt - M.s4 + .5)));
+    const rs = [];
+    for (let i = 0; i < n; i++) { const dz = .15 + hash(i, 5) * .85, rx = (hash(i, 6) - .5) * 2; rs.push([dz, rx, i]); }
+    rs.sort((a, b) => a[0] - b[0]);
+    for (const [dz, rx, i] of rs) {
+      const yy = hz + 8 + dz * dz * 230, s = Math.max(1, Math.round(dz * 4)), xx = W / 2 + rx * (40 + dz * 160) - 6 * s;
+      const fr = (Math.floor(u * 12) + i) % 2 ? RIDB : RIDB2;
+      spr(gx, fr, PALC, xx, yy - 14 * s + ((Math.floor(u * 12) + i) % 2), s);
+    }
+    // own horse neck at the bottom (POV)
+    const bob = Math.round(Math.sin(u * Math.PI * 2 * 3) * 3);
+    gx.fillStyle = '#6b3f1f'; gx.beginPath(); gx.moveTo(90, H); gx.lineTo(116, 420 + bob); gx.lineTo(154, 420 + bob); gx.lineTo(180, H); gx.fill();
+    for (let y = 420 + bob; y < H; y += 3) R(gx, 128 + ((Math.floor(u * 14) + y) % 6 < 3 ? 2 : -2), y, 14, 3, '#1e120a');
+  },
+  cam: (u, d) => ({ z: 1.02 + .04 * Math.sin(u * 20) * .1, x: W / 2, y: H / 2 }),
+  hud(u, d) {
+    // quest window
+    if (u < 2.2) {
+      const k = eob(clamp(u / .3)), ko = clamp((2.2 - u) / .25);
+      ctx.save(); ctx.globalAlpha = ko; const w = 900 * k, h = 300 * k;
+      panel(OW / 2 - w / 2, 560 - h / 2, w, h, 'rgba(19,11,84,.95)');
+      if (k > .9) { hudText('! ' + L.q1, OW / 2, 510, 34, BR.amber); hudText(L.q2, OW / 2, 600, L.q2.length > 16 ? 30 : 34, BR.white); }
+      ctx.restore();
+    }
+    // counter 200 -> 800 -> 2000
+    const tc = M.cnt - M.s4; let v;
+    if (u < tc * .45) v = 200; else if (u < tc * .9) v = 200 + Math.round(600 * ease((u - tc * .45) / (tc * .3)) / 10) * 10; else v = 800 + Math.round(1200 * ease((u - tc * .9) / .6) / 10) * 10;
+    v = Math.min(2000, v);
+    const a = clamp((u - .2) / .3);
+    ctx.save(); ctx.globalAlpha = a; panel(60, 170, 560, 100, 'rgba(19,11,84,.92)');
+    const pulse = u > tc * .9 && u < tc * .9 + .8 && Math.floor(u * 8) % 2;
+    hudText(`${L.sar}: ${v}`, 100, 222, 32, pulse ? BR.white : BR.amber, 'left'); ctx.restore();
+  }
+};
+
+// scene 5: the battle seen from above
+SC.s5 = {
+  draw(gx, u, d) {
+    beginPx();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const hsh = hash(x >> 1, y >> 1); P32[y * W + x] = U(hsh > .9 ? '#6f8f3a' : hsh > .45 ? '#86a44a' : '#7c9a44'); }
+    endPx();
+    const th = M.hit - M.s5, ts = M.scat - M.s5;
+    // punitive troops: three lines + two cannons
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 22; i++) {
+      const x = 22 + i * 10 + (row % 2) * 5, y = 110 + row * 12;
+      R(gx, x, y, 5, 6, '#2d4a2a'); R(gx, x, y, 5, 2, '#141414'); R(gx, x + 2, y + 2, 1, 4, '#f1e6c8'); R(gx, x + 1, y + 6, 3, 1, '#141414');
+    }
+    for (const cx of [60, 200]) { R(gx, cx, 92, 12, 6, '#3a3a3a'); R(gx, cx + 4, 86, 4, 8, '#2a2a2a'); R(gx, cx - 2, 96, 4, 4, '#5a3a22'); R(gx, cx + 10, 96, 4, 4, '#5a3a22'); }
+    // muzzle flashes and smoke
+    if (u > th - .4 && u < ts + .6) {
+      for (let i = 0; i < 26; i++) {
+        const ph = ((u * 1.6 + hash(i, 3)) % 1), x = 22 + Math.floor(hash(i, 4) * 22) * 10 + 2, y = 136 + Math.floor(hash(i, 5) * 3) * 12;
+        if (ph < .12) R(gx, x - 1, y + 4, 4, 4, '#fff2a0');
+        const sr = 2 + ph * 9; gx.globalAlpha = (1 - ph) * .7; R(gx, x - sr / 2, y + 6 + ph * 8, sr, sr, '#e8e8e8'); gx.globalAlpha = 1;
+      }
+    }
+    // the rebels: a crowd of riders charging up, then scattering
+    for (let i = 0; i < 70; i++) {
+      const bx = 30 + hash(i, 1) * 210, by = 330 + hash(i, 2) * 110;
+      let x = bx, y = by - 70 * ease(u / Math.max(.1, th));
+      if (u > th) y += 20 * ease((u - th) / .8);
+      if (u > ts) { const ang = hash(i, 9) * Math.PI * 2, sp = 60 + hash(i, 8) * 120, k = ease((u - ts) / 1.4) * sp; x += Math.cos(ang) * k; y += Math.abs(Math.sin(ang)) * k * .8 + 10 * k / sp; }
+      const fall = u > th + .2 && hash(i, 11) < .18 * clamp((u - th) / 1.2);
+      if (fall) { R(gx, x, y, 3, 3, '#5a3a22'); continue; }
+      const ff = (Math.floor(u * 12) + i) % 2;
+      R(gx, x - 1, y, 5, 9, '#1a1020'); R(gx, x, y + 1, 3, 7, '#7a4e2c'); R(gx, x + 1, y - 1 + ff, 1, 2, '#5a3a22'); R(gx, x - 1, y + 3, 5, 3, '#a8322c'); R(gx, x, y + 3, 3, 1, '#d9a441'); R(gx, x + 1, y + 2, 1, 1, '#e8b48a');
+    }
+  },
+  cam: (u, d) => ({ z: 1.12 - .08 * ease(u / d), x: W / 2, y: 250 + (u > M.hit - M.s5 && u < M.hit - M.s5 + .5 ? Math.round(Math.sin(u * 60) * 2) : 0) }),
+  hud(u, d) {
+    plaque(L.p5, u - .1);
+    const th = M.hit - M.s5, ts = M.scat - M.s5;
+    let v = 50 - 50 * ease((u - th) / Math.max(.5, ts - th + .6));
+    v = u < th ? 50 + 6 * Math.sin(u * 3) : Math.max(0, v);
+    const blink = Math.floor(u * 5) % 2;
+    ctx.save(); ctx.globalAlpha = clamp((u - .4) / .3);
+    panel(140, 1240, 800, 120, 'rgba(19,11,84,.92)');
+    hudText(L.win, 180, 1300, 28, blink && u > th ? BR.red : BR.white, 'left');
+    ctx.fillStyle = '#0b0726'; ctx.fillRect(400, 1282, 500, 36);
+    ctx.fillStyle = u > th ? BR.red : BR.amber; ctx.fillRect(404, 1286, 492 * v / 100, 28);
+    ctx.restore();
+  }
+};
+
+// scene 6: winter, crossing the frozen Zhaiyk
+SC.s6 = {
+  draw(gx, u, d) {
+    const pan = u * 26;
+    beginPx(); gradV(0, 200, ['#7d8fa8', '#a9b6c6', '#d6dde4']);
+    for (let x = 0; x < W; x++) {
+      const wx = x + pan * .4, hh = 22 + 12 * Math.sin(wx * .03) + 6 * Math.sin(wx * .11);
+      for (let y = 200 - hh; y < 240; y++) px(x, Math.round(y), U(y < 200 - hh + 3 ? '#ffffff' : '#e3e9ef'));
+    }
+    for (let y = 240; y < 340; y++) for (let x = 0; x < W; x++) { const wx = x + pan; const hsh = hash(Math.floor(wx / 3), y >> 1); P32[y * W + x] = U(hsh > .97 ? '#5c8fb0' : (y + Math.floor(wx / 9)) % 23 === 0 ? '#b7dcef' : '#9fcbe2'); }
+    for (let y = 340; y < H; y++) for (let x = 0; x < W; x++) { const wx = x + pan * 1.3; P32[y * W + x] = U(hash(Math.floor(wx / 2), y >> 1) > .93 ? '#c9d3dd' : '#eef3f7'); }
+    endPx();
+    // cracks
+    for (let i = 0; i < 12; i++) { const cx = ((i * 61 - pan) % 330 + 330) % 330 - 30, cy = 250 + hash(i, 3) * 80; for (let k = 0; k < 8; k++) R(gx, cx + k * 3, cy + Math.sin(k + i) * 2, 3, 1, '#6aa4c4'); }
+    // riders crossing on the ice
+    for (let i = 0; i < 9; i++) {
+      const x = ((i * 34 + u * 18) % 300) - 30, y = 268 + (i % 3) * 20;
+      const fr = (Math.floor(u * 10) + i) % 2;
+      spr(gx, RIDS, PALC, x, y - 11, 1); spr(gx, fr ? LEG1 : LEG2, PALC, x, y, 1);
+    }
+    // the pole with the notice, on the near bank
+    const tp = M.post - M.s6; const px0 = 330 - (u - tp + 2.4) * 60;
+    const pxs = Math.max(160, px0);
+    R(gx, pxs + 20, 330, 4, 120, '#5a3a22'); R(gx, pxs + 20, 450, 8, 4, '#3a2416');
+    // snow
+    for (let i = 0; i < 140; i++) { const x = (hash(i, 1) * W + Math.sin(u + i) * 6 - u * 14) % W, y = (hash(i, 2) * H + u * (30 + hash(i, 3) * 30)) % H; R(gx, (x + W) % W, y, hash(i, 4) > .7 ? 2 : 1, hash(i, 4) > .7 ? 2 : 1, '#ffffff'); }
+    SC.s6._pole = pxs;
+  },
+  cam: () => ({ z: 1, x: W / 2, y: H / 2 }),
+  hud(u, d) {
+    plaque(L.p6, u - .1, (M.post - M.s6) - .1);
+    const tp = M.post - M.s6, a = clamp((u - tp + .2) / .3);
+    if (a > 0) {
+      const [hx] = toHi(SC.s6._pole + 22, 330);
+      const w = 300, h = 380, x = hx - w / 2, y = 1160;
+      ctx.save(); ctx.globalAlpha = a;
+      panel(x, y, w, h, '#e9d9a8', '#5a3a22', 1, 8);
+      hudText(L.wanted, hx, y + 46, 26, '#7c2020');
+      ctx.fillStyle = '#2a1a10'; ctx.fillRect(hx - 40, y + 96, 80, 72); ctx.fillRect(hx - 56, y + 80, 112, 24); ctx.fillRect(hx - 24, y + 64, 48, 20); ctx.fillRect(hx - 70, y + 168, 140, 70);
+      ctx.fillStyle = BR.amber; ctx.beginPath(); ctx.arc(hx, y + 300, 46, 0, 7); ctx.fill(); ctx.fillStyle = '#b07a10'; ctx.beginPath(); ctx.arc(hx, y + 300, 36, 0, 7); ctx.fill();
+      hudText('1000', hx, y + 296, 22, BR.white); hudText(L.cur, hx, y + 360, 18, '#7c2020');
+      ctx.restore();
+      // the bounty line
+      const k = eob(clamp((u - tp - .3) / .35));
+      ctx.save(); ctx.globalAlpha = clamp((u - tp - .3) / .2);
+      ctx.font = px8(30); const tw = ctx.measureText(L.bounty).width + 70;
+      panel(OW / 2 - tw / 2, 230 - (1 - k) * 200, tw, 90, 'rgba(19,11,84,.94)');
+      hudText(L.bounty, OW / 2, 277 - (1 - k) * 200, 30, BR.amber); ctx.restore();
+    }
+  }
+};
+
+// scene 7: summer, the Akbulak river
+SC.s7 = {
+  draw(gx, u, d) {
+    beginPx(); const hz = 230;
+    gradV(0, hz, ['#3b4c9a', '#d9786a', '#f6b45a', '#ffe0a0']);
+    // sun
+    for (let y = hz - 50; y < hz; y++) for (let x = 60; x < 120; x++) if (Math.hypot(x - 90, y - hz + 10) < 22 && (y % 4 !== 0 || y < hz - 20)) px(x, y, U('#fff2c0'));
+    gradV(hz, H, ['#b7a64a', '#8e9a3e', '#6f8a36']);
+    // river Akbulak winding in the foreground
+    for (let y = hz + 4; y < H; y++) { const t = (y - hz) / (H - hz), cx = 40 + 60 * Math.sin(t * 3.2) + t * 30, w = 3 + t * 26; for (let x = Math.round(cx - w); x < cx + w; x++) px(x, y, U(hash(x >> 1, y >> 1) > .88 ? '#bfe4ff' : '#4a8ed0')); }
+    // the hill
+    for (let x = 120; x < W; x++) { const hh = 70 * Math.max(0, Math.cos((x - 205) / 85 * 1.4)); for (let y = Math.round(hz + 70 - hh); y < hz + 72; y++) px(x, y, U(y < hz + 74 - hh ? '#c8c060' : (x + y) % 7 === 0 ? '#7d8a3a' : '#9aa448')); }
+    endPx();
+    // grass tufts swaying
+    for (let i = 0; i < 40; i++) { const x = hash(i, 1) * W, y = hz + 90 + hash(i, 2) * 150, sw = Math.round(Math.sin(u * 2 + i)); R(gx, x + sw, y - 4, 1, 4, '#4f6a2a'); R(gx, x + 2, y - 3, 1, 3, '#4f6a2a'); }
+    const tf = M.fade - M.s7, fk = clamp((u - tf) / 1.4);
+    // Isatai fades out pixel by pixel, the spear stays
+    spr(gx, ISA, PALC, 178, 230, 2, false, (i, j) => hash(i, j, 77) >= fk);
+    R(gx, 212, 192, 2, 108, '#8a6a40'); R(gx, 211, 186, 4, 7, '#c9ccd6'); R(gx, 210, 200, 6, 2, '#a8322c');
+    spr(gx, MAH, PALC, 222, 236, 2, true);
+    gx.save(); gx.translate(228, 270); gx.rotate(.7); R(gx, -1, -26, 3, 26, '#5a3a22'); R(gx, -6, 0, 12, 12, '#b07a3a'); R(gx, -1, 3, 3, 3, '#3a2416'); gx.restore();
+    if (u > tf + 1) for (let i = 0; i < 2; i++) { const ph = (u * .5 + i / 2) % 1; R(gx, 238 + Math.sin(ph * 6) * 6, 222 - ph * 40, 3, 2, '#FEB300'); R(gx, 240 + Math.sin(ph * 6) * 6, 214 - ph * 40, 1, 8, '#FEB300'); }
+  },
+  cam: (u, d) => ({ z: 1.22 - .22 * ease(u / d), x: 205 - 70 * ease(u / d), y: 262 - 22 * ease(u / d) }),
+  hud(u, d) {
+    plaque(L.p7, u - .1);
+    const um = u - (M.mon - M.s7) + .25, dur = Math.min(3.6, d - (M.mon - M.s7) + .1);
+    if (IMG.mon && um > 0 && um < dur) {
+      const a = Math.min(clamp(um / .25), clamp((dur - um) / .35));
+      const res = um < 1.2 ? resAt(um / 1.2) : (um > dur - .7 ? resAt((dur - um) / .7) : 1);
+      const kb = 1 + .08 * (um / dur), w = 960, h = 720, x = 60, y = 600;
+      const iw = IMG.mon.width / kb, ih = IMG.mon.height / kb;
+      ctx.save(); ctx.globalAlpha = a; panel(x - 16, y - 16, w + 32, h + 120, BR.navy, BR.amber, 1, 8);
+      pixPhoto(IMG.mon, x, y, w, h, res, [(IMG.mon.width - iw) / 2, (IMG.mon.height - ih) * .4, iw, ih]);
+      ctx.font = '600 32px MX'; ctx.fillStyle = BR.white; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(L.mon, OW / 2, y + h + 40);
+      ctx.font = '500 22px MX'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText(L.src, OW / 2, y + h + 82);
+      ctx.restore();
+    }
+  }
+};
+
+// scene 8: the result screen
+SC.s8 = {
+  draw(gx, u, d) {
+    beginPx(); gradV(0, H, ['#0b0726', '#130B54', '#0b0726']);
+    for (let y = 0; y < H; y += 12) for (let x = 0; x < W; x++) if (x % 12 === 0 || y % 24 === 0) px(x, y, U('#1d1470'));
+    for (let i = 0; i < 40; i++) if (hash(i, Math.floor(u * 4)) > .4) px(Math.floor(hash(i, 1) * W), Math.floor(hash(i, 2) * H), U('#6a5fd0'));
+    endPx();
+  },
+  cam: () => ({ z: 1, x: W / 2, y: H / 2 }),
+  hud(u, d) {
+    const a = clamp(u / .3);
+    ctx.save(); ctx.globalAlpha = a;
+    panel(70, 260, 940, 820, 'rgba(19,11,84,.96)');
+    hudText(L.res, OW / 2, 340, 44, BR.amber);
+    ctx.fillStyle = BR.amber; ctx.fillRect(OW / 2 - 160, 388, 320, 8);
+    L.r.forEach((t, i) => {
+      const k = clamp((u - .4 - i * .45) / .2); if (k <= 0) return;
+      ctx.save(); ctx.globalAlpha = a * k;
+      ctx.fillStyle = BR.amber; ctx.fillRect(130, 470 + i * 110 - 12, 24, 24);
+      hudText(t, 180, 472 + i * 110, t.length > 18 ? 32 : 36, BR.white, 'left'); ctx.restore();
+    });
+    const ke = clamp((u - 2.4) / .25);
+    if (ke > 0) {
+      const s = eob(ke); ctx.save(); ctx.globalAlpha = a * ke;
+      ctx.translate(OW / 2, 1180); ctx.scale(s, s);
+      ctx.font = px8(30); const tw = ctx.measureText(L.ent).width + 70;
+      panel(-tw / 2, -56, tw, 112, BR.amber, BR.white, 1, 6);
+      ctx.font = px8(30); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = BR.navy; ctx.fillText(L.ent, 0, 3);
+      ctx.restore();
+    }
+    const tc = M.cta - M.s8;
+    if (u > tc) {
+      const blink = Math.floor((u - tc) * 3) % 2 === 0;
+      ctx.font = px8(30); const tw = ctx.measureText(L.next).width + 80;
+      panel(OW / 2 - tw / 2, 1300, tw, 104, blink ? '#2a1f8a' : BR.navy, BR.amber, 1, 6);
+      hudText(L.next, OW / 2, 1354, 30, blink ? BR.amber : BR.white);
+    }
+    ctx.restore();
+  }
+};
+const ORDER = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
+const TRANS = { s2: 'cut', s3: 'dissolve', s4: 'cut', s5: 'flash', s6: 'black', s7: 'cut', s8: 'black' };
+
+// ---------- camera ----------
+let CAM = { sx: 0, sy: 0, sw: W, sh: H };
+function setCam(cm) {
+  const sw = W / cm.z, sh = H / cm.z;
+  CAM = { sx: clamp(cm.x - sw / 2, 0, W - sw), sy: clamp(cm.y - sh / 2, 0, H - sh), sw, sh };
+}
+function toHi(x, y) { return [(x - CAM.sx) / CAM.sw * OW, (y - CAM.sy) / CAM.sh * OH]; }
+function present(src) {
+  ctx.imageSmoothingEnabled = false;
+  const k = OW / CAM.sw, sxi = Math.floor(CAM.sx), syi = Math.floor(CAM.sy);
+  ctx.drawImage(src, sxi, syi, Math.ceil(CAM.sw) + 1, Math.ceil(CAM.sh) + 1, -(CAM.sx - sxi) * k, -(CAM.sy - syi) * k, (Math.ceil(CAM.sw) + 1) * k, (Math.ceil(CAM.sh) + 1) * k);
+  ctx.imageSmoothingEnabled = true;
+}
+
+// ---------- captions ----------
+function captions(T) {
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  if (T > M.cta) return;
+  const k = clamp((T - cp.t0) / .12);
+  ctx.save(); ctx.font = '76px MB'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase() }));
+  const sp = 22; let tw = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  let sz = 76; if (tw > 960) { sz = Math.floor(76 * 960 / tw); ctx.font = `${sz}px MB`; tw = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - tw / 2; const y = 1530 - (1 - k) * 18;
+  ctx.globalAlpha = k; ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.lineWidth = 14; ctx.strokeStyle = 'rgba(10,6,40,.95)'; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? BR.amber : BR.white; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+
+// ---------- end card ----------
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  const a = clamp((T - t0) / .3);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 420, lh = lw * IMG.logo.height / IMG.logo.width, s = .9 + .1 * eob(clamp((T - t0) / .4));
+  ctx.drawImage(IMG.logo, OW / 2 - lw * s / 2, 700 - lh * s / 2, lw * s, lh * s);
+  ctx.font = '64px MB'; ctx.fillStyle = BR.amber; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  L.cta.forEach((t, i) => ctx.fillText(t, OW / 2, 1080 + i * 84));
+  ctx.fillStyle = BR.amber; const bounce = Math.round(Math.sin(T * 6) * 8);
+  // pixel arrow up
+  for (let i = 0; i < 6; i++) ctx.fillRect(OW / 2 - 12 - i * 12, 1300 + i * 12 + bounce, 24 + i * 24, 12);
+  ctx.fillRect(OW / 2 - 12, 1372 + bounce, 24, 60);
+  ctx.restore();
+}
+function logo(T) {
+  const lh = 70, lw = lh * IMG.logo.width / IMG.logo.height;
+  ctx.save(); ctx.globalAlpha = .82; ctx.drawImage(IMG.logo, OW - 48 - lw, 48, lw, lh); ctx.restore();
+}
+
+// ---------- frame ----------
+function sceneAt(T) { let i = 0; for (let k = 0; k < ORDER.length; k++) if (T >= M[ORDER[k]]) i = k; return i; }
+function drawScene(id, T, gx) { const u = T - M[id], nx = ORDER[ORDER.indexOf(id) + 1], d = (nx ? M[nx] : B.end) - M[id]; SC[id].draw(gx, u, d); return [u, d]; }
+window.render = function (T) {
+  const i = sceneAt(T), id = ORDER[i];
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, OW, OH);
+  // pixel dissolve into s3
+  const b3 = M.s3, inDis = T > b3 - .3 && T < b3 + .3;
+  g.clearRect(0, 0, W, H);
+  const [u, d] = drawScene(id, T, g);
+  setCam(SC[id].cam(u, d));
+  if (inDis) {
+    const other = id === 's3' ? 's2' : 's3';
+    gB.clearRect(0, 0, W, H); const sv = g; // draw the other scene into loB
+    const keepID = ID; drawSceneInto(other, T, gB);
+    const k = (T - (b3 - .3)) / .6; // 0..1
+    for (let by = 0; by < H; by += 10) for (let bx = 0; bx < W; bx += 10) {
+      const showNew = hash(bx, by, 5) < k;
+      if ((id === 's3') !== showNew) g.drawImage(loB, bx, by, 10, 10, bx, by, 10, 10);
+    }
+  }
+  present(lo);
+  SC[id].hud(u, d);
+  // transitions
+  const tr = (nm, dur, f) => { const bt = M[nm]; if (Math.abs(T - bt) < dur) f(Math.abs(T - bt) / dur, T < bt); };
+  tr('s5', .25, (x) => { ctx.fillStyle = `rgba(255,255,255,${(1 - x) * .95})`; ctx.fillRect(0, 0, OW, OH); });
+  for (const nm of ['s6', 's8']) tr(nm, .35, (x) => { ctx.fillStyle = `rgba(0,0,0,${1 - x})`; ctx.fillRect(0, 0, OW, OH); });
+  tr('s7', .12, (x) => { ctx.fillStyle = `rgba(0,0,0,${(1 - x) * .5})`; ctx.fillRect(0, 0, OW, OH); });
+  if (T < .25) { ctx.fillStyle = `rgba(255,255,255,${(1 - T / .25) * .8})`; ctx.fillRect(0, 0, OW, OH); }
+  // scanline feel: very light
+  ctx.fillStyle = 'rgba(0,0,0,.06)'; for (let y = 0; y < OH; y += 8) ctx.fillRect(0, y, OW, 2);
+  captions(T); logo(T); endCard(T);
+};
+function drawSceneInto(id, T, gx) {
+  // the pixel buffer helpers write to g; draw to g then copy to gx
+  const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H;
+  const save = g.getImageData(0, 0, W, H);
+  g.clearRect(0, 0, W, H); drawScene(id, T, g); gx.drawImage(lo, 0, 0); g.putImageData(save, 0, 0);
+}
+
+// ---------- load ----------
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = await (await fetch('beats.json')).json(); B = B[LANG]; M = B.m;
+  [IMG.logo, IMG.zh, IMG.mah, IMG.mon] = await Promise.all(['brand/logo_white_transparent.png', 'photos/zhangir.jpg', 'photos/makhambet.jpg', 'photos/monument.jpg'].map(load));
+  await Promise.all(['34px PS2P', '76px MB', '34px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІ')));
+  window.ready = true;
+})();
+</script></body></html>
