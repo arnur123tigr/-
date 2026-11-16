@@ -1,0 +1,117 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Англия, Великобритания или Соединённое Королевство?» — remake, RU, voice Egor. Times below are voice times; the voice starts at OFF.
+const OFF = .3, V = x => x + OFF, END = V(67.04) + 2.3;
+let SH = null, CAPS = [];
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'isles', l0: -14, l1: 5, b0: 48, b1: 62, minppd: 30 });
+const COL = { blue: '#6f8dff', red: '#ff4a4a', green: '#46e04a', yellow: '#f2e33a', orange: '#ff7a1a', cyan: '#22c3e6', scot: '#d81e3a', lime: '#c6f03a', light: '#bcd6ff' };
+const CITY = { london: [-0.128, 51.507, 'Лондон'], edin: [-3.19, 55.95, 'Эдинбург'], cardiff: [-3.18, 51.48, 'Кардифф'], dublin: [-6.26, 53.35, 'Дублин'] };
+const HOME = [-4.6, 54.6, 112];
+const CAMK = [
+  [0, 8, 47, 22], [V(1.7), -4.2, 54.4, 108], [V(5.0), -4.4, 54.5, 112, 'l'],
+  [V(8.1), ...HOME], [V(19.2), -3.8, 54.5, 122, 'l'],
+  [V(20.2), -1.6, 52.6, 160], [V(21.0), -1.6, 52.6, 165, 'l'],
+  [V(21.9), -4.2, 56.6, 165], [V(23.0), -4.2, 56.6, 168, 'l'],
+  [V(23.9), -3.6, 52.4, 185], [V(24.9), -3.6, 52.4, 190, 'l'],
+  [V(26.0), -2.4, 53.4, 130], [V(29.6), -2.4, 53.2, 136, 'l'],
+  [V(30.4), -3.6, 54.6, 118], [V(40.4), -4.0, 54.6, 122, 'l'],
+  [V(41.2), -6.8, 53.4, 150], [V(44.0), -6.8, 53.4, 156, 'l'],
+  [V(45.0), 8, 51, 24], [V(47.2), 9, 51, 25, 'l'],
+  [V(48.1), -4.2, 55.0, 98], [V(55.9), -4.2, 55.0, 104, 'l'],
+  [V(57.0), 2, 52, 40], [END, 3, 52, 42, 'l'],
+];
+function label(s, lon, lat, a, col, size = 56, dx = 0, dy = 0) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const p = back(clamp(a * 1.4));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x + dx, y + dy); ctx.scale(p, p);
+  txt(s, 0, 0, size, '#fff', 'MB', { shadow: col, blur: 22, dy: 0, stroke: size * .1, sc: 'rgba(0,0,0,.55)' }); ctx.restore();
+}
+function city(k, a, dx = 0, dy = -44) {
+  if (a <= 0) return; const [lon, lat, n] = CITY[k]; dot(lon, lat, a, '#ff3b6b');
+  const [x, y] = P(lon, lat); ctx.save(); ctx.globalAlpha = a; pill(n, x + dx, y + dy, 32, 1, { bg: 'rgba(19,11,84,.85)', font: 'MX' }); ctx.restore();
+}
+function head(s, a, col) {   // big title at the top (like the reference's bold labels)
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, H * .17); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(86, 86 * 960 / tw(s, 86, 'MB')), '#fff', 'MB', { shadow: col, blur: 26, dy: 0, stroke: 9, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+}
+function captions(t) {
+  const vt = t - OFF; const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .05); if (!c || t > V(55.85)) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1);
+  ctx.save(); ctx.globalAlpha = a; txt(c[2], W / 2, H * .845, 46, '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 6, sc: 'rgba(0,0,0,.45)' }); ctx.restore();
+}
+function inner(a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a * .9; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; for (const k of ['eng', 'sco', 'wal']) { pathRings(SH[k]); ctx.stroke(); } ctx.restore(); }
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.35);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  // 0-5: three names for one land
+  glowFill(SH.gb, COL.blue, A(1.82, 2.95, .2)); head('Великобритания', A(1.82, 2.95, .15), COL.blue);
+  glowFill(SH.uk, COL.red, A(2.88, 4.1, .2)); head('Соединённое Королевство', A(2.88, 4.1, .15), COL.red);
+  glowFill(SH.eng, COL.green, A(4.04, 5.15, .2)); head('Англия', A(4.04, 5.15, .15), COL.green);
+  // 5-8: which one is right?
+  { const a = A(5.12, 8.15); if (a > 0) {
+      const cx = W / 2, cy = P(-4.2, 54.6)[1], R = 330, sp = (t - V(5.12)) * .5;
+      ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(cx, cy, R * eout(ap(t, V(5.12), .5)), 0, 7); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3; ctx.stroke();
+      [['Англия', 0], ['Соединённое\nКоролевство', 2.1], ['Великобритания', 4.2]].forEach(([s, ph]) => {
+        const an = ph + sp - 1.6, x = cx + Math.cos(an) * R, y = cy + Math.sin(an) * R;
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fillStyle = '#ffd1e0'; ctx.fill();
+        s.split('\n').forEach((l, i, L) => txt(l, x, y - 50 - (L.length - 1 - i) * 52, 46, '#ffe3ec', 'MB', { shadow: '#ff4f8b', blur: 18, dy: 0 }));
+      });
+      txt(t < V(6.26) ? 'Как правильно?' : 'В чём разница?', cx, cy, 60, '#fff', 'MB', { stroke: 8, sc: 'rgba(0,0,0,.6)' }); ctx.restore();
+    } }
+  // 8-10.5: two islands
+  { const a = A(8.6, 10.75); glowFill(SH.gb_main, COL.yellow, a * (.6 + .4 * Math.sin(Math.max(0, t - V(9.24)) * 9) ** 2), { fill: .35 });
+    glowFill(SH.irl_main, COL.yellow, a, { fill: .35 }); head('Два больших острова', a, COL.yellow); }
+  // 10.7-16.7: Ireland
+  glowFill(SH.ireland_isl, COL.yellow, A(10.7, 14.3), { fill: .4 }); label('Ирландия', -8.0, 53.3, A(12.0, 14.25), COL.yellow, 52);
+  glowFill(SH.nir, COL.green, A(14.14, 19.4)); label('Северная', -6.6, 55.0, A(14.2, 16.8), COL.green, 40, 40, -110); label('Ирландия', -6.6, 55.0, A(14.2, 16.8), COL.green, 40, 40, -66);
+  glowFill(SH.irl, COL.orange, A(15.38, 19.4)); label('Республика', -8.1, 53.1, A(15.4, 16.8), COL.orange, 42, 0, -20); label('Ирландия', -8.1, 53.1, A(15.4, 16.8), COL.orange, 42, 0, 26);
+  // 16.7-19.4: three countries on the big island
+  glowFill(SH.gb_main, COL.yellow, A(16.9, 19.5), { fill: .3 }); head('3 страны', A(17.96, 19.5), COL.yellow);
+  // 19.4-25: England, Scotland, Wales + capitals (stay on until 25.2)
+  glowFill(SH.eng, COL.cyan, A(19.4, 25.25)); label('Англия', -1.3, 52.9, A(19.45, 25.25), COL.cyan, 52); city('london', A(20.5, 25.25), 0, 46);
+  glowFill(SH.sco, COL.scot, A(21.22, 25.25)); label('Шотландия', -4.6, 57.2, A(21.25, 25.25), COL.scot, 52); city('edin', A(22.4, 25.25), 40, 44);
+  glowFill(SH.wal, COL.lime, A(23.32, 25.25)); label('Уэльс', -3.7, 52.35, A(23.35, 25.25), '#7fa000', 42); city('cardiff', A(24.5, 25.25), -20, 44);
+  glowFill(SH.nir, COL.green, A(19.4, 25.25) * .6); glowFill(SH.irl, COL.orange, A(19.4, 25.25) * .6);
+  // 25.3-29.9: England only
+  glowFill(SH.eng, COL.cyan, A(25.6, 29.95)); head('Англия', A(26.4, 29.95), COL.cyan); pill('страна на юге острова', W / 2, H * .3, 42, A(28.5, 29.95));
+  // 29.9-34.3: Great Britain = the island
+  glowFill(SH.gb, COL.orange, A(29.92, 34.3)); inner(A(31.4, 34.3)); head('Великобритания', A(29.95, 34.3), COL.orange);
+  pill('остров, на нём 3 страны', W / 2, H * .3, 42, A(31.4, 34.3));
+  // 34.3-40.6: United Kingdom = the state
+  glowFill(SH.gb, COL.blue, A(34.32, 40.6)); inner(A(37.5, 40.6));
+  glowFill(SH.nir, COL.blue, A(34.32, 40.6) * (.7 + .3 * Math.sin(Math.max(0, t - V(39.2)) * 8) ** 2));
+  head('Соединённое Королевство', A(34.35, 40.6), COL.blue); pill('государство', W / 2, H * .3, 42, A(36.08, 40.6));
+  // 40.6-47.4: Republic of Ireland, EU
+  glowFill(SH.irl, COL.orange, A(40.62, 44.7)); city('dublin', A(42.44, 44.7), 0, 46);
+  head('Республика Ирландия', A(40.65, 44.7), COL.orange); pill('отдельное государство', W / 2, H * .3, 42, A(43.16, 44.7));
+  glowFill(SH.eu, COL.light, A(44.5, 47.45), { fill: .55, lw: 2, blur: 12 });
+  label('ЕС', 12, 48.5, A(44.6, 47.45), '#4a7dff', 96);
+  { const a = A(45.6, 47.45); if (a > 0) { glowFill(SH.uk, '#ff5a5a', a * .7, { fill: .25, lw: 3 }); label('Соединённое', -2.5, 56.8, a, '#ff5a5a', 34, 0, -20); label('Королевство — не в ЕС', -2.5, 56.8, a, '#ff5a5a', 34, 0, 20); } }
+  // 47.5-55.9: British Isles
+  { const a = A(47.9, 55.95); if (a > 0) {
+      const [cx, cy] = P(-4.6, 55.0), p = eout(ap(t, V(48.0), 1.0));
+      ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.ellipse(cx, cy, 480, 640, -.08, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+      ctx.strokeStyle = COL.yellow; ctx.lineWidth = 8; ctx.shadowColor = COL.yellow; ctx.shadowBlur = 16; ctx.lineCap = 'round'; ctx.stroke(); ctx.restore();
+      head('Британские острова', ap(t, V(48.86), .3) * a, COL.yellow);
+      glowFill(SH.gb, COL.light, A(51.2, 55.95), { fill: .6, lw: 3 }); label('Великобритания', -1.8, 53.2, A(51.25, 55.95), '#4a7dff', 38);
+      glowFill(SH.ireland_isl, COL.green, A(52.2, 55.95), { fill: .6, lw: 3 }); label('Ирландия', -8.0, 53.3, A(52.25, 55.95), COL.green, 38);
+      SH.small.forEach((s, i) => { const q = back(ap(t, V(53.1) + (i % 20) * .05, .3)); if (q <= 0) return; const [x, y] = P(s[0], s[1]);
+        ctx.save(); ctx.globalAlpha = a * clamp(q); ctx.beginPath(); ctx.arc(x, y, 9 * q, 0, 7); ctx.fillStyle = BR.acc; ctx.shadowColor = BR.acc; ctx.shadowBlur = 14; ctx.fill(); ctx.restore(); });
+      pill('и более 6000 малых островов', W / 2, H * .3, 40, A(53.4, 55.95));
+    } }
+  captions(t);
+  cta(t, { t0: V(55.88), tk: V(63.56), tl: V(64.32), kw: 'гео' });
+  logo(.8);
+  endCard(t, V(66.75), 'гео');
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps.json')).json();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('isles', 'tex/isles.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
