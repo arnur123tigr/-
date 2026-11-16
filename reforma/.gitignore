@@ -1,0 +1,8 @@
+data/
+snaps/
+snapk/
+*.wav
+video_silent_*.mp4
+reforma_*.mp4
+rec_*.log
+__pycache__/
