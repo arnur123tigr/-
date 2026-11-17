@@ -1,0 +1,14 @@
+# downloaded sources (fetch_data.sh) and everything the scripts rebuild
+data/
+*.wav
+video_silent_*.mp4
+shyrak_*.mp4
+clips/s?/
+mix_*.wav
+sfx_*.wav
+music_*.wav
+*.log
+__pycache__/
+orig_video_silent_*.mp4
+part_*.mp4
+patched_*.mp4
