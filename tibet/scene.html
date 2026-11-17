@@ -1,0 +1,332 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему самолёты не летают над Тибетом» — remake, RU + KZ (scene.html?lang=kk). All times = voice beats (beats.json) + OFF.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 70;
+const V = k => B[k] + OFF;
+const TX = {
+  ru: { five: '≈ 5 Франций', radar: 'Радар полётов', empty: 'Пустая зона', name: ['Тибетское', 'нагорье'], reasons: ['Высота', 'Погода', 'Аэропорты'],
+        top: 'Самое высокое нагорье мира', avg: 'средняя высота', imposs: 'Почти невозможно', why3: '3 причины', danger: 'Опасно',
+        cta1: ['Хочешь больше', 'фактов по географии?'], cta2: 'Напиши в комментариях', end: 'Пиши в комментариях',
+        airports: [['Лхаса', 91.0, 29.3], ['Шигадзе', 89.3, 29.35], ['Ньингчи', 94.34, 29.3], ['Чамдо', 97.1, 30.55], ['Нгари', 80.05, 32.1]] },
+  kk: { five: '≈ 5 Франция', radar: 'Ұшу радары', empty: 'Бос аймақ', name: ['Тибет', 'қыраты'], reasons: ['Биіктік', 'Ауа райы', 'Әуежайлар'],
+        top: 'Әлемдегі ең биік қырат', avg: 'орташа биіктігі', imposs: 'Мүмкін емес дерлік', why3: '3 себеп', danger: 'Қауіпті',
+        cta1: ['Географиядан көбірек', 'факт керек пе?'], cta2: 'Комментарийге жаз', end: 'Комментарийге жаз',
+        airports: [['Лхаса', 91.0, 29.3], ['Шигадзе', 89.3, 29.35], ['Ньингчи', 94.34, 29.3], ['Чамдо', 97.1, 30.55], ['Нгари', 80.05, 32.1]] } }[LANG];
+const KW = 'GEO';
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'tibet', l0: 66, l1: 108, b0: 18, b1: 44, minppd: 26 });
+const RED = '#ff3b2f', EVEREST = [86.925, 27.988];
+
+// ---------- helpers ----------
+function rng(s) { return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+function inPoly(x, y, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function planeTop(x, y, s, an, col = '#fff', a = 1, glow = 'rgba(0,0,0,.5)') {   // plane seen from above, nose along angle an
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(an); ctx.scale(s / 20, s / 20);
+  ctx.beginPath(); ctx.moveTo(20, 0); ctx.quadraticCurveTo(18, -2.4, 12, -2.4); ctx.lineTo(3, -2.4); ctx.lineTo(-4, -17); ctx.lineTo(-8, -17); ctx.lineTo(-3, -2.4);
+  ctx.lineTo(-13, -2.4); ctx.lineTo(-17, -8); ctx.lineTo(-20, -8); ctx.lineTo(-18, 0); ctx.lineTo(-20, 8); ctx.lineTo(-17, 8); ctx.lineTo(-13, 2.4);
+  ctx.lineTo(-3, 2.4); ctx.lineTo(-8, 17); ctx.lineTo(-4, 17); ctx.lineTo(3, 2.4); ctx.lineTo(12, 2.4); ctx.quadraticCurveTo(18, 2.4, 20, 0); ctx.closePath();
+  ctx.fillStyle = col; ctx.shadowColor = glow; ctx.shadowBlur = 8; ctx.fill(); ctx.restore();
+}
+function planeSide(x, y, s, tilt = 0, a = 1) {   // airliner side view, nose to the right
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(s / 100, s / 100);
+  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 6;
+  ctx.fillStyle = '#e9eef5'; ctx.beginPath(); ctx.moveTo(-95, -6); ctx.lineTo(-80, -42); ctx.lineTo(-66, -42); ctx.lineTo(-55, -10); ctx.closePath(); ctx.fill();   // tail fin
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(-100, -8); ctx.quadraticCurveTo(-60, -16, 60, -14); ctx.quadraticCurveTo(100, -12, 104, 2);
+  ctx.quadraticCurveTo(100, 14, 60, 14); ctx.lineTo(-70, 12); ctx.quadraticCurveTo(-96, 8, -100, -8); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.fillStyle = BR.navy; ctx.fillRect(-60, 2, 150, 4);
+  ctx.fillStyle = '#5b7bb5'; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.arc(-42 + i * 10, -4, 2.4, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#2b3a55'; ctx.beginPath(); ctx.moveTo(84, -10); ctx.quadraticCurveTo(96, -9, 100, -3); ctx.lineTo(86, -3); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#cfd8e6'; ctx.beginPath(); ctx.moveTo(-20, 6); ctx.lineTo(30, 6); ctx.lineTo(-30, 34); ctx.lineTo(-44, 34); ctx.closePath(); ctx.fill();   // wing
+  ctx.fillStyle = '#9fb0c8'; rr(-12, 14, 30, 11, 5); ctx.fill();   // engine
+  ctx.fillStyle = BR.acc; ctx.beginPath(); ctx.moveTo(-93, -10); ctx.lineTo(-82, -38); ctx.lineTo(-74, -38); ctx.lineTo(-80, -10); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function warn(x, y, s, a = 1) {   // red warning triangle with "!"
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s / 100, s / 100);
+  ctx.beginPath(); ctx.moveTo(0, -50); ctx.lineTo(52, 42); ctx.lineTo(-52, 42); ctx.closePath(); ctx.lineJoin = 'round';
+  ctx.fillStyle = 'rgba(232,40,30,.9)'; ctx.shadowColor = RED; ctx.shadowBlur = 30; ctx.fill(); ctx.lineWidth = 8; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; rr(-6, -22, 12, 38, 5); ctx.fill(); ctx.beginPath(); ctx.arc(0, 28, 7, 0, 7); ctx.fill(); ctx.restore();
+}
+function head(s, a, col, y = H * .17, size = 84) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 960 / tw(s, size, 'MB')), '#fff', 'MB', { shadow: col, blur: 26, dy: 0, stroke: 9, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+}
+function badge(n, s, a, y = H * .17) {   // reason header: amber number disc + navy pill
+  if (a <= 0) return; const p = back(clamp(a * 1.5)); const w = tw(s, 64, 'MB') + 190;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  rr(-w / 2, -62, w, 124, 62); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(254,179,0,.6)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.beginPath(); ctx.arc(-w / 2 + 62, 0, 46, 0, 7); ctx.fillStyle = BR.acc; ctx.fill();
+  txt(String(n), -w / 2 + 62, 4, 60, BR.navy, 'MB', { blur: 0, dy: 0 }); txt(s, 50, 4, 64, '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function label2(lines, lon, lat, a, col, size = 64) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const p = back(clamp(a * 1.4));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  lines.forEach((l, i) => txt(l, 0, (i - (lines.length - 1) / 2) * size * 1.08, size, '#fff', 'MB', { shadow: col, blur: 24, dy: 0, stroke: size * .12, sc: 'rgba(0,0,0,.55)' }));
+  ctx.restore();
+}
+function captions(t) {
+  const vt = t - OFF; if (vt >= B.cta - .05) return; const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .05); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1);
+  ctx.save(); ctx.globalAlpha = a; txt(c[2], W / 2, H * .845, 52, '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 7, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+}
+const tib = () => SH.tibet;
+function tibGlow(a, col = RED, o = {}) { glowFill(tib(), col, a, Object.assign({ fill: .5, lw: 6, blur: 34 }, o)); }
+
+// ---------- radar planes (fixed random field, nothing over Tibet) ----------
+let RADAR = [];
+function buildRadar() {
+  const r = rng(7), poly = tib()[0];
+  while (RADAR.length < 900) {
+    const lon = 40 + r() * 100, lat = -5 + r() * 65;
+    if (inPoly(lon, lat, poly)) continue;
+    if (lat > 45 && r() < .55) continue;
+    // keep a thin margin around the plateau too
+    let near = false; for (const d of [[1.2, 0], [-1.2, 0], [0, 1], [0, -1]]) if (inPoly(lon + d[0], lat + d[1], poly)) near = true;
+    if (near && r() < .8) continue;
+    RADAR.push([lon, lat, r() * 6.283, .4 + r() * .6]);
+  }
+}
+function radar(t, a) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = 'rgba(14,18,26,.86)'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save(); ctx.globalAlpha = a * .5; ctx.strokeStyle = 'rgba(160,175,200,.55)'; ctx.lineWidth = 1.4; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+  const dt = t - V('radar');
+  for (const [lon, lat, an, sp] of RADAR) {
+    const d = dt * sp * .25, x = lon + Math.cos(an) * d, y = lat - Math.sin(an) * d; const [sx, sy] = P(x, y);
+    if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+    planeTop(sx, sy, 15, -an, '#f5c518', a, 'rgba(0,0,0,0)');
+  }
+}
+
+// ---------- France x5 ----------
+const FR_POS = [[83.5, 34.6], [91.5, 35.2], [97, 32.4], [87.5, 31.4], [80.2, 33.2]];
+function france(lon0, lat0, a, sc) {
+  if (a <= 0) return; const k = Math.cos(SH.france_lat * Math.PI / 180) / Math.cos(lat0 * Math.PI / 180);
+  const rings = SH.france.map(r => r.map(([x, y]) => [lon0 + x * k * sc, lat0 + y * sc]));
+  ctx.save(); ctx.globalAlpha = a; pathRings(rings); ctx.fillStyle = 'rgba(70,190,255,.82)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+
+// ---------- side section: altitude diagram ----------
+const HY = m => H * .92 - m * (H * .66 / 12000);   // metres -> screen y
+let PROFILE = null;
+function buildProfile() {
+  const r = rng(11); PROFILE = [];
+  for (let i = 0; i <= 340; i++) {
+    const x = (i - 100) / 240; let m = 4500 + 450 * Math.sin(x * 23 + 1) + 300 * Math.sin(x * 57) + 180 * Math.sin(x * 131) + (r() - .5) * 260;
+    m += 4300 * Math.exp(-(((x - .34) / .035) ** 2)) + 2600 * Math.exp(-(((x - .27) / .03) ** 2)) + 2900 * Math.exp(-(((x - .43) / .03) ** 2)) + 1700 * Math.exp(-(((x - .7) / .05) ** 2));
+    PROFILE.push(m);
+  }
+  PROFILE[182] = 8848;
+}
+function section(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  let g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1f5fbf'); g.addColorStop(.55, '#7fb6ee'); g.addColorStop(1, '#d8ecff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const pan = (t - V('plane')) * 10, xo = 120 - 600 - pan;
+  // far range (haze)
+  ctx.beginPath(); ctx.moveTo(0, H); for (let i = 0; i <= 340; i++) ctx.lineTo(xo * .5 + i * 6, HY(PROFILE[(i + 60) % 341] * .82)); ctx.lineTo(W, H); ctx.closePath();
+  ctx.fillStyle = 'rgba(160,185,215,.7)'; ctx.fill();
+  // main range
+  const pts = PROFILE.map((m, i) => [xo + i * 6, HY(m)]);
+  ctx.beginPath(); ctx.moveTo(pts[0][0], H); pts.forEach(p => ctx.lineTo(p[0], p[1])); ctx.lineTo(pts[pts.length - 1][0], H); ctx.closePath();
+  g = ctx.createLinearGradient(0, HY(9000), 0, H); g.addColorStop(0, '#ffffff'); g.addColorStop(.28, '#e6edf5'); g.addColorStop(.42, '#8a7f74'); g.addColorStop(.75, '#5d5045'); g.addColorStop(1, '#3d342c');
+  ctx.fillStyle = g; ctx.fill();
+  // ridge shading
+  // altitude lines
+  const line = (m, s, col, ta, dash) => { if (ta <= 0) return; const y = HY(m); ctx.save(); ctx.globalAlpha = a * ta; ctx.setLineDash(dash || []); ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W * eout(ta), y); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); pill(s, 150, y - 46, 38, a * ta, { line: col }); };
+  line(4500, '4 500 м', BR.acc, ap(t, V('plane') - .3, .5), [18, 12]);
+  line(10000, '10 000 м', '#ffffff', ap(t, V('plane10'), .5));
+  line(3000, '3 000 м', '#3dff7a', ap(t, V('d3000'), .5), [18, 12]);
+  // Everest marker
+  { const ea = ap(t, V('plane') + .4, .5); const ex = xo + 182 * 6, ey = HY(8848);
+    if (ea > 0 && ex > 0 && ex < W) { ctx.save(); ctx.globalAlpha = a * ea; ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(ex - 12, ey + 8); ctx.lineTo(ex - 60, ey + 40); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey, 10, 0, 7); ctx.fillStyle = '#ff7a1a'; ctx.fill(); ctx.restore();
+      pill('Эверест · 8 848 м', ex - 210, ey + 40, 36, a * ea, { line: '#ff7a1a' }); } }
+  // plane: cruise, emergency, descent that runs into the mountains
+  const ts = V('plane'), td = V('descend'), ti = V('imposs');
+  let px = W * .66, py = HY(10000), tilt = 0;
+  const pd = ease(ap(t, td, ti - td + .2)); py = lerp(HY(10000), HY(6200), pd); tilt = Math.sin(Math.PI * clamp(pd * 1.2)) * .22;
+  const shake = t > V('emerg') ? Math.sin(t * 40) * 3 * win(t, V('emerg'), V('d3000') + .5, .2) : 0;
+  planeSide(px, py + shake, 210 * eout(ap(t, ts, .6)) || 0.01, tilt, a);
+  { const wa = win(t, V('emerg'), V('high') + 1, .25); warn(px + 10, py - 120, 96 * (1 + .08 * Math.sin(t * 12)), a * wa); }
+  // dashed planned path down to 3000 m, which hits the rock
+  { const pa = ap(t, V('d3000'), .6); if (pa > 0) { ctx.save(); ctx.globalAlpha = a * pa; ctx.setLineDash([16, 14]); ctx.strokeStyle = '#3dff7a'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(px + 100, py + 10); ctx.quadraticCurveTo(px + 200, py + 40, px + 250, HY(3000)); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } }
+  { const xa = ap(t, V('imposs'), .4); if (xa > 0) { const cx = W * .66 + 160, cy = HY(5000), s = back(xa);
+      ctx.save(); ctx.globalAlpha = a * clamp(xa * 2); ctx.translate(cx, cy); ctx.scale(s, s); ctx.strokeStyle = RED; ctx.lineWidth = 22; ctx.lineCap = 'round'; ctx.shadowColor = RED; ctx.shadowBlur = 24;
+      ctx.beginPath(); ctx.moveTo(-60, -60); ctx.lineTo(60, 60); ctx.moveTo(60, -60); ctx.lineTo(-60, 60); ctx.stroke(); ctx.restore();
+      head(TX.imposs, xa, RED, H * .26, 76); } }
+  ctx.restore();
+}
+
+// ---------- weather ----------
+function weather(t, a) {
+  if (a <= 0) return; const t0 = V('r2'); const dt = t - t0;
+  ctx.save(); ctx.globalAlpha = a * .45; ctx.fillStyle = '#1a2230'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const r = rng(5);
+  // drifting clouds
+  for (let i = 0; i < 26; i++) {
+    const lon = 72 + r() * 34, lat = 25 + r() * 15, R = 60 + r() * 120, sp = .5 + r();
+    const [x, y] = P(lon + dt * sp * .6, lat);
+    ctx.save(); ctx.globalAlpha = a * (.25 + .25 * r()) * ap(t, t0 + i * .05, .6);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, 'rgba(235,240,248,.95)'); g.addColorStop(1, 'rgba(235,240,248,0)'); ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill(); ctx.restore();
+  }
+  // wind streaks
+  const wa = a * ap(t, V('wind'), .4);
+  if (wa > 0) for (let i = 0; i < 34; i++) {
+    const y0 = 380 + r() * 1180, sp = 380 + r() * 300, L = 160 + r() * 220, ph = r() * 3000, amp = 14 + r() * 26;
+    const x = ((dt * sp + ph) % (W + 600)) - 300;
+    ctx.save(); ctx.globalAlpha = wa * .8; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(255,255,255,.8)'; ctx.shadowBlur = 8;
+    ctx.beginPath(); for (let k = 0; k <= 12; k++) { const xx = x + k / 12 * L, yy = y0 + Math.sin(xx / 90 + i) * amp; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); } ctx.stroke(); ctx.restore();
+  }
+  // lightning flashes on "sudden changes"
+  const tc = V('changes');
+  for (const [k, lon, lat] of [[0, 86, 32], [.55, 93, 30.5], [1.1, 80, 34]]) {
+    const f = win(t, tc + k, tc + k + .35, .05); if (f <= 0) continue;
+    ctx.save(); ctx.globalAlpha = a * f * .35; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    const [x, y] = P(lon, lat); ctx.save(); ctx.globalAlpha = a * f; ctx.strokeStyle = '#fff6b0'; ctx.lineWidth = 9; ctx.lineJoin = 'round'; ctx.shadowColor = BR.acc; ctx.shadowBlur = 30;
+    ctx.beginPath(); ctx.moveTo(x, y - 170); ctx.lineTo(x - 30, y - 40); ctx.lineTo(x + 20, y - 40); ctx.lineTo(x - 18, y + 120); ctx.stroke(); ctx.restore();
+  }
+  // turbulent plane crossing
+  { const pa = win(t, V('turb'), V('r3'), .3); if (pa > 0) { const k = (t - V('turb')) / (V('r3') - V('turb')); const [x, y] = P(lerp(74, 104, k), 31.5);
+      planeTop(x + Math.sin(t * 31) * 7, y + Math.sin(t * 23) * 12, 70, Math.sin(t * 17) * .2, '#fff', pa); } }
+}
+
+// ---------- airports ----------
+function noLanding(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 130, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.55)'; ctx.fill();
+  ctx.save(); ctx.rotate(-.5); ctx.fillStyle = '#3b3f48'; rr(-34, -110, 68, 220, 8); ctx.fill(); ctx.fillStyle = '#fff'; for (let i = -90; i < 100; i += 36) ctx.fillRect(-4, i, 8, 20); ctx.restore();
+  planeTop(-10, -10, 70, -2.1, '#fff', 1);
+  ctx.lineWidth = 22; ctx.strokeStyle = RED; ctx.shadowColor = RED; ctx.shadowBlur = 24; ctx.beginPath(); ctx.arc(0, 0, 130, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-92, -92); ctx.lineTo(92, 92); ctx.stroke(); ctx.restore();
+}
+function airport(lon, lat, name, a, dy = -50, dx = 0) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const s = back(clamp(a * 1.3));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 26, 0, 7); ctx.fillStyle = BR.acc; ctx.shadowColor = BR.acc; ctx.shadowBlur = 24; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.shadowBlur = 0;
+  planeTop(0, 0, 20, -Math.PI / 2, BR.navy, 1, 'rgba(0,0,0,0)'); ctx.restore();
+  pill(name, x + dx, y + dy, 32, clamp(a * 2));
+}
+
+// ---------- CTA + end card ----------
+function ctaGeo(t) {
+  const t0 = V('cta'), a = ap(t, t0, .4); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .62; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const p1 = eout(ap(t, t0, .5));
+  ctx.save(); ctx.globalAlpha = p1; ctx.translate(0, (1 - p1) * 40);
+  txt(TX.cta1[0], W / 2, H * .32, 70, '#fff', 'MB'); txt(TX.cta1[1], W / 2, H * .32 + 92, 70, BR.acc, 'MB'); ctx.restore();
+  const p2 = ap(t, V('write') - .1, .45);
+  if (p2 > 0) {
+    ctx.save(); ctx.globalAlpha = p2; txt(TX.cta2, W / 2, H * .53, 60, '#fff', 'MX'); ctx.restore();
+    const pk = back(ap(t, V('kw') - .15, .45));
+    if (pk > 0) {
+      ctx.save(); ctx.translate(W / 2, H * .64); ctx.scale(pk, pk);
+      const w = tw(KW, 170, 'MB') + 170; rr(-w / 2, -115, w, 230, 60); ctx.fillStyle = BR.acc; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 44; ctx.fill();
+      txt(KW, 0, 8, 170, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+      // comment bubble tail
+      ctx.save(); ctx.globalAlpha = clamp(pk); ctx.fillStyle = BR.acc; ctx.beginPath(); ctx.moveTo(W / 2 - 40, H * .64 + 112); ctx.lineTo(W / 2 - 90, H * .64 + 175); ctx.lineTo(W / 2 + 10, H * .64 + 112); ctx.fill(); ctx.restore();
+    }
+  }
+}
+function endCardGeo(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 400 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TX.end, W / 2, H * .62, 58, '#fff', 'MX', { blur: 0 });
+  txt(`«${KW}»`, W / 2, H * .62 + 120, 130, BR.acc, 'MB', { blur: 0 });
+  ctx.restore();
+}
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const ASIA = [88, 27, 13.5], TIB = [89, 32.5, 30], CLOSE = [87.2, 30.6, 46];
+  CAMK = [
+    [0, 92, 30, 10.5], [V('zone'), ...ASIA], [V('big'), 89, 30, 18], [V('radar') - .3, 89, 31.5, 25],
+    [V('radar'), 92, 30, 13], [V('name') - .3, 90, 31, 15, 'l'],
+    [V('name'), 89, 32, 22], [V('r1') - .2, 89, 32.5, 24, 'l'],
+    [V('r1') + .6, ...TIB], [V('avg'), 88.5, 31.5, 34, 'l'], [V('peaks'), 87.4, 29.5, 44], [V('plane') - .01, 87, 28.6, 52, 'l'],
+    [V('plane'), ...TIB], [V('r2'), ...TIB],   // hidden behind the section diagram
+    [V('r2') + .01, 89, 32, 24], [V('r3'), 89, 32, 27, 'l'],
+    [V('noair'), 89, 31.6, 26], [V('airports'), 88.8, 30.6, 38], [V('cta'), 88.8, 30.6, 40, 'l'], [V('vend') + 4, 88.5, 31, 31, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  // 1. planes avoiding the zone
+  { const a = A('q', 'radar', .3);
+    if (a > 0) for (let i = 0; i < 6; i++) {           // routes bending around the plateau
+      const k = ((t * .09 + i / 6) % 1), side = i % 2 ? 1 : -1;
+      const lon = lerp(58, 122, k), lat = 31 + side * (7 + 9 * Math.sin(Math.PI * k)) + (i - 3) * .6;
+      const lon2 = lerp(58, 122, k + .01), lat2 = 31 + side * (7 + 9 * Math.sin(Math.PI * (k + .01))) + (i - 3) * .6;
+      const [x, y] = P(lon, lat), [x2, y2] = P(lon2, lat2); planeTop(x, y, 46, Math.atan2(y2 - y, x2 - x), '#fff', a * clamp(Math.sin(Math.PI * k) * 3));
+    }
+    tibGlow(A('zone', 'radar', .3) * (.85 + .15 * Math.sin(t * 5)));
+    // 2. ≈ 5 Frances
+    FR_POS.forEach((p, i) => france(p[0], p[1], A('five', 'radar', .2) * clamp(back(ap(t, V('five') + i * .22, .35))), 1));
+    head(TX.five, A('five', 'radar', .25), '#46beff');
+  }
+  // 3. flight radar
+  { const a = A('radar', 'name', .3); radar(t, a);
+    head(TX.radar, a, BR.acc, H * .17, 80);
+    const ea = A('empty', 'name', .25); if (ea > 0) { glowFill(tib(), RED, ea, { fill: .12, lw: 7, blur: 30 }); pill(TX.empty, P(...SH.tibet_c)[0], P(...SH.tibet_c)[1], 40, ea, { line: RED }); } }
+  // 4. this is the Tibetan Plateau
+  tibGlow(A('name', 'r1', .3) * (.8 + .2 * Math.sin(t * 4)));
+  label2(TX.name, SH.tibet_c[0], SH.tibet_c[1] + .4, A('name', 'three', .25), RED, 72);
+  // 5. three reasons
+  { const a = A('three', 'r1', .25); head(TX.why3, a, BR.acc, H * .17, 96);
+    TX.reasons.forEach((s, i) => { const q = a * clamp(back(ap(t, V('three') + .25 + i * .3, .35))); if (q <= 0) return;
+      ctx.save(); ctx.globalAlpha = clamp(q); const y = H * .36 + i * 150, w = 560; ctx.translate(W / 2, y); ctx.scale(clamp(q, 0, 1.2), clamp(q, 0, 1.2));
+      rr(-w / 2, -55, w, 110, 55); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.fill(); ctx.strokeStyle = 'rgba(254,179,0,.6)'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.beginPath(); ctx.arc(-w / 2 + 55, 0, 40, 0, 7); ctx.fillStyle = BR.acc; ctx.fill(); txt(String(i + 1), -w / 2 + 55, 4, 52, BR.navy, 'MB', { blur: 0, dy: 0 });
+      txt(s, 40, 4, 56, '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore(); }); }
+  // 6. reason 1: height (map part)
+  { const a = A('r1', 'plane', .3);
+    glowFill(tib(), BR.acc, a * .6, { fill: .1, lw: 5, blur: 22 });
+    badge(1, TX.reasons[0], A('r1', 'avg', .25));
+    head(TX.top, A('highest', 'avg', .25), BR.acc, H * .27, 66);
+    { const na = A('avg', 'peaks', .25); if (na > 0) { head('≈ 4 500 м', clamp(ap(t, V('avgnum'), .3)) * na, BR.acc, H * .2, 130); pill(TX.avg, W / 2, H * .28, 44, na); } }
+    { const ea = A('peaks', 'plane', .25); if (ea > 0) { dot(...EVEREST, ea, '#ff7a1a'); const [x, y] = P(...EVEREST);
+        const pa = ap(t, V('everest'), .3); label2(['Эверест'], EVEREST[0], EVEREST[1], pa * ea, '#ff7a1a', 64); pill('8 848 м', x, y + 70, 40, pa * ea);
+        head(LANG === 'ru' ? 'Самые высокие горы' : 'Ең биік таулар', ea, '#ff7a1a', H * .2, 76); } } }
+  // 7. altitude section
+  section(t, A('plane', 'r2', .35));
+  if (t > V('plane') - .35 && t < V('r2') + .35) { const a = A('plane', 'r2', .35); badge(1, TX.reasons[0], a * ap(t, V('plane'), .3) * (1 - ap(t, V('emerg') - .3, .3)), H * .1); }
+  // 8. reason 2: weather
+  { const a = A('r2', 'r3', .35); weather(t, a); badge(2, TX.reasons[1], A('r2', 'wind', .25));
+    if (a > 0) glowFill(tib(), '#7fd0ff', a * .5, { fill: .05, lw: 4, blur: 18 });
+    head(TX.danger, A('danger', 'r3', .25), RED, H * .2, 110); if (A('danger', 'r3', .25) > 0) warn(W / 2, H * .3, 110, A('danger', 'r3', .25)); }
+  // 9. reason 3: airports
+  { const a = A('r3', 'cta', .35); tibGlow(a * .7, RED, { fill: .32 }); badge(3, TX.reasons[2], A('r3', 'airports', .25));
+    const [cx, cy] = P(...SH.tibet_c); noLanding(cx, cy, back(clamp(ap(t, V('noair') + .6, .4))) * .95, A('noair', 'airports', .25));
+    TX.airports.forEach(([n, lon, lat], i) => airport(lon, lat, n, A('airports', 'cta', .25) * clamp(ap(t, V('airports') + .15 + i * .2, .3)), [-56, 56, 56, -56, -56][i], [0, -60, 40, 0, 0][i]));
+    { const ra = A('risky', 'cta', .25); if (ra > 0) { tibGlow(ra * (.5 + .5 * Math.sin(t * 9) ** 2), RED, { fill: .45 }); head(TX.danger, ra, RED, H * .2, 110); } } }
+  captions(t);
+  ctaGeo(t);
+  logo(.8);
+  endCardGeo(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  END = V('vend') + 3.0; buildRadar(); buildProfile(); buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('tibet', 'tex/tibet.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
