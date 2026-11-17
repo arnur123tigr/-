@@ -716,7 +716,7 @@ function hud(T, sc) {
 // scene 2 and 6: the real reliefs over the map
 function photos(T, sc) {
   if (sc === 2) {
-    const t0 = M.darius + .25, t1 = Math.min(M.caps + 1.35, M.S3 - .25), k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
+    const t0 = M.darius + .25, t1 = Math.min((M.caps ?? M.saka + .25) + 1.35, M.S3 - .25), k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
     photoCard(PHOTOS.persepolis, [150, 540, 780, 580], k, seg(T, t0, t1), { title: L.photo1, sub: L.photo1b, badge: 'PERSEPOLIS', rot: -3 });
   } else if (sc === 6) {
     const t0 = M.behistun - .05, tr = M.darius2 - .1, t1 = Math.min(M.memory - .1, M.S7 - .5), k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
