@@ -38,7 +38,7 @@ const TX = {
     cu: 'МЕДЬ', sn: 'ОЛОВО', br: 'БРОНЗА', t5a: 'ПИК ДОБЫЧИ', t5b: 'XIII–XII вв. до н. э.', bc: 'до н. э.',
     t6: 'АНДРОНОВСКАЯ КУЛЬТУРА', dug: 'полуземлянка', cow: 'коровы', char: 'двухколёсная колесница',
     t7a: 'ЕНТ', t7: ['БРОНЗА', '=', 'МЕДЬ', '+', 'ОЛОВО'],
-    ph1: ['Настоящий кинжал', 'андроновская культура'], ph2: ['Андроновский сосуд', 'настоящая находка'], vs: ['3D', 'реальный'],
+    ph1: ['Настоящие топор и нож', 'андроновская культура'], ph2: ['Андроновская чаша', 'Центральный Казахстан'], vs: ['3D', 'реальный'],
     cta: ['Перейдите по ссылке', 'в шапке профиля'], hdr: 'шапка профиля', mines: 'рудники'
   },
   kk: {
@@ -46,7 +46,7 @@ const TX = {
     cu: 'МЫС', sn: 'ҚАЛАЙЫ', br: 'ҚОЛА', t5a: 'ШЫҢЫ', t5b: 'б.з.б. XIII–XII ғғ.', bc: 'б.з.б.',
     t6: 'АНДРОН МӘДЕНИЕТІ', dug: 'жартылай жертөле', cow: 'сиыр', char: 'екі доңғалақты арба',
     t7a: 'ҰБТ', t7: ['ҚОЛА', '=', 'МЫС', '+', 'ҚАЛАЙЫ'],
-    ph1: ['Нағыз қола қанжар', 'андрон мәдениеті'], ph2: ['Андрон құмырасы', 'нағыз олжа'], vs: ['3D', 'шын'],
+    ph1: ['Нағыз балта мен пышақ', 'андрон мәдениеті'], ph2: ['Андрон ыдысы', 'Орталық Қазақстан'], vs: ['3D', 'шын'],
     cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'], hdr: 'профиль шапкасы', mines: 'кеніштер'
   }
 }[LANG];
@@ -716,7 +716,7 @@ SC.s4 = (u, d, T) => {      // copper + tin = bronze, casting in a stone mould, 
       hud(`${TX.cu} + ${TX.sn} = ${TX.br}`, u - pour0 + 0.3, 330, { px: 70, color: BR.amber, out: ph - pour0 - 0.6 });
       // real photo next to the low-poly axe
       const pu = u - ph;
-      photoCard(IMG.dagger, 800, 900, 360, 560, pu, d - ph - 0.1, TX.ph1[0], TX.ph1[1], { fly: [400, 0] });
+      photoCard(IMG.dagger, W / 2, 1010, 620, 418, pu, d - ph - 0.1, TX.ph1[0], TX.ph1[1], { fly: [600, 0] });
       if (pu > 0 && IMG.dagger) {
         const k = seg(pu, 0.3, 0.7) * (1 - seg(pu, d - ph - 0.5, d - ph - 0.1));
         pill(TX.vs[0] + '  ↔  ' + TX.vs[1], W / 2, 330, k, { px: 48 });
@@ -779,7 +779,7 @@ SC.s6 = (u, d, T) => {      // Andronovo settlement: dugouts, the pen with cows,
     tagAt(TX.char, w(cx, h6(cx, roadZ(cx)) + 2.2, roadZ(cx)), seg(u, ch, ch + 0.4) * (1 - seg(u, d - 0.4, d)), -150);
     // the real pot flies in like a sticker
     const pu = u - (M.ph2 - M.s6);
-    photoCard(IMG.pot, 760, 1060, 330, 330, pu, 3.8, TX.ph2[0], TX.ph2[1], { sticker: true, rot: -0.08, sway: true, fly: [500, -300] });
+    photoCard(IMG.pot, 770, 1000, 330, 392, pu, 3.8, TX.ph2[0], TX.ph2[1], { sticker: true, rot: -0.08, sway: true, fly: [500, -300] });
     credit(IMG.potCredit || '', seg(pu, 0.3, 0.6) * (1 - seg(pu, 3.4, 3.8)));
     flash(1 - seg(u, 0, 0.25), '0,0,0');
   };
