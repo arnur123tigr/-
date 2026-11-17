@@ -9,3 +9,6 @@ sfx_*.wav
 music_*.wav
 *.log
 __pycache__/
+orig_video_silent_*.mp4
+part_*.mp4
+patched_*.mp4
