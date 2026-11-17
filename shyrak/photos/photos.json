@@ -1,0 +1,4 @@
+{
+  "persepolis": {"file": "persepolis_saka.jpg", "fx": 0.36, "fy": 0.3, "z0": 1.0, "z1": 1.55, "credit": "Фото: Davide Mauro, CC BY-SA 4.0 (Wikimedia Commons)"},
+  "behistun": {"file": "behistun_relief.jpg", "fx": 0.93, "fy": 0.6, "z0": 1.0, "z1": 1.5, "sx": 0.885, "sy": 0.47, "credit": "Фото: Wikimedia Commons, public domain"}
+}
