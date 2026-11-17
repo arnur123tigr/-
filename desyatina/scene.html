@@ -1,0 +1,510 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>17 million desyatinas</title>
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:ME;src:url(fonts/Montserrat-ExtraBold.ttf)}
+@font-face{font-family:IN;src:url(fonts/Inter.ttf)}
+@font-face{font-family:SI;src:url(fonts/PT_Serif-Web-Italic.ttf)}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «17 миллион десятина: жер қалай кетті» — dark 3D money-documentary style (black glossy studio, glass, gold numbers), JAS EDUCATION brand.
+// render(T) is deterministic; T = video seconds. All cues come from beats.json (timing.py), ?lang=ru|kk.
+import * as THREE from 'three';
+import { RoomEnvironment } from './vendor/RoomEnvironment.js';
+
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+for (const f of ['40px MB', '40px ME', '600 40px IN', 'italic 40px SI']) await document.fonts.load(f, 'АБВабвӘғқңөұүһі1');
+const W = 1080, H = 1920;
+const BR = { navy: '#130B54', amber: '#FEB300', red: '#E8502F' };
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.autoClear = false;
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = .55;
+const camera = new THREE.PerspectiveCamera(36, W / H, 0.1, 300); scene.add(camera);
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = t => { t = clamp(t); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const bounce = t => { t = clamp(t); const n = 7.5625, d = 2.75; if (t < 1 / d) return n * t * t; if (t < 2 / d) return n * (t -= 1.5 / d) * t + .75; if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + .9375; return n * (t -= 2.625 / d) * t + .984375; };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+
+// ---------- texts ----------
+const TX = {
+  ru: { des: 'ДЕСЯТИН', s1sub: 'земли отняли у казахов', km: '≈ 185 000 км²', kgline: 'почти весь Кыргызстан', kz: 'КАЗАХСТАН', kg: 'КЫРГЫЗСТАН', kgA: '≈ 200 000 км²',
+        foot: '1 десятина ≈ 1,09 га · 17 млн десятин ≈ 185 тыс. км²', p1861: 'отмена крепостного права', p1868: '30 десятин на человека', blk: '30 ДЕСЯТИН', kolp: 'Семиречье · Г. Колпаковский',
+        ts: 'ТРАНССИБ', petro: 'Петропавловск', omsk: 'Омск', ppl: 'переселенцев', stol: 'СТОЛЫПИН', col1: '17 млн десятин', col2: '1 600 000 чел.', s5t: '1,6 МЛН КРЕСТЬЯН',
+        tax: 'КИБИТОЧНЫЙ НАЛОГ', unit: 'руб.', late: 'конец XIX в.', quote: ['«Под вопросом оказалось', 'само существование', 'казахского народа»'], sign: 'А. Байтурсынулы, 1913',
+        ent: 'ЕНТ', mil: 'млн', cta: ['Перейдите по ссылке', 'в шапке профиля'], arch: 'Архивное фото: переселенцы у ст. Канск, 1899' },
+  kk: { des: 'ДЕСЯТИНА', s1sub: 'қазақтан тартып алынған жер', km: '≈ 185 000 км²', kgline: 'бүкіл Қырғызстандай дерлік', kz: 'ҚАЗАҚСТАН', kg: 'ҚЫРҒЫЗСТАН', kgA: '≈ 200 000 км²',
+        foot: '1 десятина ≈ 1,09 га · 17 млн десятина ≈ 185 мың км²', p1861: 'басыбайлы құқық жойылды', p1868: '1 адамға 30 десятина', blk: '30 ДЕСЯТИНА', kolp: 'Жетісу · Г. Колпаковский',
+        ts: 'ТРАНССІБІР', petro: 'Петропавл', omsk: 'Омбы', ppl: 'қоныс аударушы', stol: 'СТОЛЫПИН', col1: '17 млн десятина', col2: '1 600 000 адам', s5t: '1,6 МЛН ШАРУА',
+        tax: 'ТҮТІН САЛЫҒЫ', unit: 'сом', late: 'ХІХ ғ. соңы', quote: ['«Қазақ ұлтының', 'өмір сүруінің өзі', 'проблемаға айналды»'], sign: 'А. Байтұрсынұлы, 1913',
+        ent: 'ҰБТ', mil: 'млн', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'], arch: 'Архив суреті: Канск бекеті маңындағы қоныс аударушылар, 1899' },
+}[LANG];
+
+// ---------- data ----------
+const B = (await (await fetch('beats.json')).json())[LANG], M = B.m, END = B.end;
+const GEO = await (await fetch('geo.json')).json();
+const img = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+const LOGO = await img('brand/logo_white_transparent.png');
+const PH = { settlers: await img('photos/settlers.jpg'), stolypin: await img('photos/stolypin.jpg'), baitur: await img('photos/baitursynov.jpg') };
+
+// ---------- textures & materials ----------
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const Mt = {
+  gold: new THREE.MeshStandardMaterial({ color: '#F2B53A', metalness: 1, roughness: .26 }),
+  goldD: new THREE.MeshStandardMaterial({ color: '#C58A1E', metalness: 1, roughness: .34 }),
+  glass: new THREE.MeshPhysicalMaterial({ color: '#cfd8ff', metalness: 0, roughness: .04, clearcoat: 1, clearcoatRoughness: .03, transparent: true, opacity: .32, envMapIntensity: 2.2, depthWrite: false }),
+  glassW: new THREE.MeshPhysicalMaterial({ color: '#eef2ff', metalness: 0, roughness: .08, clearcoat: 1, transparent: true, opacity: .55, envMapIntensity: 1.8 }),
+  floor: new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, map: canvasTex(512, 512, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(4,4,8,.78)'); g.addColorStop(.3, 'rgba(4,4,8,.8)'); g.addColorStop(1, 'rgba(4,4,8,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }) }),
+};
+const mesh = (g, m) => new THREE.Mesh(g, m);
+scene.add(new THREE.HemisphereLight('#ffffff', '#202030', .35));
+const key = new THREE.SpotLight('#fff1dc', 260, 60, .6, .6, 2); key.position.set(-4, 12, 9); scene.add(key, key.target);
+const rim = new THREE.PointLight('#ffb02e', 80, 40, 2); rim.position.set(0, 5, -5); scene.add(rim);
+const fill = new THREE.PointLight('#9aa4ff', 25, 40, 2); fill.position.set(6, 4, 7); scene.add(fill);
+const world = new THREE.Group(); scene.add(world);
+const floor = mesh(new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2), Mt.floor); const floorScene = new THREE.Scene(); floorScene.add(floor);
+
+// ---------- map (glass Kazakhstan + gold Kyrgyzstan) ----------
+const MAPH = 0;
+function shapeOf(pts, dx = 0, dy = 0) { const s = new THREE.Shape(); pts.forEach(([x, y], i) => i ? s.lineTo(x + dx, y + dy) : s.moveTo(x + dx, y + dy)); s.closePath(); return s; }
+const centroid = pts => { let a = 0, cx = 0, cy = 0; for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length], f = x0 * y1 - x1 * y0; a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f; } return [cx / 3 / a, cy / 3 / a]; };
+const KZC = centroid(GEO.kz), KGC = centroid(GEO.kg);
+// satellite plane (NASA Blue Marble, graded in prep_tex.py): lon 42..90, lat 36..60, same projection as geo.json
+const PX = lon => (lon - 67) * Math.cos(48 * Math.PI / 180) * 111.32 / 250, PY = lat => (lat - 48) * 110.57 / 250;
+const satTex = await new THREE.TextureLoader().loadAsync('tex/sat.jpg'); satTex.colorSpace = THREE.SRGBColorSpace; satTex.anisotropy = 16;
+const MAP = new THREE.Group(); world.add(MAP);
+const satW = PX(90) - PX(42), satD = PY(60) - PY(36);
+const kzMat = [new THREE.MeshBasicMaterial({ map: satTex, transparent: true, toneMapped: false })];
+const kzMesh = mesh(new THREE.PlaneGeometry(satW, satD).rotateX(-Math.PI / 2), kzMat[0]); kzMesh.position.set((PX(42) + PX(90)) / 2, 0, -(PY(36) + PY(60)) / 2); MAP.add(kzMesh);
+const kgGeo = new THREE.ExtrudeGeometry(shapeOf(GEO.kg, -KGC[0], -KGC[1]), { depth: .14, bevelEnabled: false }).rotateX(-Math.PI / 2);
+const kgMat = new THREE.MeshPhysicalMaterial({ color: '#FEB300', metalness: .55, roughness: .22, clearcoat: 1, transparent: true, opacity: .62, emissive: '#b36b00', emissiveIntensity: .55, depthWrite: false });
+const kgMesh = mesh(kgGeo, kgMat); MAP.add(kgMesh);
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const geoV = ([x, y], h = MAPH + .035) => V(x, h, -y);
+
+// ---------- timeline plates, peasant, block ----------
+const SG3 = new THREE.Group(); world.add(SG3);
+function plateTex(year) { return canvasTex(1024, 640, (c, w, h) => { c.fillStyle = '#d99a22'; c.fillRect(0, 0, w, h); const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#ffe3a0'); g.addColorStop(.5, '#e6a52c'); g.addColorStop(1, '#9e6a12'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.font = '300px MB'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = 'rgba(70,40,0,.85)'; c.fillText(year, w / 2, h / 2 + 18); c.fillStyle = 'rgba(255,240,200,.5)'; c.fillText(year, w / 2 - 3, h / 2 + 14); }); }
+function plate(year, x) {
+  const g = new THREE.Group(); const w = 2.6, d = 1.62;
+  g.add(mesh(new THREE.BoxGeometry(w, .2, d).translate(0, .1, 0), Mt.goldD));
+  const top = mesh(new THREE.PlaneGeometry(w * .96, d * .96).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: plateTex(year), metalness: .9, roughness: .3 })); top.position.y = .201; g.add(top);
+  g.position.x = x; SG3.add(g); return g;
+}
+const PL = [plate('1861', -1.7), plate('1868', 1.7)];
+const peasant = new THREE.Group(); SG3.add(peasant);
+{ const pts = [[0, 0], [.36, 0], [.38, .05], [.33, .2], [.28, .5], [.22, .78], [.24, .84], [.14, .9], [0, .92]].map(([x, y]) => new THREE.Vector2(x, y));
+  peasant.add(mesh(new THREE.LatheGeometry(pts, 48), Mt.glassW));
+  const head = mesh(new THREE.SphereGeometry(.17, 40, 30), Mt.glassW); head.position.y = 1.07; peasant.add(head);
+  const brim = mesh(new THREE.CylinderGeometry(.27, .27, .03, 40), Mt.glassW); brim.position.y = 1.2; peasant.add(brim);
+  const crown = mesh(new THREE.CylinderGeometry(.13, .16, .17, 40), Mt.glassW); crown.position.y = 1.29; peasant.add(crown);
+  const bag = mesh(new THREE.SphereGeometry(.15, 24, 18), Mt.glassW); bag.scale.set(1, 1.2, .8); bag.position.set(.3, .55, -.12); peasant.add(bag); }
+const blockTex = canvasTex(1024, 512, (c, w, h) => { const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#ffe7a8'); g.addColorStop(.45, '#f0b63c'); g.addColorStop(1, '#a8700f'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.font = '150px MB'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = 'rgba(60,30,0,.9)'; c.fillText(TX.blk.split(' ')[0], w / 2, h * .36); c.font = '92px MB'; c.fillText(TX.blk.split(' ')[1], w / 2, h * .74); });
+const block = mesh(new THREE.BoxGeometry(1.0, .5, .55).translate(0, .25, 0), [Mt.gold, Mt.gold, Mt.gold, Mt.gold, new THREE.MeshStandardMaterial({ map: blockTex, metalness: .85, roughness: .3 }), Mt.gold]); SG3.add(block);
+// archive photo in a thin gold frame, fixed to the camera (it turns towards the viewer like a glass plate)
+const photoG = new THREE.Group(); camera.add(photoG);
+function photoMesh(im, w) {
+  const g = new THREE.Group(); if (!im) return g; const h = w * im.height / im.width;
+  const t = new THREE.Texture(im); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; t.anisotropy = 8;
+  g.add(mesh(new THREE.BoxGeometry(w + .06, h + .06, .03), Mt.gold));
+  const p = mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, toneMapped: false, transparent: true })); p.position.z = .017; g.add(p);
+  g.userData.mat = p.material; return g;
+}
+const photoS = photoMesh(PH.settlers ? sepia(PH.settlers) : null, 1.8); photoG.add(photoS);
+function sepia(im, tone = [1, .9, .74]) {   // archive look: grey -> warm, a little contrast
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) { let v = (a[i] * .3 + a[i + 1] * .59 + a[i + 2] * .11) / 255; v = clamp((v - .5) * 1.15 + .5); a[i] = 255 * v * tone[0]; a[i + 1] = 255 * v * tone[1]; a[i + 2] = 255 * v * tone[2]; }
+  x.putImageData(d, 0, 0); return c;
+}
+const grey = im => sepia(im, [1, 1, 1]);
+
+// ---------- Stolypin sphere + columns ----------
+const SG5 = new THREE.Group(); world.add(SG5);
+const SPH_R = 1.15, SPH_Y = 4.55;
+const sphere = mesh(new THREE.SphereGeometry(SPH_R, 64, 48), Mt.glass); sphere.position.set(0, SPH_Y, 0); SG5.add(sphere);
+const ring = mesh(new THREE.TorusGeometry(SPH_R * .5, .035, 16, 64).rotateX(Math.PI / 2), Mt.gold); ring.position.set(0, SPH_Y - SPH_R - .02, 0); SG5.add(ring);
+const TILE = .075, NT = 42;
+const tileGeo = new THREE.BoxGeometry(.95, TILE * .86, .95);
+const colA = new THREE.InstancedMesh(tileGeo, Mt.gold, NT); colA.frustumCulled = false; SG5.add(colA);
+const colB = new THREE.InstancedMesh(new THREE.BoxGeometry(.95, TILE * .86, .95), Mt.glassW, NT); colB.frustumCulled = false; SG5.add(colB);
+const CAX = -1.25, CBX = 1.25, NA = 40, NB = 26;
+
+// ---------- coins ----------
+const SG6 = new THREE.Group(); world.add(SG6);
+function coinFace(v) { return canvasTex(512, 512, (c, w, h) => { const g = c.createRadialGradient(w * .4, h * .35, 10, w / 2, h / 2, w * .55); g.addColorStop(0, '#fff0bf'); g.addColorStop(.5, '#f0b63c'); g.addColorStop(1, '#93600c'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.strokeStyle = 'rgba(90,50,0,.6)'; c.lineWidth = 14; c.beginPath(); c.arc(w / 2, h / 2, w * .43, 0, 7); c.stroke();
+  c.font = `${v.length > 1 ? 170 : 230}px MB`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = 'rgba(70,38,0,.92)'; c.fillText(v, w / 2, h * .46); c.font = '70px MB'; c.fillText(TX.unit, w / 2, h * .74); }); }
+const COINROT = Math.PI / 2;
+const COINS = [['1,5', .62, -2.05], ['3', .82, -.25], ['4', 1.08, 2.0]].map(([v, r, x]) => {
+  const ft = coinFace(v); ft.center.set(.5, .5); ft.rotation = COINROT; const fm = new THREE.MeshStandardMaterial({ map: ft, metalness: .85, roughness: .28 });
+  const m = mesh(new THREE.CylinderGeometry(r, r, .16 * r / .8, 72).rotateX(Math.PI / 2), [Mt.goldD, fm, Mt.gold]); m.userData = { r, x }; SG6.add(m); return m;
+});
+
+const GROUPS = [MAP, SG3, SG5, SG6];
+function show(...g) { for (const x of GROUPS) x.visible = g.includes(x); photoG.visible = false; }
+
+// ---------- 2D helpers ----------
+function goldText(c, s, x, y, size, font = 'MB', depth = 8, glowA = 1) {
+  c.save(); c.font = `${size}px ${font}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (let i = depth; i > 0; i--) { c.fillStyle = `rgb(${92 + i * 4},${54 + i * 3},8)`; c.fillText(s, x, y + i * size / 90); }
+  const g = c.createLinearGradient(0, y - size * .5, 0, y + size * .45);
+  g.addColorStop(0, '#fff4cc'); g.addColorStop(.35, '#ffcd55'); g.addColorStop(.62, '#e59d12'); g.addColorStop(1, '#9a6306');
+  if (glowA > 0) { c.shadowColor = `rgba(254,179,0,${.55 * glowA})`; c.shadowBlur = size * .32; }
+  c.fillStyle = g; c.fillText(s, x, y); c.shadowBlur = 0;
+  c.globalAlpha *= .45; c.strokeStyle = '#fff3c0'; c.lineWidth = Math.max(1, size / 70); c.strokeText(s, x, y); c.restore();
+}
+function title(s, x, y, size, a = 1, font = 'MB', col = '#ffffff', align = 'center') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a; ctx.font = `${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillText(s, x, y + size * .06);
+  ctx.shadowColor = col === '#ffffff' ? 'rgba(255,255,255,.28)' : col; ctx.shadowBlur = size * .25; ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore();
+}
+function glow(x, y, r, col, a) {
+  if (a <= 0) return; const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, col.replace('A', (.5 * a).toFixed(3))); g.addColorStop(.45, col.replace('A', (.2 * a).toFixed(3))); g.addColorStop(1, col.replace('A', '0'));
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+}
+const GOLD = 'rgba(254,170,20,A)', NAVY = 'rgba(52,36,190,A)', RED = 'rgba(232,80,47,A)';
+function pill(s, x, y, size, a = 1, sc = 1, dot = true, font = 'ME') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha *= a; ctx.font = `${size}px ${font}`;
+  const tw = ctx.measureText(s).width, w = tw + size * (dot ? 1.9 : 1.2), h = size * 1.75;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 22;
+  ctx.fillStyle = 'rgba(19,11,84,.84)'; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 16); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(254,179,0,.4)'; ctx.lineWidth = 2; ctx.stroke();
+  let tx = -w / 2 + size * .6;
+  if (dot) { ctx.fillStyle = BR.amber; ctx.shadowColor = BR.amber; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(tx + size * .18, 0, size * .2, 0, 7); ctx.fill(); ctx.shadowBlur = 0; tx += size * .7; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, tx, size * .05); ctx.restore();
+}
+function vignette() {
+  const g = ctx.createRadialGradient(W / 2, H * .46, H * .22, W / 2, H * .5, H * .8);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.78)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function grain(t) { ctx.save(); ctx.globalAlpha = .04; for (let i = 0; i < 900; i++) { const f = Math.floor(t * 30); ctx.fillStyle = i % 2 ? '#fff' : '#000'; ctx.fillRect(hash(i + f * 13.1) * W, hash(i * 7.3 + f) * H, 2, 2); } ctx.restore(); }
+function project(v3) { const p = v3.clone().project(camera); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
+function pxRadius(v3, r) { const a = project(v3), e = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(r); const b = project(v3.clone().add(e)); return Math.hypot(b[0] - a[0], b[1] - a[1]); }
+function render3D() {
+  renderer.clear();
+  world.scale.y = -1; world.updateMatrixWorld(true); renderer.render(scene, camera);
+  world.scale.y = 1; world.updateMatrixWorld(true); renderer.render(floorScene, camera);
+  renderer.clearDepth(); renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+}
+function cam(px, py, pz, tx, ty, tz, fov = 36) { camera.position.set(px, py, pz); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(tx, ty, tz); camera.updateMatrixWorld(); }
+const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), s4 = new THREE.Vector3(), p4 = new THREE.Vector3();
+function setInst(im, i, x, y, z, ry = 0, s = 1) { e4.set(0, ry, 0); q4.setFromEuler(e4); s4.set(s, s, s); p4.set(x, y, z); m4.compose(p4, q4, s4); im.setMatrixAt(i, m4); }
+function topTitle(l1, l2, a, y = 300, s1 = 46, s2 = 96) {   // small white line + big amber line
+  if (a <= 0) return; const k = easeOut(a);
+  title(l1, W / 2, y - (1 - k) * 20, s1, a, 'ME');
+  if (l2) { title(l2, W / 2, y + s1 * .6 + s2 * .62 - (1 - k) * 30, s2, a, 'MB', BR.amber); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.amber; ctx.fillRect(W / 2 - 60 * k, y + s1 * .6 + s2 * 1.3, 120 * k, 7); ctx.restore(); }
+}
+function polyline(pts, w, col, glowCol, a = 1, close = false, dash = null) {
+  if (a <= 0 || pts.length < 2) return; ctx.save(); ctx.globalAlpha *= a; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (dash) ctx.setLineDash(dash);
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (close) ctx.closePath();
+  ctx.shadowColor = glowCol; ctx.shadowBlur = w * 4; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); ctx.shadowBlur = w * 1.5; ctx.stroke(); ctx.restore();
+}
+function counter(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+// ---------- scene 1: the odometer ----------
+const odo = document.createElement('canvas'); odo.width = W; odo.height = 400; const oc = odo.getContext('2d');
+const refl = document.createElement('canvas'); refl.width = W; refl.height = 400; const rc = refl.getContext('2d');
+function scene1(v) {
+  const t = v - M.s1 + .3, push = .92 + .14 * easeOut(seg(v, M.s1 - .3, M.S2));
+  glow(W / 2, H * .43, 900, GOLD, .55 * seg(t, 0, .8) + .15 * Math.sin(t * 2) * seg(t, .8, 1));
+  const DIG = '17000000', size = 150, gap = 26;
+  oc.clearRect(0, 0, W, 400); oc.font = `${size}px MB`;
+  const dw = oc.measureText('0').width * .98, total = DIG.length * dw + 2 * gap; let x = (W - total) / 2 + dw / 2;
+  for (let i = 0; i < DIG.length; i++) {
+    if (i === 2 || i === 5) x += gap;
+    const d = +DIG[i], st = .25 + i * .13, en = st + .9 + i * .05, p = easeOut(seg(t, st, en)), spins = 3 + (i % 3);
+    const val = (d + 10 * spins) * p - (1 - p) * 0, frac = val - Math.floor(val), cur = Math.floor(val) % 10, nxt = (cur + 1) % 10;
+    oc.save(); oc.beginPath(); oc.rect(x - dw / 2 - 4, 200 - size * .62, dw + 8, size * 1.24); oc.clip();
+    const sh = frac * size * 1.05, a0 = seg(t, st - .25, st);
+    oc.globalAlpha = a0; goldText(oc, String(cur), x, 200 - sh, size, 'MB', 8, .9); goldText(oc, String(nxt), x, 200 - sh + size * 1.05, size, 'MB', 8, .9); oc.restore();
+    x += dw;
+  }
+  ctx.save(); ctx.translate(W / 2, H * .42); ctx.scale(push, push);
+  ctx.drawImage(odo, -W / 2, -200);
+  rc.clearRect(0, 0, W, 400); rc.save(); rc.translate(0, 400); rc.scale(1, -1); rc.drawImage(odo, 0, -60); rc.restore();
+  rc.globalCompositeOperation = 'destination-in'; const fg = rc.createLinearGradient(0, 0, 0, 260); fg.addColorStop(0, 'rgba(0,0,0,.2)'); fg.addColorStop(1, 'rgba(0,0,0,0)'); rc.fillStyle = fg; rc.fillRect(0, 0, W, 400); rc.globalCompositeOperation = 'source-over';
+  ctx.drawImage(refl, -W / 2, 150);
+  ctx.restore();
+  const q = seg(t, 1.5, 1.9); title(TX.des, W / 2, H * .42 + 170 * push, 70, q, 'MB', '#ffffff');
+  ctx.save(); ctx.globalAlpha = q; ctx.fillStyle = BR.amber; ctx.fillRect(W / 2 - 70, H * .42 + 220 * push, 140, 6); ctx.restore();
+  const q2 = seg(v, M.s1 + 1.9, M.s1 + 2.3); title(TX.s1sub, W / 2, H * .62, 46, q2, 'ME', '#ffffff');
+  if (q2 > 0) glow(W / 2, H * .62, 420, RED, q2 * .55);
+}
+
+// ---------- scenes 2 & 4: the glass map ----------
+function mapCamOrbit(v) {
+  const l = seg(v, M.S2, M.S3), az = lerp(-.28, .26, easeIO(l)), R = lerp(25, 21.5, ease(l)), el = lerp(.86, .78, l);
+  cam(Math.sin(az) * R * Math.cos(el), R * Math.sin(el), Math.cos(az) * R * Math.cos(el), 0, 0, -.2, 36);
+}
+function mapFade() { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(0,0,0,.95)'); g.addColorStop(.2, 'rgba(0,0,0,.25)'); g.addColorStop(.36, 'rgba(0,0,0,0)'); g.addColorStop(.72, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.85)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+function drawBorders(a, kzGlow = 1) {
+  mapFade();
+  const kz = GEO.kz.map(p => project(geoV(p)));
+  polyline(kz, 4.5, '#ffd36a', 'rgba(254,179,0,.95)', a * kzGlow, true);
+}
+function kgAt(v) {   // gold Kyrgyzstan: falls into the middle of Kazakhstan at «185 000 km²»
+  const k = seg(v, M.km - .15, M.km + .75), off = [KZC[0] - .4, KZC[1] + .1];
+  kgMesh.visible = k > 0; kgMesh.position.set(off[0], MAPH + .02 + (1 - bounce(k)) * 4.5, -off[1]); kgMesh.rotation.y = (1 - easeOut(k)) * .6;
+  return { k, off };
+}
+function scene2(v) {
+  show(MAP); mapCamOrbit(v); const a = seg(v, M.S2, M.S2 + .5);
+  MAP.position.y = (1 - easeOut(a)) * -1.2; kzMat[0].opacity = a;
+  const kg = kgAt(v); rim.position.set(0, 6, -6); rim.intensity = 90 + kg.k * 60;
+  const [gx, gy] = project(V(0, 0, 0)); glow(gx, gy - 120, 900, NAVY, a * .9); glow(gx, gy - 60, 600, GOLD, kg.k * .45);
+  render3D(); drawBorders(a);
+  // true place of Kyrgyzstan: dashed white outline south of the border
+  const t2 = seg(v, M.kg - .1, M.kg + .4);
+  if (t2 > 0) { const kgp = GEO.kg.map(p => project(geoV(p, .02))); polyline(kgp, 3, 'rgba(255,255,255,.9)', 'rgba(255,255,255,.6)', t2, true, [10, 9]);
+    const c = project(geoV(KGC, .02)); pill(`${TX.kg} ${TX.kgA}`, c[0], c[1] + 70, 30, t2, .85 + .15 * back(t2), false); }
+  { const c = project(geoV([KZC[0] + .2, KZC[1] + 1.55], .3)); pill(TX.kz, c[0], c[1], 32, seg(v, M.S2 + .3, M.S2 + .7), 1, false); }
+  if (kg.k > .6) { const c = project(geoV([kg.off[0], kg.off[1]], .3)); glow(c[0], c[1], 260, GOLD, (kg.k - .6) * 1.5); }
+  topTitle('17 000 000 ' + TX.des.toLowerCase(), TX.km, seg(v, M.km - .1, M.km + .3), 270);
+  title(TX.kgline, W / 2, 640, 50, seg(v, M.kg + .2, M.kg + .6), 'ME', '#ffffff');
+  ctx.save(); ctx.globalAlpha = .55 * a; ctx.font = '600 24px IN'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(TX.foot, W / 2, H - 120); ctx.restore();
+}
+const RAIL = GEO.rail; let RAILLEN = [0]; for (let i = 1; i < RAIL.length; i++) RAILLEN.push(RAILLEN[i - 1] + Math.hypot(RAIL[i][0] - RAIL[i - 1][0], RAIL[i][1] - RAIL[i - 1][1]));
+function railAt(u) { const L = u * RAILLEN[RAILLEN.length - 1]; let i = 1; while (i < RAIL.length - 1 && RAILLEN[i] < L) i++; const f = (L - RAILLEN[i - 1]) / (RAILLEN[i] - RAILLEN[i - 1]); return [lerp(RAIL[i - 1][0], RAIL[i][0], f), lerp(RAIL[i - 1][1], RAIL[i][1], f)]; }
+const uOf = city => { const c = GEO.city[city]; let best = 0, bd = 1e9; for (let u = 0; u <= 1; u += .002) { const p = railAt(u), d = Math.hypot(p[0] - c[0], p[1] - c[1]); if (d < bd) { bd = d; best = u; } } return best; };
+const U_P = uOf('petro'), U_O = uOf('omsk');
+function scene4(v) {
+  show(MAP); kgMesh.visible = false; MAP.position.y = 0; kzMat[0].opacity = 1;
+  const l = seg(v, M.S4, M.S5), draw = easeIO(seg(v, M.S4 + .2, M.ts + 1.2));
+  const cu = lerp(.15, .62, easeIO(l)), tgt = railAt(cu), tg = geoV(tgt, 0);
+  const ang = lerp(-.55, -.15, l);
+  cam(tg.x + Math.sin(ang) * 9 - .5, 8.5 - l * 1.2, tg.z + Math.cos(ang) * 9 + 3.5, tg.x + 1.0, 0, tg.z + 1.6, 40);
+  rim.position.set(tg.x, 4, tg.z - 4); rim.intensity = 70;
+  const [gx, gy] = project(tg); glow(gx, gy, 800, NAVY, .9);
+  render3D(); drawBorders(1, .75);
+  // the line (drawn west -> east) + a glowing head
+  const pts = []; for (let u = 0; u <= draw + 1e-6; u += .01) pts.push(project(geoV(railAt(Math.min(u, draw)), MAPH + .06)));
+  polyline(pts, 7, '#ffe08a', 'rgba(254,179,0,1)', 1);
+  if (draw > 0 && draw < 1) { const h = project(geoV(railAt(draw), MAPH + .06)); glow(h[0], h[1], 120, GOLD, 1.4); }
+  // sleepers (small ticks) along the drawn line
+  // people: hundreds of gold dots running along the line to Petropavl and Omsk, gathering there
+  const p0 = M.st - .6, NPT = 340; let gathered = 0;
+  ctx.save();
+  for (let i = 0; i < NPT; i++) {
+    const t0 = p0 + hash(i) * 3.2, tt = v - t0; if (tt < 0) continue;
+    const dest = i % 5 < 3 ? U_P : U_O, u = Math.min(dest, hash(i + 3) * .05 + tt * .16);
+    const arrived = u >= dest; if (arrived) gathered++;
+    const p = railAt(u), j = arrived ? [(hash(i + 7) - .5) * .34, (hash(i + 9) - .5) * .26] : [(hash(i + 11) - .5) * .06, (hash(i + 13) - .5) * .06];
+    const s = project(geoV([p[0] + j[0], p[1] + j[1]], MAPH + .08));
+    ctx.fillStyle = arrived ? '#FEB300' : '#ffe9b0'; ctx.shadowColor = '#FEB300'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(s[0], s[1], arrived ? 4.5 : 3.8, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+  for (const [k, lab, m] of [['petro', TX.petro, M.petro], ['omsk', TX.omsk, M.omsk]]) { const c = project(geoV(GEO.city[k], MAPH + .1)); const q = seg(v, m - .1, m + .25); glow(c[0], c[1], 110, GOLD, q * .9); pill(lab, c[0], c[1] - 70, 30, q, .8 + .2 * back(q)); }
+  topTitle('1892', TX.ts, seg(v, M.S4 + .15, M.S4 + .55), 260, 58, 104);
+  const cq = seg(v, M.st, M.st + .3);
+  if (cq > 0) { const n = 10000 * easeOut(seg(v, M.st, M.S5 - 1.2)); ctx.save(); ctx.globalAlpha = cq; goldText(ctx, counter(n) + (n > 9999 ? '+' : ''), W / 2, 1265, 118, 'MB', 8); ctx.restore(); title(TX.ppl, W / 2, 1360, 44, cq, 'ME'); }
+  // photo plate (from scene 3) may still be leaving
+}
+
+// ---------- scene 3: timeline ----------
+function scene3(v) {
+  show(SG3); const l = seg(v, M.S3, M.S4);
+  const pan = easeIO(seg(v, M.flow, M.y1868 + .8));
+  const cx = lerp(-1.1, 1.5, pan);
+  cam(cx - 1.3, 4.4 - l * .4, 13.5 - l * 1.0, cx + .1, .9, 0, 36);
+  PL.forEach((p, i) => { const k = back(seg(v, M.S3 + i * .45 - .1, M.S3 + i * .45 + .45)); p.scale.set(1, Math.max(.001, k), 1); p.position.y = 0; p.visible = k > 0; });
+  const pk = back(seg(v, M.y1868 - .2, M.y1868 + .4)); peasant.visible = pk > 0; peasant.scale.setScalar(Math.max(.001, pk) * .95); peasant.position.set(1.25, .2, .1); peasant.rotation.y = Math.sin(v * .7) * .25;
+  const bt = seg(v, M.d30 - .6, M.d30 + .2); block.visible = bt > 0;
+  block.position.set(lerp(4.5, 2.25, easeOut(bt)), .2 + (1 - bounce(bt)) * 3.2, lerp(-1, .15, bt)); block.rotation.y = (1 - bt) * 1.8 - .2;
+  rim.position.set(cx, 4, -3); rim.intensity = 110; key.target.position.set(cx, 0, 0);
+  const [gx, gy] = project(V(cx, 1.5, -1)); glow(gx, gy, 850, GOLD, .55);
+  // archive photo, turning to camera like a glass plate (from «flow» for ~3.8 s)
+  const pa = seg(v, M.flow - .1, M.flow + .7), pz = 1 - seg(v, M.flow + 3.4, M.flow + 3.9);
+  photoG.visible = PH.settlers && pa > 0 && pz > 0;
+  if (photoG.visible) { photoG.position.set(0, .55 - (1 - easeOut(pa)) * .6, -6.6); photoG.rotation.set(-.08, (1 - easeOut(pa)) * 1.05 - .04 + (1 - pz) * -.9, 0); photoS.userData.mat.opacity = pa * pz; photoS.children[0].material = Mt.gold; }
+  render3D();
+  if (photoG.visible) { ctx.save(); ctx.globalAlpha = .7 * pa * pz; ctx.font = '600 24px IN'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(TX.arch, W / 2, 965); ctx.restore(); }
+  // plate captions
+  const p1 = project(V(-1.7, .25, .9)), p2 = project(V(1.7, .25, .9));
+  pill(TX.p1861, p1[0], p1[1] + 80, 30, seg(v, M.y1861, M.y1861 + .3) * (1 - seg(v, M.y1868 + .6, M.y1868 + 1)), 1, true);
+  pill(TX.kolp, p2[0], p2[1] + 80, 26, seg(v, M.y1868 + .8, M.y1868 + 1.1), 1, true);
+  topTitle(seg(v, M.S3, M.y1868) < 1 ? '1861' : '1868', seg(v, M.S3, M.y1868) < 1 ? '' : TX.p1868, seg(v, M.S3, M.S3 + .4), 270, 72, 62);
+  if (v > M.y1868) { const q = seg(v, M.y1868, M.y1868 + .35); ctx.save(); ctx.globalAlpha = 1; topTitle('1868', TX.p1868, q, 270, 72, 62); ctx.restore(); }
+}
+// wipe out the 1861 title when 1868 takes over: handled by clearing in render (titles drawn last)
+
+// ---------- scene 5: Stolypin ----------
+function scene5(v) {
+  show(SG5); const l = seg(v, M.S5, M.S6);
+  const camY = lerp(1.9, 3.3, easeIO(l));
+  cam(.3, camY + .5, 13.5 - l * .8, 0, camY + .1, 0, 38);
+  const sIn = back(seg(v, M.S5, M.S5 + .6)); sphere.scale.setScalar(Math.max(.001, sIn)); sphere.rotation.y = v * .3;
+  // tiles fall out of the sphere and stack: column A = land (gold), column B = people (white glass)
+  const fa = (i, n, t0, t1) => t0 + (t1 - t0) * i / n;
+  const stackA = (M.S5 + .9), stackB = M.yr;
+  for (const [im, X, N, a0, a1] of [[colA, CAX, NA, stackA, M.yr + .2], [colB, CBX, NB, stackB, M.mil + .6]]) {
+    im.count = N;
+    for (let i = 0; i < N; i++) {
+      const t0 = fa(i, N, a0, a1), tt = v - t0; const yT = TILE * (i + .5);
+      if (tt < 0) { setInst(im, i, X, -5, 0, 0, .001); continue; }
+      const k = clamp(tt / .45), y = lerp(SPH_Y - SPH_R * .4, yT, k * k), x = lerp(0, X, easeOut(k));
+      setInst(im, i, x, y, 0, (1 - k) * 2.5 + hash(i) * .1, lerp(.35, 1, k));
+    }
+    im.instanceMatrix.needsUpdate = true;
+  }
+  rim.position.set(0, SPH_Y + 1, -3); rim.intensity = 120;
+  const sc = project(V(0, SPH_Y, 0)); glow(sc[0], sc[1], 700, GOLD, .6 * sIn);
+  render3D();
+  // portrait inside the glass sphere: blurred -> sharp
+  const rpx = pxRadius(V(0, SPH_Y, 0), SPH_R) * sIn;
+  if (PH.stolypin && rpx > 4) {
+    const pa = seg(v, M.S5 + .3, M.S5 + 1.0), sharp = seg(v, M.S5 + .8, M.S5 + 2.2);
+    ctx.save(); ctx.beginPath(); ctx.arc(sc[0], sc[1], rpx * .93, 0, 7); ctx.clip(); ctx.globalAlpha = .9 * pa;
+    ctx.filter = `blur(${((1 - sharp) * 18).toFixed(1)}px)`; const im = STOLY, s = rpx * 2.05 / Math.min(im.width, im.height);
+    ctx.drawImage(im, sc[0] - im.width * s / 2, sc[1] - im.height * s * .42, im.width * s, im.height * s); ctx.filter = 'none';
+    const g = ctx.createRadialGradient(sc[0], sc[1], rpx * .5, sc[0], sc[1], rpx); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(10,8,40,.75)'); ctx.fillStyle = g; ctx.fillRect(sc[0] - rpx, sc[1] - rpx, 2 * rpx, 2 * rpx);
+    ctx.restore();
+  }
+  // glass highlights over the portrait
+  if (rpx > 4) { ctx.save(); const g = ctx.createRadialGradient(sc[0] - rpx * .38, sc[1] - rpx * .45, 2, sc[0] - rpx * .3, sc[1] - rpx * .4, rpx * .6); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sc[0], sc[1], rpx, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,230,170,.55)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+    pill(`${TX.stol} · 1906`, sc[0], sc[1] - rpx - 50, 30, seg(v, M.S5 + .5, M.S5 + .9), 1, true); }
+  // column labels + counters
+  const nA = Math.min(NA, Math.max(0, Math.floor((v - stackA) / ((M.yr + .2 - stackA) / NA)) + 1)), nB = Math.min(NB, Math.max(0, Math.floor((v - stackB) / ((M.mil + .6 - stackB) / NB)) + 1));
+  const ta = project(V(CAX, TILE * nA + .25, 0)), tb = project(V(CBX, TILE * nB + .25, 0));
+  if (nA > 0) { ctx.save(); goldText(ctx, `${Math.round(17 * nA / NA)} ${TX.mil}`, ta[0], ta[1] - 80, 74, 'MB', 6); ctx.restore(); title(TX.col1.replace(/^17 млн /, ''), ta[0], ta[1] - 22, 32, 1, 'ME'); }
+  if (nB > 0) { ctx.save(); goldText(ctx, counter(1600000 * nB / NB), tb[0], tb[1] - 80, 62, 'MB', 6); ctx.restore(); title('1871–1917', tb[0], tb[1] - 24, 32, 1, 'ME'); }
+  topTitle(`1906 · ${TX.stol}`, TX.s5t, seg(v, M.mil - .1, M.mil + .3), 250, 50, 84);
+}
+let STOLY = null;
+
+// ---------- scene 6: tax coins ----------
+function scene6(v) {
+  show(SG6); const l = seg(v, M.S6, M.S7), push = easeIO(seg(v, M.c3 + .2, M.S7));
+  const marks = [M.c1, M.c2, M.c3];
+  COINS.forEach((c, i) => { const k = seg(v, marks[i] - .45, marks[i] + .25); c.visible = k > 0; const r = c.userData.r;
+    c.position.set(c.userData.x, r + .05 + (1 - bounce(k)) * 5, 0); c.rotation.set(0, (1 - easeOut(k)) * 4 + Math.sin(v * .9 + i) * .18, 0); });
+  cam(lerp(0, 1.5, push), lerp(2.4, 1.9, push), lerp(19, 12, push), lerp(.1, 1.6, push), lerp(1.0, 1.1, push), 0, 36);
+  rim.position.set(1, 4, -3); rim.intensity = 120;
+  glow(W / 2, H * .4, 800, GOLD, .5); render3D();
+  // years under the coins
+  const yrs = ['1824', '1867–1868', TX.late];
+  COINS.forEach((c, i) => { if (!c.visible) return; const p = project(V(c.userData.x, 0, .6)); title(yrs[i], p[0], p[1] + 34, 32, seg(v, marks[i], marks[i] + .3), 'ME'); });
+  // thin red line chart, rising
+  const pr = easeIO(seg(v, M.c1 - .2, M.c3 + .6)), cy0 = 1450, cy1 = 1270, x0 = 150, x1 = 930;
+  const pts = []; const yAt = u => u < .4 ? lerp(cy0, cy0 - 50, u / .4) : u < .7 ? lerp(cy0 - 50, cy0 - 115, (u - .4) / .3) : lerp(cy0 - 115, cy1 - 40, (u - .7) / .3);
+  for (let u = 0; u <= pr + 1e-6; u += .01) pts.push([lerp(x0, x1, u), yAt(u)]);
+  ctx.save(); ctx.globalAlpha = seg(v, M.S6, M.S6 + .3); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.setLineDash([8, 10]); ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x0 - 30, cy0 - i * 90); ctx.lineTo(x1 + 30, cy0 - i * 90); ctx.stroke(); } ctx.restore();
+  polyline(pts, 5, '#ff7a5a', 'rgba(232,80,47,.95)', 1);
+  if (pts.length) { const [hx, hy] = pts[pts.length - 1]; ctx.save(); ctx.fillStyle = '#ffb19c'; ctx.shadowColor = BR.red; ctx.shadowBlur = 20; ctx.beginPath(); ctx.arc(hx, hy, 9, 0, 7); ctx.fill(); ctx.restore(); }
+  topTitle(TX.tax, `1,5 → 3 → 4 ${TX.unit}`, seg(v, M.S6 + .1, M.S6 + .5), 260, 54, 88);
+}
+
+// ---------- scene 7: the quote ----------
+let BAIT = null;
+function scene7(v) {
+  const a = seg(v, M.S7, M.S7 + .6), out = 1 - seg(v, M.S8 - .25, M.S8);
+  if (BAIT) { const pa = seg(v, M.S7 + .3, M.S7 + 1.6) * out, h = 700, w = h * BAIT.width / BAIT.height, x = W / 2 - w / 2, y = 250;
+    ctx.save(); ctx.globalAlpha = pa; ctx.drawImage(BAIT, x, y, w, h);
+    const g = ctx.createLinearGradient(0, y + h * .55, 0, y + h); g.addColorStop(0, 'rgba(3,3,6,0)'); g.addColorStop(1, 'rgba(3,3,6,1)'); ctx.fillStyle = g; ctx.fillRect(x - 2, y, w + 4, h + 2);
+    const g2 = ctx.createLinearGradient(x, 0, x + w, 0); g2.addColorStop(0, 'rgba(3,3,6,1)'); g2.addColorStop(.18, 'rgba(3,3,6,0)'); g2.addColorStop(.82, 'rgba(3,3,6,0)'); g2.addColorStop(1, 'rgba(3,3,6,1)'); ctx.fillStyle = g2; ctx.fillRect(x - 2, y - 2, w + 4, h + 4); ctx.restore(); }
+  TX.quote.forEach((s, i) => { const q = seg(v, M.S7 + .9 + i * .9, M.S7 + 1.9 + i * .9) * out; if (q <= 0) return;
+    ctx.save(); ctx.globalAlpha = q; ctx.font = 'italic 70px SI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(255,255,255,.25)'; ctx.shadowBlur = 18; ctx.fillText(s, W / 2, 1060 + i * 96 + (1 - q) * 12); ctx.restore(); });
+  const sq = seg(v, M.S7 + 3.8, M.S7 + 4.4) * out; title('— ' + TX.sign, W / 2, 1400, 38, sq, 'ME', BR.amber);
+}
+
+// ---------- scene 8: all numbers into one glass sphere, it floats up ----------
+function glassBall(x, y, r, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(x - r * .3, y - r * .35, r * .05, x, y, r); g.addColorStop(0, 'rgba(255,255,255,.35)'); g.addColorStop(.35, 'rgba(120,120,255,.12)'); g.addColorStop(.85, 'rgba(60,40,200,.22)'); g.addColorStop(1, 'rgba(255,220,150,.45)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,225,160,.7)'; ctx.lineWidth = 3; ctx.shadowColor = BR.amber; ctx.shadowBlur = 25; ctx.stroke();
+  ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.beginPath(); ctx.ellipse(x - r * .38, y - r * .5, r * .22, r * .1, -.6, 0, 7); ctx.fill(); ctx.restore();
+}
+function scene8(v) {
+  const a = seg(v, M.S8, M.S8 + .4), gather = easeIO(seg(v, M.s8 + 1.4, M.link - .2)), up = easeIO(seg(v, M.link - .3, M.link + 1.2));
+  glow(W / 2, H * .45, 850, GOLD, .5 * a);
+  const bx = W / 2, by = lerp(H * .47, 60, up), br = lerp(250, 70, up);
+  title(TX.ent, W / 2, 300, 64, a * (1 - gather), 'MB', '#ffffff');
+  const NUM = [['1906', ''], [`17 ${TX.mil}`, TX.des.toLowerCase()], ['1,6 ' + TX.mil, TX.col2.split(' ').pop()]];
+  NUM.forEach(([n, s], i) => { const q = seg(v, M.s8 + .2 + i * .35, M.s8 + .6 + i * .35); if (q <= 0) return;
+    const x0 = W / 2, y0 = 560 + i * 250, x = lerp(x0, bx + (i - 1) * br * .45, gather), y = lerp(y0, by - br * .35 + i * br * .34, gather), sz = lerp(130, br * .32, gather);
+    ctx.save(); ctx.globalAlpha = q; goldText(ctx, n, x, y, sz * (.85 + .15 * back(q)), 'MB', 7); ctx.restore();
+    if (s && gather < .5) title(s, x0, y0 + 88, 36, q * (1 - gather * 2), 'ME'); });
+  glassBall(bx, by, br, seg(v, M.s8 + 1.2, M.s8 + 1.8));
+}
+
+// ---------- captions, logo, end card ----------
+function drawCaption(v) {
+  if (v > M.End - .05 || (v > M.S7 + .2 && v < M.S8)) return;
+  const ws = B.words, i = ws.findIndex(w => v >= w.t0 - .08 && v < w.t1 + .25); if (i < 0) return;
+  const k = ws[i].k, ch = ws.filter(w => w.k === k); const last = ch[ch.length - 1];
+  if (v > last.t1 + .25 && ws[i + 1] && ws[i + 1].k !== k) return;
+  const a = clamp((v - ch[0].t0 + .1) / .12) * clamp((last.t1 + .3 - v) / .12);
+  ctx.save(); ctx.globalAlpha = a; ctx.font = '54px ME'; ctx.textBaseline = 'middle';
+  const parts = ch.map(w => w.w.toUpperCase()), sp = ctx.measureText(' ').width, wsz = parts.map(p => ctx.measureText(p).width), tot = wsz.reduce((s, x) => s + x, 0) + sp * (parts.length - 1);
+  let x = W / 2 - tot / 2; const y = H * .785;
+  ch.forEach((w, j) => { const cur = v >= w.t0 && v < w.t1 + .05; ctx.fillStyle = w.c === 'r' ? '#ff7a5a' : (w.c === 'a' || cur) ? BR.amber : '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 14; ctx.textAlign = 'left'; ctx.fillText(parts[j], x, y); x += wsz[j] + sp; });
+  ctx.restore();
+}
+function drawLogo(v, a = .8) { if (!LOGO) return; const h = 70, w = h * LOGO.width / LOGO.height; ctx.save(); ctx.globalAlpha = a; ctx.drawImage(LOGO, W - 48 - w, 48, w, h); ctx.restore(); }
+function endCard(v) {
+  const a = seg(v, M.End, M.End + .5); if (a <= 0) return false;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H * .4, 0, W / 2, H * .4, 900); g.addColorStop(0, 'rgba(70,50,200,.45)'); g.addColorStop(1, 'rgba(19,11,84,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+  if (LOGO) { const q = back(seg(v, M.End + .1, M.End + .6)), h = 420 * q, w = h * LOGO.width / LOGO.height; ctx.save(); ctx.globalAlpha = a; ctx.drawImage(LOGO, W / 2 - w / 2, H * .38 - h / 2, w, h); ctx.restore(); }
+  TX.cta.forEach((s, i) => title(s, W / 2, H * .62 + i * 84, 62, seg(v, M.End + .35 + i * .25, M.End + .7 + i * .25), 'MB', BR.amber));
+  // profile header hint: a small sphere landing at the top
+  glassBall(W / 2, 60 + Math.sin(v * 3) * 3, 70, a * (1 - seg(v, M.End + 1.5, M.End + 2)));
+  return a >= 1;
+}
+
+// ---------- main ----------
+window.render = function (T) {
+  const v = T;
+  ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.fillStyle = '#030306'; ctx.fillRect(0, 0, W, H);
+  if (v < M.S2) scene1(v);
+  else if (v < M.S3) scene2(v);
+  else if (v < M.S4) scene3(v);
+  else if (v < M.S5) scene4(v);
+  else if (v < M.S6) scene5(v);
+  else if (v < M.S7) scene6(v);
+  else if (v < M.S8) scene7(v);
+  else scene8(v);
+  vignette(); grain(T);
+  // cut transitions: quick dip; S5 = flash, S7 = fade to black
+  const dip = Math.max(...[M.S2, M.S3, M.S6, M.S8].map(c => 1 - clamp(Math.abs(v - c) / .12)));
+  if (dip > 0) { ctx.fillStyle = `rgba(0,0,0,${dip * .85})`; ctx.fillRect(0, 0, W, H); }
+  const fl = 1 - clamp(Math.abs(v - M.S5) / .18); if (fl > 0) { ctx.fillStyle = `rgba(255,236,190,${fl * .9})`; ctx.fillRect(0, 0, W, H); }
+  const fb = 1 - clamp(Math.abs(v - M.S7) / .35); if (fb > 0) { ctx.fillStyle = `rgba(0,0,0,${fb})`; ctx.fillRect(0, 0, W, H); }
+  const full = endCard(v);
+  drawCaption(v); if (!full) drawLogo(v);
+  if (T < .25) { ctx.fillStyle = `rgba(0,0,0,${1 - T / .25})`; ctx.fillRect(0, 0, W, H); }
+};
+window.ready = (async () => {
+  if (PH.stolypin) STOLY = grey(PH.stolypin);
+  if (PH.baitur) BAIT = grey(PH.baitur);
+  render(0); return true;
+})();
+</script></body></html>
