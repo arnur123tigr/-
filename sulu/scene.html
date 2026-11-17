@@ -270,23 +270,121 @@ const PATHS = {
   spear: 'M112 22L206 -16L208 -12L114 28Z',
 };
 const P2 = {}; for (const k in PATHS) P2[k] = new Path2D(PATHS[k]);
-function khagan(x, y, s, o = {}) {   // bust, box 200x240 scaled by s, (x,y) = top-left
+// Turkic khagan, comic style: flat colours, ink outlines, cel shading. Box 200x240 scaled by s, (x,y) = top-left.
+// o.cap = Ushlik (felt cap with fur brim, grey beard, no horns); o.grey = desaturated.
+const KC = { skin: '#d9a06a', skinS: '#b07a4a', steel: '#8090a2', steelS: '#5c6a7c', gold: '#e3a92a', goldS: '#a8761a', red: '#9e2420', redS: '#6e1714',
+  teal: '#1f6f6a', fur: '#6b4a32', furS: '#4a3221', hair: '#16110f', mail: '#9aa4b0', felt: '#efe6d2', feltS: '#cbbfa5' };
+function inkPath(d, fill, lw = 3) { const p = typeof d === 'string' ? new Path2D(d) : d; ctx.fillStyle = fill; ctx.fill(p); ctx.lineWidth = lw; ctx.strokeStyle = BR.ink; ctx.lineJoin = 'round'; ctx.stroke(p); return p; }
+function shadeIn(p, fill, clipFn) { ctx.save(); ctx.clip(p); ctx.fillStyle = fill; ctx.beginPath(); clipFn(); ctx.fill(); ctx.restore(); }
+const KP = {};
+function khagan(x, y, s, o = {}) {
+  const C = KC;
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-  const fill = o.fill || BR.ink;
-  if (o.rim) { ctx.save(); ctx.shadowColor = o.rim; ctx.shadowBlur = 26 / s * 1.5; ctx.fillStyle = o.rim; (o.cap ? ['body', 'mail', 'head', 'beard', 'cap'] : ['body', 'mail', 'head', 'beard', 'helmet'].concat(o.noHorns ? [] : ['horns'])).forEach(k => ctx.fill(P2[k])); ctx.restore(); }
-  ctx.save(); ctx.translate(-3, 3); ctx.fillStyle = fill;
-  const parts = o.cap ? ['body', 'mail', 'head', 'beard', 'cap'] : ['body', 'mail', 'head', 'beard', 'helmet'].concat(o.noHorns ? [] : ['horns']);
-  parts.forEach(k => ctx.fill(P2[k]));
-  // lamellar armour rows and the helmet band, a dark grey so the silhouette keeps some form
-  ctx.strokeStyle = 'rgba(120,110,140,.55)'; ctx.lineWidth = 2.2;
-  for (let r = 0; r < 4; r++) { ctx.beginPath(); ctx.moveTo(40 + r * 4, 196 + r * 11); ctx.quadraticCurveTo(100, 186 + r * 11, 160 - r * 4, 196 + r * 11); ctx.stroke(); }
-  for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.moveTo(52 + i * 16, 190); ctx.lineTo(50 + i * 16.6, 236); ctx.stroke(); }
-  if (!o.cap) { ctx.beginPath(); ctx.moveTo(56, 95); ctx.lineTo(144, 95); ctx.stroke(); }
+  if (o.grey) ctx.filter = 'grayscale(1) brightness(.8)';
+  // rim glow behind the figure
+  if (o.rim) { ctx.save(); ctx.shadowColor = o.rim; ctx.shadowBlur = 30; ctx.fillStyle = o.rim; ctx.fill(new Path2D('M0 240C2 210 30 186 62 180L76 172L70 110C66 66 86 34 100 10C114 34 134 66 130 110L124 172L138 180C170 186 198 210 200 240Z')); ctx.restore(); }
+  // fur cloak over the shoulders
+  const cloak = inkPath('M0 240C2 212 28 190 60 182L140 182C172 190 198 212 200 240Z', C.fur);
+  shadeIn(cloak, C.furS, () => ctx.rect(120, 170, 90, 80));
+  ctx.strokeStyle = 'rgba(20,12,8,.7)'; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 26; i++) { const a = i / 25, px = 6 + a * 188, py = 236 - Math.sin(a * Math.PI) * 50; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + (a - .5) * 8, py - 9); ctx.stroke(); }
+  // lamellar pauldrons
+  for (const sg of [1, -1]) {
+    ctx.save(); if (sg < 0) { ctx.translate(200, 0); ctx.scale(-1, 1); }
+    const pd = inkPath('M12 222C18 196 40 184 66 184L72 212C50 210 30 216 16 232Z', sg > 0 ? C.steel : C.steelS);
+    ctx.save(); ctx.clip(pd); ctx.strokeStyle = 'rgba(11,10,20,.55)'; ctx.lineWidth = 1.4;
+    for (let r = 0; r < 5; r++) { ctx.beginPath(); ctx.moveTo(10, 196 + r * 8); ctx.quadraticCurveTo(40, 186 + r * 8, 74, 190 + r * 8); ctx.stroke(); }
+    for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.moveTo(16 + i * 7, 186); ctx.lineTo(14 + i * 7, 236); ctx.stroke(); }
+    ctx.restore(); ctx.restore();
+  }
+  // kaftan with triangular lapels
+  const kaf = inkPath('M64 182L136 182L150 240L50 240Z', o.cap ? '#2c4a8a' : C.red);
+  shadeIn(kaf, o.cap ? '#1d3366' : C.redS, () => ctx.rect(104, 180, 50, 70));
+  for (const sg of [1, -1]) {
+    ctx.save(); if (sg < 0) { ctx.translate(200, 0); ctx.scale(-1, 1); }
+    const lp = inkPath('M66 184L100 226L86 240L58 240Z', C.teal, 2.6);
+    ctx.save(); ctx.clip(lp); ctx.fillStyle = 'rgba(227,169,42,.8)'; for (let i = 0; i < 14; i++) { ctx.beginPath(); ctx.arc(64 + (i % 4) * 8 + (i >> 2) * 3, 196 + (i >> 2) * 11, 1.8, 0, 7); ctx.fill(); } ctx.restore();
+    ctx.strokeStyle = C.gold; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(67, 186); ctx.lineTo(99, 225); ctx.stroke();
+    ctx.restore();
+  }
+  // gold neck plaque / torque
+  inkPath('M84 184Q100 196 116 184L114 192Q100 202 86 192Z', C.gold, 2);
+  // neck
+  const neck = inkPath('M86 156L114 156L116 186Q100 192 84 186Z', C.skin, 2.6);
+  shadeIn(neck, C.skinS, () => ctx.rect(84, 156, 34, 14));
+  // braids
+  if (!o.cap) for (const bx of [-1, 1]) {
+    for (let i = 0; i < 7; i++) { const cx = 100 + bx * (40 + i * 1.2), cy = 168 + i * 10;
+      ctx.beginPath(); ctx.ellipse(cx, cy, 5.5, 7, bx * .25 * (i % 2 ? 1 : -1), 0, 7); ctx.fillStyle = C.hair; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = BR.ink; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx - 1.5, cy - 2, 3, 3.6, 4.6); ctx.stroke(); }
+    inkPath(new Path2D(`M${100 + bx * 46} 236l${bx * 4} 10l${-bx * 7} 0Z`), C.red, 1.5);
+  }
+  // chain-mail aventail hanging from the helmet
+  if (!o.cap) for (const sg of [1, -1]) {
+    ctx.save(); if (sg < 0) { ctx.translate(200, 0); ctx.scale(-1, 1); }
+    const av = inkPath('M60 104C56 132 60 156 74 172L86 166L84 140L72 112Z', C.mail, 2.4);
+    ctx.save(); ctx.clip(av); ctx.strokeStyle = 'rgba(11,10,20,.45)'; ctx.lineWidth = 1;
+    for (let yy = 104; yy < 176; yy += 5) for (let xx = 54 + ((yy / 5) & 1) * 2.5; xx < 90; xx += 5) { ctx.beginPath(); ctx.arc(xx, yy, 2.4, 0, Math.PI); ctx.stroke(); }
+    ctx.restore(); ctx.restore();
+  }
+  // face
+  const face = inkPath('M70 104C68 130 74 150 86 162C92 168 108 168 114 162C126 150 132 130 130 104Z', C.skin);
+  shadeIn(face, C.skinS, () => { ctx.moveTo(108, 100); ctx.quadraticCurveTo(122, 130, 106, 170); ctx.lineTo(140, 170); ctx.lineTo(140, 100); });
+  ctx.strokeStyle = 'rgba(110,60,30,.6)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(76, 134); ctx.quadraticCurveTo(80, 140, 84, 138); ctx.stroke();
+  // eyes, brows (fierce)
+  for (const sg of [1, -1]) {
+    ctx.save(); if (sg < 0) { ctx.translate(200, 0); ctx.scale(-1, 1); }
+    inkPath('M78 124Q86 118 95 123Q87 128 78 124Z', '#fbf3e3', 1.6);
+    ctx.fillStyle = '#2a1a10'; ctx.beginPath(); ctx.arc(88.5, 123.5, 2.8, 0, 7); ctx.fill();
+    if (o.glint) { ctx.fillStyle = BR.acc; ctx.beginPath(); ctx.arc(88, 123, 1.1, 0, 7); ctx.fill(); }
+    ctx.fillStyle = o.cap ? '#8d8a86' : C.hair; ctx.beginPath(); ctx.moveTo(75, 114); ctx.lineTo(96, 119); ctx.lineTo(95, 115); ctx.lineTo(79, 109); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // nose
+  ctx.strokeStyle = BR.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(100, 124); ctx.lineTo(97, 139); ctx.quadraticCurveTo(100, 142, 104, 139); ctx.stroke();
+  // moustache, mouth, beard
+  const hc = o.cap ? '#9a958e' : C.hair;
+  inkPath('M100 145C92 143 84 146 79 162C85 153 92 150 100 150C108 150 115 153 121 162C116 146 108 143 100 145Z', hc, 1.6);
+  ctx.strokeStyle = BR.ink; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(94, 155); ctx.lineTo(106, 155); ctx.stroke();
+  if (o.cap) inkPath('M84 156C86 176 94 190 100 194C106 190 114 176 116 156Q100 164 84 156Z', hc, 1.6);
+  else inkPath('M95 160L100 174L105 160Z', hc, 1.4);
+  if (o.cap) {
+    // tall felt cap with a fur brim
+    const cp = inkPath('M70 100C72 70 86 40 100 16C114 40 128 70 130 100Z', C.felt);
+    shadeIn(cp, C.feltS, () => ctx.rect(104, 10, 40, 100));
+    ctx.strokeStyle = C.gold; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(100, 18); ctx.lineTo(100, 96); ctx.stroke();
+    const br = inkPath('M62 92Q100 82 138 92L138 108Q100 98 62 108Z', C.fur);
+    ctx.save(); ctx.clip(br); ctx.strokeStyle = 'rgba(20,12,8,.6)'; ctx.lineWidth = 1.2; for (let i = 0; i < 24; i++) { ctx.beginPath(); ctx.moveTo(62 + i * 3.3, 106); ctx.lineTo(64 + i * 3.3, 92); ctx.stroke(); } ctx.restore();
+  } else drawHelmet(o);
   ctx.restore();
-  // eyes
-  const eg = o.eyes ?? 1; if (eg > 0) { ctx.fillStyle = o.eyeCol || BR.acc; ctx.shadowColor = o.eyeCol || BR.acc; ctx.shadowBlur = 18 * eg;
-    ctx.globalAlpha = eg; ctx.beginPath(); ctx.moveTo(78, 116); ctx.lineTo(96, 120); ctx.lineTo(80, 123); ctx.fill(); ctx.beginPath(); ctx.moveTo(122, 116); ctx.lineTo(104, 120); ctx.lineTo(120, 123); ctx.fill(); }
+}
+// conical Turkic helmet: gold ribs, brow band with a gem, red horse-hair plume, golden ibex horns on the front
+function drawHelmet(o = {}) {
+  const C = KC;
+  // plume
+  ctx.save(); ctx.lineCap = 'round';
+  const plume = i => { ctx.beginPath(); ctx.moveTo(100, 14); ctx.bezierCurveTo(112, -6 + i, 132 + i * 2, -4 + i * 2, 146 + i * 3, 22 + i * 4); };
+  for (let i = 0; i < 7; i++) { plume(i); ctx.strokeStyle = BR.ink; ctx.lineWidth = 7.5; ctx.stroke(); }
+  for (let i = 0; i < 7; i++) { plume(i); ctx.strokeStyle = i % 2 ? C.red : '#d4402f'; ctx.lineWidth = 4.5; ctx.stroke(); }
   ctx.restore();
+  // ibex horns (behind the band, in front of the dome)
+  const horn = sg => { ctx.save(); if (sg < 0) { ctx.translate(200, 0); ctx.scale(-1, 1); }
+    const hp = inkPath('M82 98C70 74 60 52 70 26C74 22 78 24 76 30C70 52 80 72 92 94Z', C.gold, 2.6);
+    shadeIn(hp, C.goldS, () => { ctx.moveTo(80, 20); ctx.lineTo(92, 96); ctx.lineTo(100, 96); ctx.lineTo(100, 20); });
+    ctx.strokeStyle = BR.ink; ctx.lineWidth = 1.6; for (let i = 0; i < 8; i++) { const k = i / 8; const px = lerp(84, 70, k), py = lerp(90, 34, k); ctx.beginPath(); ctx.moveTo(px - 5, py + 2); ctx.lineTo(px + 6, py - 1); ctx.stroke(); }
+    ctx.restore(); };
+  // dome
+  const dome = inkPath('M64 106C64 70 84 40 100 16C116 40 136 70 136 106Z', C.steel);
+  shadeIn(dome, C.steelS, () => { ctx.moveTo(104, 14); ctx.quadraticCurveTo(116, 60, 112, 110); ctx.lineTo(140, 110); ctx.lineTo(140, 14); });
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(80, 92); ctx.quadraticCurveTo(82, 60, 96, 30); ctx.stroke();
+  for (const [x0, x1] of [[100, 100], [92, 80], [108, 120]]) { ctx.strokeStyle = BR.ink; ctx.lineWidth = 5.5; ctx.beginPath(); ctx.moveTo(lerp(100, x0, .2), 22); ctx.lineTo(x1, 102); ctx.stroke(); ctx.strokeStyle = C.gold; ctx.lineWidth = 3; ctx.stroke(); }
+  horn(1); horn(-1);
+  // knob
+  inkPath('M95 18L100 6L105 18Z', C.gold, 2);
+  // brow band
+  inkPath('M60 98Q100 90 140 98L140 110Q100 102 60 110Z', C.gold, 2.6);
+  ctx.fillStyle = 'rgba(168,118,26,.8)'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(66 + i * 8.5, 103 - Math.sin(i / 8 * Math.PI) * 3, 1.6, 0, 7); ctx.fill(); }
+  ctx.save(); ctx.translate(100, 101); ctx.rotate(Math.PI / 4); inkPath(new Path2D('M-5 -5H5V5H-5Z'), o.grey ? '#888' : '#d7262b', 1.8); ctx.restore();
 }
 function horseRider(x, y, s, o = {}) {   // box 210x130, facing right; o.flip faces left
   ctx.save(); ctx.translate(x, y); if (o.flip) { ctx.scale(-s, s); ctx.translate(-210, 0); } else ctx.scale(s, s);
@@ -537,8 +635,7 @@ function S6(t) {
       halftone(w, h, '#2a2a2e', { s: 18, lin: 'y', ang: 0, pow: 1, inv: true });
       ctx.save(); ctx.translate(w / 2, h * .66); ctx.scale(z, z);
       ctx.fillStyle = '#26221e'; ctx.beginPath(); ctx.ellipse(0, 70, 640, 120, 0, 0, 7); ctx.fill();
-      ctx.save(); ctx.rotate(-.38); ctx.translate(-300, -250); ctx.scale(3, 3); ctx.fillStyle = '#0c0c0e';
-      ctx.fill(P2.helmet); ctx.fill(P2.horns); ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 1.2; ctx.stroke(P2.helmet); ctx.stroke(P2.horns); ctx.restore();
+      ctx.save(); ctx.rotate(-1.15); ctx.translate(-300, -250); ctx.scale(3, 3); ctx.filter = 'grayscale(1) brightness(.75) contrast(1.1)'; drawHelmet({ grey: true }); ctx.restore();
       ctx.restore();
       for (let i = 0; i < 40; i++) { const x = (hash(i, 1) * w + (t - M.s6) * 30 * (hash(i, 2) - .3)) % w, y = h * .45 + hash(i, 3) * h * .5 - (t - M.s6) * 12 * hash(i, 4); ctx.fillStyle = 'rgba(200,200,200,.35)'; ctx.beginPath(); ctx.arc(x, y, 1.5 + hash(i, 5) * 3, 0, 7); ctx.fill(); }
     }, { a: ap(t, M.s6 - .05, .3) });
