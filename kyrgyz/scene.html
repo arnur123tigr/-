@@ -1,0 +1,456 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#000}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Бес жыл қырғыз болдық» 1917–1936: Minimal Line timeline (thin white lines on dark navy, one accent: turquoise).
+// One long world: a horizontal time axis at y = LY; the camera glides along it. render(T) is deterministic.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OW = 1080, OH = 1920, LY = 1080;
+const BR = { navy: '#130B54', amber: '#FEB300', white: '#FFFFFF' }, TQ = '#4FD1C5', INK = 'rgba(255,255,255,.92)';
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+let B, M, IMG = {};
+
+const L = {
+  kk: {
+    w1: 'ҚЫРҒЫЗ', w2: 'ҚАЗАҚ',
+    P: [['1917 · ШІЛДЕ', 'ОРЫНБОР'], ['1917 · ЖЕЛТОҚСАН', 'АЛАШОРДА'], ['1920 · 9 НАУРЫЗ', 'ҚАЗРЕВКОМ'], ['1920 · ҚАЗАН', 'ОРЫНБОР'], ['1925 · СӘУІР', 'ҚЫЗЫЛОРДА'], ['1929', 'АЛМАТЫ'], ['1936 · 5 ЖЕЛТОҚСАН', 'ҚАЗАҚ КСР']],
+    flag: 'Алаш партиясы', bld: ['Алашорда', 'орталығы Семей'], stamp: 'ҚАЗРЕВКОМ',
+    fr1: ['ҚЫРҒЫЗ', 'АКСР'], fr2: 'ҚАЗАҚ', fr3: ['ҚАЗАҚ', 'КСР'], area: '2,7 млн км²',
+    cities: ['Орынбор', 'Қызылорда', 'Алматы'], capw: 'астана',
+    ph1: 'Ә. Бөкейхан · А. Байтұрсынұлы · М. Дулатұлы, 1913', ph2: 'Қызылорда, 1926 · Дулатұлы, Байтұрсынұлы, Әуезов, Аймауытұлы',
+    h: { s2: '1917 · АЛАШ · АЛАШОРДА', s3: '9.03.1920 · АЛАШОРДА ТАРАТЫЛДЫ', s4: '1920 · ҚЫРҒЫЗ АКСР', s4b: 'астанасы Орынбор', s5: '1925 · «ҚАЗАҚ» АТАУЫ ҚАЙТТЫ', s6: '1929 Алматы · 1936 ҚАЗАҚ КСР', s7: 'ҰБТ: 1920 Қырғыз · 1925 Қазақ', s8: 'Сілтеме профиль шапкасында' },
+    rows: [['1920', 'ҚЫРҒЫЗ АКСР'], ['1925', 'ҚАЗАҚ АКСР']], ubt: 'ҰБТ-ға есте сақта',
+    cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз']
+  },
+  ru: {
+    w1: 'КИРГИЗ', w2: 'КАЗАХ',
+    P: [['1917 · ИЮЛЬ', 'ОРЕНБУРГ'], ['1917 · ДЕКАБРЬ', 'АЛАШОРДА'], ['1920 · 9 МАРТА', 'КАЗРЕВКОМ'], ['1920 · ОКТЯБРЬ', 'ОРЕНБУРГ'], ['1925 · АПРЕЛЬ', 'КЗЫЛ-ОРДА'], ['1929', 'АЛМА-АТА'], ['1936 · 5 ДЕКАБРЯ', 'КАЗАХСКАЯ ССР']],
+    flag: 'Партия «Алаш»', bld: ['Алашорда', 'центр — Семей'], stamp: 'КАЗРЕВКОМ',
+    fr1: ['КИРГИЗСКАЯ', 'АССР'], fr2: 'КАЗАХСКАЯ', fr3: ['КАЗАХСКАЯ', 'ССР'], area: '2,7 млн км²',
+    cities: ['Оренбург', 'Кзыл-Орда', 'Алма-Ата'], capw: 'столица',
+    ph1: 'А. Букейханов · А. Байтурсынов · М. Дулатов, 1913', ph2: 'Кзыл-Орда, 1926 · Дулатов, Байтурсынов, Ауэзов, Аймаутов',
+    h: { s2: '1917 · АЛАШ · АЛАШОРДА', s3: '9.03.1920 · АЛАШОРДА УПРАЗДНЕНА', s4: '1920 · КИРГИЗСКАЯ АССР', s4b: 'столица — Оренбург', s5: '1925 · ВЕРНУЛИ ИМЯ «КАЗАХ»', s6: '1929 Алма-Ата · 1936 КАЗАХСКАЯ ССР', s7: 'ЕНТ: 1920 Киргизская · 1925 Казахская', s8: 'Ссылка в шапке профиля' },
+    rows: [['1920', 'КИРГИЗСКАЯ АССР'], ['1925', 'КАЗАХСКАЯ АССР']], ubt: 'Запомни к ЕНТ',
+    cta: ['Перейдите по ссылке', 'в шапке профиля']
+  }
+}[LANG];
+
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const eob = x => { x = clamp(x); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const hash = (a, b = 0, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const win = (T, t0, d) => clamp((T - t0) / d);
+
+// ---------- line drawing primitives ----------
+// polys: array of polylines [[x,y],...]; draws the first k (0..1) of their total length, in order. Returns the pen tip.
+function strokes(polys, k, lw = 4, col = INK, glow = 0) {
+  let tot = 0; const lens = polys.map(p => { let s = 0; for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); tot += s; return s; });
+  let left = clamp(k) * tot, tip = null;
+  ctx.save(); ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (glow) { ctx.shadowColor = col; ctx.shadowBlur = glow; }
+  for (let j = 0; j < polys.length && left > 0; j++) {
+    const p = polys[j]; ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); tip = p[0];
+    for (let i = 1; i < p.length; i++) {
+      const s = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+      if (s <= left) { ctx.lineTo(p[i][0], p[i][1]); left -= s; tip = p[i]; }
+      else { const f = left / s; tip = [lerp(p[i - 1][0], p[i][0], f), lerp(p[i - 1][1], p[i][1], f)]; ctx.lineTo(tip[0], tip[1]); left = 0; break; }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  return k > 0 && k < 1 ? tip : null;
+}
+function pen(tip, r = 7) {   // glowing pen point at the end of a line that is being drawn
+  if (!tip) return; ctx.save(); ctx.fillStyle = '#fff'; ctx.shadowColor = TQ; ctx.shadowBlur = 24;
+  ctx.beginPath(); ctx.arc(tip[0], tip[1], r, 0, 7); ctx.fill(); ctx.restore();
+}
+const rectP = (x, y, w, h) => [[[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]];
+const arcP = (cx, cy, r, a0, a1, n = 40) => Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a0, a1, i / n); return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+// text written by a line: revealed left to right with a pen point on the edge
+function wtext(t, x, y, font, k, o = {}) {
+  if (k <= 0) return 0;
+  ctx.save(); ctx.font = font; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const w = ctx.measureText(t).width, x0 = o.align === 'left' ? x : o.align === 'right' ? x - w : x - w / 2;
+  const hgt = parseInt(font) * 1.3;
+  ctx.beginPath(); ctx.rect(x0 - 10, y - hgt, (w + 20) * clamp(k), hgt * 2); ctx.clip();
+  ctx.globalAlpha *= o.a ?? 1;
+  if (o.glow) { ctx.shadowColor = o.col || TQ; ctx.shadowBlur = o.glow; }
+  if (o.outline) { ctx.lineWidth = o.outline * 2; ctx.strokeStyle = o.col || INK; ctx.lineJoin = 'round'; ctx.strokeText(t, x0, y); ctx.shadowBlur = 0; ctx.fillStyle = '#120c55'; ctx.fillText(t, x0, y); }
+  else { ctx.fillStyle = o.col || INK; ctx.fillText(t, x0, y); }
+  ctx.restore();
+  if (k < 1 && o.pen !== false) pen([x0 + w * k, y + (o.penDy || 0)], 6);
+  return w;
+}
+function tw(t, font) { ctx.save(); ctx.font = font; const w = ctx.measureText(t).width; ctx.restore(); return w; }
+function fitFont(t, base, maxW, face = 'MB') { const w = tw(t, `${base}px ${face}`); return Math.min(base, Math.floor(base * maxW / w)); }
+
+// ---------- world ----------
+const PX = [700, 1300, 2000, 2700, 3500, 4200, 4800];
+let PT;   // appearance times of the points (filled at load)
+let CAM = { cx: 540, cy: 960, z: 1 };
+function camKeys() {
+  return [
+    [0, 540, 960, 1], [M.s2 - .7, 540, 960, 1], [M.s2 + .5, 680, 960, 1.06], [M.ph1 + .2, 720, 930, 1.0],
+    [M.dec - .1, 760, 950, 1.0], [M.dec + .9, 1000, 960, 1.0], [M.s3 - .1, 1060, 960, 1.0], [M.s3 + .9, 1650, 960, .9], [M.s4 - .15, 1700, 950, .96],
+    [M.s4 + .9, 2700, 960, 1.0], [M.nm, 2720, 920, 1.04], [M.nm + .8, 2660, 790, 1.32], [M.cap, 2640, 790, 1.36], [M.cap + .8, 2700, 960, 1.0],
+    [M.s5 - .15, 2760, 960, 1.0], [M.s5 + .9, 3500, 900, 1.12], [M.s5 + 1.8, 3480, 800, 1.3], [M.s5 + 3.0, 3470, 790, 1.34], [M.ph2 - .1, 3500, 900, 1.08],
+    [M.mv - .3, 3500, 940, 1.0], [M.mv + .5, 3120, 960, .8], [M.s6 - .2, 3200, 960, .8], [M.s6 + .7, 3950, 960, .86], [M.p7 - .1, 4100, 960, .88],
+    [M.p7 + .8, 4800, 930, 1.04], [M.s7 - .1, 4820, 930, 1.08], [M.s7 + 1.3, 2750, 480, .235], [B.end, 2750, 480, .235]];
+}
+function camAt(T) {
+  const K = camKeys(); let i = 0; while (i < K.length - 2 && T >= K[i + 1][0]) i++;
+  const a = K[i], b = K[i + 1], k = ease((T - a[0]) / Math.max(.01, b[0] - a[0]));
+  const drift = 1 + .006 * Math.sin(T * .7);   // never fully still
+  return { cx: lerp(a[1], b[1], k) + 6 * Math.sin(T * .5), cy: lerp(a[2], b[2], k), z: lerp(a[3], b[3], k) * drift };
+}
+const toScr = (x, y) => [(x - CAM.cx) * CAM.z + OW / 2, (y - CAM.cy) * CAM.z + OH / 2];
+function worldT() { ctx.setTransform(CAM.z, 0, 0, CAM.z, OW / 2 - CAM.cx * CAM.z, OH / 2 - CAM.cy * CAM.z); }
+function scrT() { ctx.setTransform(1, 0, 0, 1, 0, 0); }
+
+function background(T) {
+  scrT();
+  const g = ctx.createRadialGradient(OW / 2, OH * .45, 100, OW / 2, OH * .5, 1250);
+  g.addColorStop(0, '#16106a'); g.addColorStop(.55, '#0f0a4a'); g.addColorStop(1, '#070426');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, OW, OH);
+  // faint dot grid that moves with the camera (half speed): gives a sense of travel
+  const step = 64, ox = ((-CAM.cx * CAM.z * .5) % step + step) % step, oy = ((-CAM.cy * CAM.z * .5) % step + step) % step;
+  ctx.fillStyle = 'rgba(160,200,255,.07)';
+  for (let y = oy; y < OH; y += step) for (let x = ox; x < OW; x += step) ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+}
+
+// the time axis: in scene 1 it is the turquoise strike line, which then slides down and stretches into the axis
+function axis(T) {
+  if (T < M.s2 - .8) return;
+  const k = ease(win(T, M.s2 - .8, .9));
+  worldT();
+  const x0 = lerp(W1.x0 - 20, -1200, k), x1 = lerp(W1.x1 + 20, 6200, k), y = lerp(W1.y, LY, k);
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.strokeStyle = k < 1 ? `rgba(79,209,197,${1 - k * .6})` : 'rgba(255,255,255,.85)'; ctx.lineWidth = lerp(6, 4, k) / Math.min(1, CAM.z * 1.5 + .3);
+  if (k < 1) { ctx.shadowColor = TQ; ctx.shadowBlur = 20 * (1 - k); }
+  ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  ctx.restore();
+  if (k >= 1) {   // small year ticks
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 2 / Math.max(.4, CAM.z);
+    for (let x = -1200; x <= 6200; x += 100) { if (PX.some(p => Math.abs(p - x) < 60)) continue; ctx.beginPath(); ctx.moveTo(x, LY - 12); ctx.lineTo(x, LY + 12); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+// ---------- scene 1: the word written, struck through, rewritten ----------
+const W1 = { y: 800, x0: 0, x1: 0 };
+function scene1(T) {
+  if (T > M.s2 + .2) return;
+  scrT();
+  const fade = 1 - win(T, M.s2 - .8, .6);
+  const f1 = `${fitFont(L.w1, 210, 900)}px MB`, f2 = `${fitFont(L.w2, 210, 900)}px MB`;
+  const w = tw(L.w1, f1); W1.x0 = OW / 2 - w / 2; W1.x1 = OW / 2 + w / 2;
+  ctx.save(); ctx.globalAlpha *= fade;
+  const d = M.s2; // 1: write, 2: strike, 3: rewrite
+  wtext(L.w1, OW / 2, 800, f1, win(T, .25, d * .30), { outline: 4, penDy: 0 });
+  const ks = win(T, d * .40, d * .12);
+  if (ks > 0 && T < M.s2 - .8) strokes([[[W1.x0 - 20, 800], [W1.x1 + 20, 800]]], ks, 8, TQ, 22);
+  wtext(L.w2, OW / 2, 1030, f2, win(T, d * .55, d * .28), { outline: 4, col: TQ, glow: 18 });
+  ctx.restore();
+  if (T > M.s2 - .8) W1.y = (800 - CAM.cy) / CAM.z + CAM.cy;   // strike line position in world units (camera is at 1:1 here)
+}
+
+// ---------- timeline points ----------
+function node(i, T) {
+  const t0 = PT[i]; if (T < t0) return;
+  const x = PX[i], k = Math.max(0, eob(win(T, t0, .35))), act = win(T, t0, .25);
+  worldT(); ctx.save();
+  // ping ring
+  const pr = win(T, t0, .9); if (pr < 1) { ctx.strokeStyle = `rgba(79,209,197,${(1 - pr) * .8})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, LY, 18 + pr * 70, 0, 7); ctx.stroke(); }
+  let blink = 0; if (i === 4 && T > M.s7 + 1) blink = .5 + .5 * Math.sin((T - M.s7) * 7);
+  ctx.fillStyle = '#0f0a4a'; ctx.strokeStyle = INK; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(x, LY, 16 * k, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = TQ; ctx.shadowColor = TQ; ctx.shadowBlur = 16 + blink * 40;
+  ctx.beginPath(); ctx.arc(x, LY, 8 * k * act * (1 + blink * .6), 0, 7); ctx.fill();
+  ctx.restore();
+  // labels under the axis (hidden in the overview, where screen labels take over)
+  const lab = 1 - win(T, M.s7, .5);
+  if (lab > 0) {
+    ctx.save(); ctx.globalAlpha *= lab;
+    wtext(L.P[i][0], x, LY + 72, '44px MX', win(T, t0 + .1, .6), { pen: false });
+    wtext(L.P[i][1], x, LY + 126, '34px MX', win(T, t0 + .4, .5), { col: TQ, pen: false });
+    ctx.restore();
+  }
+}
+
+// icon: Alash flag over point 1
+function flag(T) {
+  const t0 = PT[0] + .3; if (T < t0 || T > M.s4 + 1) return;
+  const x = PX[0], k = win(T, t0, 1.1); worldT();
+  const top = LY - 260, sw = Math.sin(T * 2.2) * 8;
+  const wave = (yy, s) => Array.from({ length: 13 }, (_, i) => [x + i * 15, yy + Math.sin(i * .55 + T * 3 + s) * 7 + sw * i / 12]);
+  const fl = [...wave(top, 0), ...wave(top + 100, 0).reverse(), [x, top]];
+  pen(strokes([[[x, LY - 22], [x, top - 10]], fl], k, 4));
+  wtext(L.flag, x + 200, top + 50, '36px MX', win(T, t0 + .8, .6), { pen: false, align: 'left' });
+}
+// icon: Alashorda building over point 2; it falls apart into lines in scene 3
+function bldPolys(x) {
+  const b = LY - 40, w = 260, h = 170, l = x - w / 2, P = [];
+  P.push([[l - 16, b], [l + w + 16, b]]); P.push([[l, b - 16], [l + w, b - 16]]);
+  for (let i = 0; i < 5; i++) { const cx = l + 30 + i * 50; P.push([[cx - 9, b - 16], [cx - 9, b - h]]); P.push([[cx + 9, b - 16], [cx + 9, b - h]]); }
+  P.push([[l - 6, b - h], [l + w + 6, b - h]]); P.push([[l - 6, b - h - 16], [l + w + 6, b - h - 16]]);
+  P.push([[l - 12, b - h - 16], [x, b - h - 92], [l + w + 12, b - h - 16]]);
+  P.push(arcP(x, b - h - 46, 14, 0, Math.PI * 2, 24));
+  return P;
+}
+function building(T) {
+  const t0 = PT[1] + .25; if (T < t0 || T > M.s4 + 1) return;
+  const x = PX[1], P = bldPolys(x); worldT();
+  const kb = win(T, M.brk, 1.6);
+  if (kb <= 0) pen(strokes(P, win(T, t0, 1.4), 4));
+  else {
+    P.forEach((p, i) => {
+      const r1 = hash(i, 1), r2 = hash(i, 2), r3 = hash(i, 3), cx = p[0][0], cy = p[0][1];
+      ctx.save(); ctx.globalAlpha *= 1 - eo(kb);
+      ctx.translate(cx + (r1 - .5) * 320 * kb, cy + (r2 * -120 * kb + 520 * kb * kb)); ctx.rotate((r3 - .5) * 2.4 * kb); ctx.translate(-cx, -cy);
+      strokes([p], 1, 4, kb > .05 && i % 3 === 0 ? TQ : INK); ctx.restore();
+    });
+  }
+  const la = 1 - win(T, M.brk, .4);
+  ctx.save(); ctx.globalAlpha *= la;
+  wtext(L.bld[0], x, LY - 330, '40px MX', win(T, t0 + 1, .5), { pen: false });
+  wtext(L.bld[1], x, LY - 285, '30px MX', win(T, t0 + 1.3, .5), { col: TQ, pen: false });
+  ctx.restore();
+}
+// stamp «Қазревком» over point 3
+function stamp(T) {
+  const t0 = M.rev; if (T < t0 || T > M.s4 + 1) return;
+  const x = PX[2], y = LY - 200, k = win(T, t0, .25); worldT();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-.08); const s = 1.5 - .5 * eo(k); ctx.scale(s, s); ctx.globalAlpha *= k;
+  ctx.font = '50px MB'; const w = ctx.measureText(L.stamp).width + 50;
+  ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.strokeRect(-w / 2, -45, w, 90); ctx.lineWidth = 2; ctx.strokeRect(-w / 2 + 9, -36, w - 18, 72);
+  ctx.fillStyle = INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(L.stamp, 0, 3);
+  ctx.restore();
+}
+// name frame: «ҚЫРҒЫЗ АКСР», later «ҚАЗАҚ АКСР», «ҚАЗАҚ КСР»
+function nameFrame(x, y, a, b, T, t0, o = {}) {
+  const fs = fitFont(a + ' ' + b, 84, 560), font = `${fs}px MB`;
+  const wa = tw(a, font), wb = tw(' ' + b, font), wt = wa + wb, W = wt + 90, H = 170, l = x - W / 2;
+  const lw = o.lw || 4;
+  if (o.thick) { ctx.save(); ctx.shadowColor = TQ; ctx.shadowBlur = 40 * o.thick; strokes(rectP(l, y - H / 2, W, H), 1, lw + 8 * o.thick, TQ); ctx.restore(); }
+  pen(strokes(rectP(l, y - H / 2, W, H), win(T, t0, .7), lw, INK));
+  const xa = x - wt / 2;
+  // first word: may be erased and rewritten
+  if (o.erase === undefined || o.erase <= 0) wtext(a, xa, y, font, win(T, t0 + .3, .6), { align: 'left' });
+  else {
+    const ke = clamp(o.erase);
+    ctx.save(); ctx.font = font; ctx.textBaseline = 'middle'; ctx.beginPath(); ctx.rect(xa - 10 + (wa + 20) * ke, y - 80, wa + 20, 160); ctx.clip(); ctx.fillStyle = INK; ctx.fillText(a, xa, y); ctx.restore();
+    if (ke < 1) { pen([xa + wa * ke, y], 8); }
+    if (o.rewrite > 0) wtext(o.newA, xa + wa / 2, y, `${fitFont(o.newA, fs, wa)}px MB`, o.rewrite, { col: TQ, glow: 14 });
+  }
+  wtext(' ' + b, xa + wa, y, font, win(T, t0 + .6, .4), { align: 'left', pen: false });
+  return { xa, wa, fs, l, W, H };
+}
+function frame4(T) {
+  const t0 = PT[3] + .3; if (T < t0 || T > M.s5 + 1.2) return;
+  worldT(); const x = PX[3], y = LY - 300;
+  const f = nameFrame(x, y, L.fr1[0], L.fr1[1], T, t0);
+  // underline the name in turquoise when the narrator says it
+  const ku = win(T, M.nm + .5, .6); if (ku > 0) pen(strokes([[[f.xa, y + f.fs * .55], [f.xa + f.wa, y + f.fs * .55]]], ku, 7, TQ, 18));
+  wtext(L.area, f.l + f.W - 10, y + f.H / 2 + 34, '30px MX', win(T, t0 + 1.2, .5), { align: 'right', pen: false, col: 'rgba(255,255,255,.7)' });
+}
+function frame5(T) {
+  const t0 = PT[4] + .3; if (T < t0 || T > M.s6 + 1.5) return;
+  worldT(); const x = PX[4], y = LY - 300;
+  const ph = photoK(T, M.ph2 - .2, 3.9);   // the frame steps back while the photo is up
+  ctx.save(); ctx.globalAlpha *= 1 - ph * .85;
+  nameFrame(x, y, L.fr1[0], L.fr1[1], T, t0, { erase: win(T, t0 + 1.1, .7), rewrite: win(T, t0 + 1.9, .9), newA: L.fr2 });
+  ctx.restore();
+}
+function frame7(T) {
+  const t0 = PT[6] + .3; if (T < t0) return;
+  worldT(); const x = PX[6], y = LY - 300;
+  nameFrame(x, y, L.fr3[0], L.fr3[1], T, t0, { thick: ease(win(T, M.ssr, .8)) });
+}
+// mountains over Almaty
+function mountains(T) {
+  const t0 = PT[5] + .2; if (T < t0) return;
+  worldT(); const x = PX[5], b = LY - 110;
+  pen(strokes([[[x - 150, b], [x - 80, b - 110], [x - 40, b - 60], [x + 20, b - 170], [x + 90, b - 70], [x + 120, b - 100], [x + 170, b]],
+    [[x + 2, b - 140], [x + 20, b - 126], [x + 40, b - 140]]], win(T, t0, 1), 4));
+}
+// capital pin: Orenburg -> Kzyl-Orda -> Alma-Ata
+function pin(T) {
+  if (T < M.cap) return;
+  let x = PX[3], hop = 0, ci = 0;
+  const k1 = ease(win(T, M.mv, 1.3)), k2 = ease(win(T, M.s6 + .3, 1.2));
+  if (k2 > 0) { x = lerp(PX[4], PX[5], k2); hop = Math.sin(Math.PI * k2); ci = k2 > .5 ? 2 : 1; }
+  else if (k1 > 0) { x = lerp(PX[3], PX[4], k1); hop = Math.sin(Math.PI * k1); ci = k1 > .5 ? 1 : 0; }
+  const a = Math.max(.001, eob(win(T, M.cap, .4))), y = LY - 30 - hop * 140;
+  worldT(); ctx.save(); ctx.translate(x + 46, y); ctx.scale(a, a);
+  ctx.strokeStyle = TQ; ctx.fillStyle = 'rgba(79,209,197,.18)'; ctx.lineWidth = 4; ctx.shadowColor = TQ; ctx.shadowBlur = 18;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-30, -36, -30, -74, 0, -76); ctx.bezierCurveTo(30, -74, 30, -36, 0, 0); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, -50, 9, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+  // label: switches city at mid-hop
+  const sw = k2 > 0 ? Math.abs(k2 - .5) * 2 : k1 > 0 ? Math.abs(k1 - .5) * 2 : 1;
+  ctx.globalAlpha *= clamp(sw * 1.5); ctx.font = '26px MX'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textBaseline = 'middle'; ctx.fillText(L.capw, 30, -78);
+  ctx.font = '38px MB'; ctx.fillStyle = TQ; ctx.fillText(L.cities[ci], 30, -44);
+  ctx.restore();
+}
+
+// ---------- photos ----------
+function photoK(T, t0, hold) { return ease(win(T, t0, .6)) * (1 - ease(win(T, t0 + hold, .6))); }
+function photoBox(img, cx, cy, w, T, kIn, kOut, edgeK, cap) {
+  const h = img ? w * img.height / img.width : w * .7;
+  ctx.save(); ctx.globalAlpha *= kOut;
+  if (img) { ctx.filter = 'grayscale(1) contrast(1.08) brightness(1.02)'; ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h); ctx.filter = 'none'; }
+  else { ctx.fillStyle = '#222'; ctx.fillRect(cx - w / 2, cy - h / 2, w, h); }
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha *= kOut; pen(strokes(rectP(cx - w / 2 - 12, cy - h / 2 - 12, w + 24, h + 24), edgeK, 3, INK)); ctx.restore();
+  if (cap) { ctx.save(); ctx.globalAlpha *= kOut * win(T, 0, 1); wtext(cap, cx, cy + h / 2 + 46, '26px MX', edgeK, { pen: false, col: 'rgba(255,255,255,.8)' }); ctx.restore(); }
+  return h;
+}
+function photo1(T) {   // hangs on a thread over 1917, swings gently
+  const t0 = M.ph1 - .3, hold = 3.9; const k = photoK(T, t0, hold); if (k <= 0) return;
+  worldT(); const x = PX[0], drop = (1 - eo(win(T, t0, .8))) * -700, ang = Math.sin((T - t0) * 2.1) * .045 * (1 - .5 * win(T, t0, 3));
+  const top = CAM.cy + (340 - 960) / CAM.z;  // thread from just under the headline
+  const w = 520, h = IMG.ph1 ? w * IMG.ph1.height / IMG.ph1.width : 330, cy = 520 + drop;
+  ctx.save(); ctx.globalAlpha *= k; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2;
+  ctx.translate(x, cy - h / 2 - 40); ctx.rotate(ang);
+  ctx.beginPath(); ctx.moveTo(0, -(cy - h / 2 - 40 - top)); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.lineTo(-w / 2, 28); ctx.moveTo(0, 0); ctx.lineTo(w / 2, 28); ctx.stroke();
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill();
+  ctx.translate(0, h / 2 + 40);
+  photoBox(IMG.ph1, 0, 0, w, T - t0, 1, 1, win(T, t0 + .3, .8), L.ph1);
+  ctx.restore();
+}
+function photo2(T) {   // slides up out of the 1925 point, outline runs around it
+  const t0 = M.ph2 - .2, hold = 3.9; const k = photoK(T, t0, hold); if (k <= 0) return;
+  worldT(); const x = PX[4], w = 680, img = IMG.ph2, h = img ? w * img.height / img.width : 390;
+  const cy = lerp(LY + 40, LY - 320, eo(win(T, t0, .7))), sc = lerp(.2, 1, eo(win(T, t0, .7)));
+  ctx.save(); ctx.globalAlpha *= 1 - ease(win(T, t0 + hold, .6)); ctx.translate(x, cy); ctx.scale(sc, sc);
+  ctx.strokeStyle = 'rgba(79,209,197,.6)'; ctx.lineWidth = 2;
+  photoBox(img, 0, 0, w, T - t0, 1, 1, win(T, t0 + .5, 1.0), L.ph2);
+  ctx.restore();
+  // connector line down to the point
+  ctx.save(); ctx.globalAlpha *= k * .6; ctx.strokeStyle = TQ; ctx.lineWidth = 2; ctx.setLineDash([8, 10]);
+  ctx.beginPath(); ctx.moveTo(x, cy + h / 2 * sc + 70); ctx.lineTo(x, LY - 20); ctx.stroke(); ctx.restore();
+}
+
+// ---------- overview (scene 7) and arrow (scene 8) ----------
+function overview(T) {
+  if (T < M.s7 + .6 || T > M.s8 + .8) return;
+  scrT(); const a = win(T, M.s7 + .6, .5) * (1 - win(T, M.s8, .6));
+  ctx.save(); ctx.globalAlpha *= a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ['1917', '1917', '1920', '1920', '1925', '1929', '1936'].forEach((yr, i) => {
+    if (i === 1 || i === 3) return;
+    const [sx, sy] = toScr(PX[i], LY), up = [0, 2, 5].includes(i);
+    const hi = i === 4; ctx.font = hi ? '60px MB' : '42px MX'; ctx.fillStyle = hi ? TQ : INK;
+    if (hi) { ctx.shadowColor = TQ; ctx.shadowBlur = 10 + 20 * (.5 + .5 * Math.sin((T - M.s7) * 7)); }
+    ctx.fillText(yr, sx, sy + (up ? -64 : 74)); ctx.shadowBlur = 0;
+  });
+  ctx.restore();
+  // ҰБТ card: two rows
+  const x0 = 110, w = 860, y0 = 480;
+  ctx.save(); ctx.globalAlpha *= a;
+  pen(strokes(rectP(x0, y0, w, 330), win(T, M.s7 + .6, .8), 3, 'rgba(255,255,255,.75)'));
+  wtext(L.ubt, OW / 2, y0 + 56, '38px MX', win(T, M.s7 + .9, .5), { pen: false, col: 'rgba(255,255,255,.75)' });
+  L.rows.forEach((r, i) => {
+    const t = i ? M.y25 : M.y20, y = y0 + 150 + i * 110, hi = i === 1;
+    wtext(r[0], x0 + 60, y, '64px MB', win(T, t - .1, .35), { align: 'left', col: hi ? TQ : INK, glow: hi ? 14 : 0, pen: false });
+    wtext(r[1], x0 + 250, y, `${fitFont(r[1], 58, w - 300)}px MB`, win(T, t + .15, .6), { align: 'left', col: hi ? TQ : INK, glow: hi ? 14 : 0 });
+  });
+  ctx.restore();
+}
+function arrowUp(T) {
+  if (T < M.s8) return;
+  scrT(); const k = ease(win(T, M.s8, 1.1));
+  const [lx, ly] = toScr(-1200, LY), [rx] = toScr(6200, LY);
+  const bounce = T > M.s8 + 1.1 ? Math.sin((T - M.s8) * 5) * 14 : 0;
+  const ax = OW / 2, top = 460 + bounce, bot = 1320;
+  const p0 = [lerp(Math.max(lx, -50), ax, k), lerp(ly, bot, k)], p1 = [lerp(Math.min(rx, OW + 50), ax, k), lerp(ly, top, k)];
+  ctx.save(); ctx.strokeStyle = k < 1 ? INK : TQ; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.shadowColor = TQ; ctx.shadowBlur = 24 * k;
+  ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+  const hk = win(T, M.s8 + .8, .4);
+  if (hk > 0) { ctx.beginPath(); ctx.moveTo(ax - 90 * hk, top + 90 * hk); ctx.lineTo(ax, top); ctx.lineTo(ax + 90 * hk, top + 90 * hk); ctx.stroke(); }
+  ctx.restore();
+}
+
+// ---------- screen texts ----------
+const HEADS = ['s2', 's3', 's4', 's5', 's6', 's7', 's8'];
+function headline(T) {
+  scrT();
+  let id = null; for (const h of HEADS) if (T >= M[h] + .2) id = h; if (!id) return;
+  const nx = HEADS[HEADS.indexOf(id) + 1], t0 = M[id] + .2, out = nx ? 1 - win(T, M[nx] - .1, .3) : 1;
+  if (T > B.end - 2.4) return;
+  const txt = L.h[id], f = `${fitFont(txt, 54, 900, 'MB')}px MB`, k = win(T, t0, .7);
+  ctx.save(); ctx.globalAlpha *= out;
+  const w = wtext(txt, OW / 2, 250, f, k, { pen: true });
+  pen(strokes([[[OW / 2 - w / 2, 300], [OW / 2 + w / 2, 300]]], win(T, t0 + .5, .5), 4, TQ, 12));
+  if (id === 's4') wtext(L.h.s4b, OW / 2, 352, '36px MX', win(T, M.cap, .6), { pen: false, col: TQ });
+  ctx.restore();
+}
+function captions(T) {
+  if (T > B.end - 2.4) return;
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  scrT(); const k = clamp((T - cp.t0) / .14);
+  ctx.save(); let sz = 62; ctx.font = `${sz}px MB`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase() })), sp = 20;
+  let wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  if (wd > 960) { sz = Math.floor(sz * 960 / wd); ctx.font = `${sz}px MB`; wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - wd / 2; const y = 1600 - (1 - k) * 14;
+  ctx.globalAlpha *= k; ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.lineWidth = 12; ctx.strokeStyle = 'rgba(7,4,38,.92)'; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? TQ : '#fff'; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+function logo() { scrT(); const lh = 70, lw = lh * IMG.logo.width / IMG.logo.height; ctx.save(); ctx.globalAlpha = .82; ctx.drawImage(IMG.logo, OW - 48 - lw, 48, lw, lh); ctx.restore(); }
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  scrT(); const a = clamp((T - t0) / .35);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 420, lh = lw * IMG.logo.height / IMG.logo.width, s = .9 + .1 * eob(clamp((T - t0) / .45));
+  ctx.drawImage(IMG.logo, OW / 2 - lw * s / 2, 700 - lh * s / 2, lw * s, lh * s);
+  ctx.font = '62px MB'; ctx.fillStyle = BR.amber; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  L.cta.forEach((t, i) => ctx.fillText(t, OW / 2, 1080 + i * 82));
+  const bo = Math.sin(T * 6) * 10; ctx.strokeStyle = BR.amber; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(OW / 2, 1420 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.moveTo(OW / 2 - 50, 1320 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.lineTo(OW / 2 + 50, 1320 + bo); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- frame ----------
+window.render = function (T) {
+  CAM = camAt(T);
+  background(T);
+  scene1(T);
+  const wa = 1 - win(T, M.s8 + .1, .5);   // the world steps back when the axis turns into the arrow
+  ctx.save(); ctx.globalAlpha = wa;
+  if (wa > 0) {
+    if (T < M.s8 + .1) axis(T);
+    const ia = 1 - win(T, M.s7, .6); ctx.save(); ctx.globalAlpha = wa * ia;
+    if (ia > 0) { flag(T); building(T); stamp(T); frame4(T); frame5(T); mountains(T); frame7(T); pin(T); }
+    ctx.restore();
+    for (let i = 0; i < 7; i++) node(i, T);
+    photo1(T); photo2(T);
+  }
+  ctx.restore();
+  overview(T); arrowUp(T);
+  headline(T); captions(T); logo(); endCard(T);
+  scrT();
+  if (T < .2) { ctx.fillStyle = `rgba(7,4,38,${1 - T / .2})`; ctx.fillRect(0, 0, OW, OH); }
+};
+
+// ---------- load ----------
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = (await (await fetch('beats.json')).json())[LANG]; M = B.m;
+  PT = [M.s2 + .3, M.dec, M.s3 + .5, M.s4 + .5, M.s5 + .5, M.s6 + .4, M.p7 + .4];
+  [IMG.logo, IMG.ph1, IMG.ph2] = await Promise.all(['brand/logo_white_transparent.png', 'photos/alash_1913.jpg', 'photos/kyzylorda_1926.jpg'].map(load));
+  await Promise.all(['60px MB', '40px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІ')));
+  window.ready = true;
+})();
+</script></body></html>
