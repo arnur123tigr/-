@@ -1,0 +1,869 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Шырақ: парсы әскерін шөлге апарған бақташы</title>
+<style>
+@font-face{font-family:IN;src:url(fonts/Inter.ttf);font-weight:100 900}
+@font-face{font-family:IN;src:url(fonts/Inter-Italic.ttf);font-weight:100 900;font-style:italic}
+@font-face{font-family:IT;src:url(fonts/InterTight.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «Шырақ / Шырак» — the legend of Shyrak and the march of Darius I on the Saka (519 BC). RU / KZ: scene.html?lang=ru|kk.
+// Film shots 1, 3, 5, 7 (Higgsfield clips, frames in clips/) alternate with map scenes 2, 4, 6, 8 on the warm satellite globe; 9 = call to action.
+// render(T) is deterministic, T = video seconds. All cues come from beats.json (voiceover word times, see timing.py).
+// Layers: film frame or WebGL globe (NASA Blue Marble + relief, three.js)  ->  2D canvas: lands, routes, markers, photos  ->  titles + captions.
+import * as THREE from 'three';
+
+const W = 1080, H = 1920;
+const Q = new URLSearchParams(location.search), LANG = Q.get('lang') === 'kk' ? 'kk' : 'ru', KK = LANG === 'kk';
+const STEP = +(Q.get('step') || 2);                      // terrain mesh step in DEM cells (1 = finest)
+const [BEATS, SH, demBuf] = await Promise.all([
+  fetch('beats.json').then(r => r.json()), fetch('shapes.json').then(r => r.json()), fetch('dem.bin').then(r => r.arrayBuffer())]);
+const B = BEATS[LANG], M = B.m, END = B.end;
+for (const f of ['400 40px IN', '500 40px IN', '600 40px IN', '700 40px IN', '800 40px IN', '600 40px IT', '700 40px IT', '800 40px IT', '900 40px IT'])
+  await document.fonts.load(f, 'АБВабв123ӘҒҚҢӨҰҮІәғқңөұүі→⟷«»');
+
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const LA = mk(), la = LA.getContext('2d'), LR = mk(), lr = LR.getContext('2d'), HB = mk(W / 2, H / 2), hb = HB.getContext('2d');
+
+// ---------------------------------------------------------------- helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeOut5 = t => 1 - Math.pow(1 - clamp(t), 5);
+const easeIn = t => Math.pow(clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const easeBack = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const ap = (T, t0, d = .3) => easeOut(seg(T, t0, t0 + d));       // appear 0..1
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+const RAD = Math.PI / 180, RE = 6371;                  // Earth radius, km (globe radius = 1)
+// smooth curve through keys (monotone cubic), at rest at both ends
+function hermite(ts, vs, T) {
+  const n = ts.length; if (T <= ts[0]) return vs[0]; if (T >= ts[n - 1]) return vs[n - 1];
+  let i = 0; while (T > ts[i + 1]) i++;
+  const sl = k => { if (k <= 0 || k >= n - 1) return 0; const a = (vs[k] - vs[k - 1]) / (ts[k] - ts[k - 1]), b = (vs[k + 1] - vs[k]) / (ts[k + 1] - ts[k]); return a * b <= 0 ? 0 : 2 * a * b / (a + b); };
+  const h = ts[i + 1] - ts[i], u = (T - ts[i]) / h, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * h * sl(i) + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * h * sl(i + 1);
+}
+// ---------------------------------------------------------------- palette
+// Brand (JAS EDUCATION, references/STYLE_GUIDE.md): navy panels, amber for key words, numbers and the Saka side, white text,
+// red-orange only for the enemy (the Persian army). The map itself is the warm Blue Marble satellite picture (ochre, sand, burnt gold).
+const BR = { navy: '#130B54', amber: '#FEB300', enemy: '#E8502F' };
+const C = { acc: BR.amber, accHi: '#ffe7a6', warn: BR.enemy, warnHi: '#ffb39f', persia: '#d2452a', water: '#7cc8ff',
+            pill: 'rgba(19,11,84,.84)', card: 'rgba(19,11,84,.95)', line: 'rgba(254,179,0,.32)', sand: '#c99a5b' };
+const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgba = (h, a) => { const c = hex(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const mixHex = (a, b, t) => { const p = hex(a), q = hex(b); return `rgb(${Math.round(lerp(p[0], q[0], t))},${Math.round(lerp(p[1], q[1], t))},${Math.round(lerp(p[2], q[2], t))})`; };
+
+// ---------------------------------------------------------------- texts
+const L = KK ? {
+  hook: [['1 ', 1], ['ҚАРТ', 0], ['  ·  ', 2], ['1 ', 1], ['ПАТША ӘСКЕРІ', 0]], legend: 'АҢЫЗ БОЙЫНША',
+  yearA: 'б.з.б.', year: '519', king: 'І ДАРИЙ', persia: 'Парсы, І Дарий', persepolis: 'Персеполь', saka: 'сақ-тиграхауда', sakaSub: 'шошақ бөрікті сақтар',
+  syr: 'Сырдария', amu: 'Әмудария', aral: 'Арал', caspian: 'Каспий', zhet: 'Жетісу',
+  photo1: 'Персеполь бедері', photo1b: 'шошақ бөрікті сақ елшілері',
+  shyrak: 'ШЫРАҚ', shyrakPill: 'Шырақ', army: 'парсы әскері', days: [['7 ', 1], ['КҮН', 0], ['  ·  ', 2], ['СУ ЖОҚ', 3]], day: 'КҮН',
+  vs: [['ДАРИЙ', 3], ['  ⟷  ', 2], ['СКУНХА', 1]], behistun: 'Бехистун', skunkha: 'Скунха, сақ көсемі', skunkhaArrow: 'Скунха',
+  photo2: 'Бехистун жазуы', photo2b: 'б.з.б. 520–519 · тұтқындар қатарында соңғысы — Скунха', sources: 'ДЕРЕКТЕР', feat: 'Шырақтың ерлігі',
+  remember: 'ҰБТ-ҒА ЕСТЕ САҚТА', rows: [['б.з.б. 519', 'І Дарийдің сақтарға жорығы'], ['І Дарий', 'парсы патшасы'], ['тиграхауда', 'шошақ бөрікті сақтар']],
+  study: 'Тарихты бізбен бірге оқы',
+  go: [['Сілтемеге', 1], [' өтіңіз', 0]], linkword: 'сілтеме', where: 'профиль шапкасында',
+  endA: 'Сілтемеге өтіңіз', endB: 'профиль шапкасында',
+  credit: 'Аңыз: Полиэн · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
+} : {
+  hook: [['1 ', 1], ['ПАСТУХ', 0], ['  ·  ', 2], ['ВОЙСКО ', 0], ['ЦАРЯ', 3]], legend: 'ПО ЛЕГЕНДЕ',
+  yearA: '', year: '519', yearB: 'г. до н. э.', king: 'ДАРИЙ I', persia: 'Персия, Дарий I', persepolis: 'Персеполь', saka: 'саки-тиграхауда', sakaSub: '«носящие остроконечные шапки»',
+  syr: 'Сырдарья', amu: 'Амударья', aral: 'Арал', caspian: 'Каспий', zhet: 'Жетысу',
+  photo1: 'Рельеф Персеполя', photo1b: 'сакские послы в остроконечных шапках',
+  shyrak: 'ШЫРАК', shyrakPill: 'Шырак', army: 'войско персов', days: [['7 ', 1], ['ДНЕЙ', 0], ['  ·  ', 2], ['НЕТ ВОДЫ', 3]], day: 'ДЕНЬ',
+  vs: [['ДАРИЙ', 3], ['  ⟷  ', 2], ['СКУНХА', 1]], behistun: 'Бехистун', skunkha: 'Скунха, вождь саков', skunkhaArrow: 'Скунха',
+  photo2: 'Бехистунская надпись', photo2b: '520–519 гг. до н. э. · последний в ряду пленников — Скунха', sources: 'ИСТОЧНИКИ', feat: 'Подвиг Шырака',
+  remember: 'ЗАПОМНИ К ЕНТ', rows: [['519 до н. э.', 'поход Дария I на саков'], ['Дарий I', 'персидский царь'], ['тиграхауда', 'саки в остроконечных шапках']],
+  study: 'Изучай историю вместе с нами',
+  go: [['Перейдите ', 0], ['по ссылке', 1]], linkword: 'ссылка', where: 'в шапке профиля',
+  endA: 'Перейдите по ссылке', endB: 'в шапке профиля',
+  credit: 'Легенда: Полиэн · Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles',
+};
+const PAL = ['#fff', C.acc, 'rgba(255,255,255,.55)', C.warn];     // colour codes used in the [text, code] title lines above
+// the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
+const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
+function scaled(img, w) {
+  let c = img, cw = img.width, ch = img.height; const h = Math.round(w * ch / cw);
+  const draw = (nw, nh) => { const n = document.createElement('canvas'); n.width = nw; n.height = nh; const x = n.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh); c = n; cw = nw; ch = nh; };
+  while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
+  if (cw !== w) draw(w, h); return c;
+}
+const LOGO = scaled(LOGO0, 75), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
+// ---------------------------------------------------------------- globe
+const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
+const dem = new Int16Array(demBuf), EXAG = 9 / 6371000;
+function demAt(lon, lat) {                                // exaggerated height above the sphere (globe units)
+  const e = Math.min(lon - MLON0, MLON1 - lon, lat - MLAT0, MLAT1 - lat);
+  if (e <= 0) return 0;
+  const fx = clamp((lon - MLON0) / CELL - .5, 0, DEMW - 1), fy = clamp((MLAT1 - lat) / CELL - .5, 0, DEMH - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, DEMW - 1), y1 = Math.min(y0 + 1, DEMH - 1), ax = fx - x0, ay = fy - y0;
+  const h = (dem[y0 * DEMW + x0] * (1 - ax) + dem[y0 * DEMW + x1] * ax) * (1 - ay) + (dem[y1 * DEMW + x0] * (1 - ax) + dem[y1 * DEMW + x1] * ax) * ay;
+  return h * EXAG * clamp(e / 1.5);
+}
+const dirv = (lon, lat, r = 1) => { const a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r; return new THREE.Vector3(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a)); };
+
+function axis(a0, a1, w0, w1, coarse, fine) {
+  const v = [];
+  for (let x = a0; x < w0 - 1e-6; x += coarse) v.push(x);
+  const n = Math.round((w1 - w0) / fine); for (let i = 0; i <= n; i++) v.push(w0 + (w1 - w0) * i / n);
+  for (let x = Math.ceil((w1 + 1e-6) / coarse) * coarse; x < a1 - 1e-6; x += coarse) v.push(x);
+  v.push(a1); return v;
+}
+function globeGeometry() {
+  const LONS = axis(-180, 180, MLON0, MLON1, 2, CELL * STEP), LATS = axis(-90, 90, MLAT0, MLAT1, 2, CELL * STEP);
+  const nx = LONS.length, ny = LATS.length, pos = new Float32Array(nx * ny * 3), ll = new Float32Array(nx * ny * 2);
+  for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++, k++) {
+    const lon = LONS[i], lat = LATS[j], r = 1 + demAt(lon, lat), a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r;
+    pos[k * 3] = c * Math.sin(a); pos[k * 3 + 1] = Math.sin(b) * r; pos[k * 3 + 2] = c * Math.cos(a); ll[k * 2] = lon; ll[k * 2 + 1] = lat;
+  }
+  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  for (let j = 0, q = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = a; idx[q++] = c; idx[q++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ll', new THREE.BufferAttribute(ll, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const loadTex = url => new Promise(res => new THREE.TextureLoader().load(url, t => {
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; res(t); }));
+const [tW, tM, tA] = await Promise.all(['tex/world.jpg', 'tex/main.jpg', 'tex/detail.jpg'].map(loadTex));
+const win = (a, b, c, d) => new THREE.Vector4(a, 1 / (b - a), c, 1 / (d - c));
+const globeMat = new THREE.ShaderMaterial({
+  uniforms: { tW: { value: tW }, tM: { value: tM }, tA: { value: tA }, wM: { value: win(10, 146.5, 12, 78) }, wA: { value: win(50, 74, 35, 47) },
+              camPos: { value: new THREE.Vector3() }, expo: { value: 1 }, sat: { value: 1 }, haze: { value: 1 } },
+  vertexShader: `attribute vec2 ll; varying vec2 vLL; varying vec3 vP;
+    void main(){ vLL = ll; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float;
+    uniform sampler2D tW, tM, tA; uniform vec4 wM, wA; uniform vec3 camPos; uniform float expo, sat, haze;
+    varying vec2 vLL; varying vec3 vP;
+    void main(){
+      vec3 col = texture2D(tW, vec2((vLL.x + 180.) / 360., (vLL.y + 90.) / 180.)).rgb;
+      vec2 uM = vec2((vLL.x - wM.x) * wM.y, (vLL.y - wM.z) * wM.w), eM = min(uM, 1. - uM);
+      vec2 uA = vec2((vLL.x - wA.x) * wA.y, (vLL.y - wA.z) * wA.w), eA = min(uA, 1. - uA);
+      vec2 mx = dFdx(uM), my = dFdy(uM), ax = dFdx(uA), ay = dFdy(uA);
+      float mM = smoothstep(0., .012, eM.x) * smoothstep(0., .024, eM.y);
+      if (mM > 0.) col = mix(col, textureGrad(tM, uM, mx, my).rgb, mM);
+      float mA = smoothstep(0., .10, eA.x) * smoothstep(0., .14, eA.y);
+      if (mA > 0.) col = mix(col, textureGrad(tA, uA, ax, ay).rgb, mA);
+      float l = dot(col, vec3(.30, .59, .11));
+      col = mix(vec3(l), col, sat) * expo;
+      vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = clamp(dot(N, V), 0., 1.);
+      col *= mix(.14, 1., smoothstep(0., .42, mu));                       // the limb falls into shadow
+      col += vec3(.13, .36, .9) * pow(1. - mu, 5.) * haze * .5;            // thin blue air at the horizon
+      gl_FragColor = vec4(col, 1.);
+    }` });
+const scene = new THREE.Scene();
+const globe = new THREE.Mesh(globeGeometry(), globeMat); globe.frustumCulled = false; scene.add(globe);
+// atmosphere: back side of a shell 5 % above the ground, brightest right at the limb, gone at its own edge
+const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 96), new THREE.ShaderMaterial({
+  uniforms: { camPos: globeMat.uniforms.camPos, k: { value: 1 } }, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float; uniform vec3 camPos; uniform float k; varying vec3 vP;
+    void main(){ vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = dot(N, V);
+      float a = pow(clamp(-mu / .305, 0., 1.), 3.4); gl_FragColor = vec4(vec3(.2, .46, 1.) * k, a * k * .8); }` }));
+scene.add(atmo);
+const FOV = 30, camera = new THREE.PerspectiveCamera(FOV, W / H, 0.02, 30);
+
+// camera rig like Google Earth: look at (lon, lat) from `range` globe radii, heading clockwise from north, tilt 0 = straight down.
+// ox / oy shift the picture on screen (fractions of the frame, + = right / lower).
+let CAM = null;
+function setCam(c) {
+  CAM = c;
+  const U = dirv(c.lon, c.lat), a = c.lon * RAD, b = c.lat * RAD;
+  const E = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), N = new THREE.Vector3(-Math.sin(b) * Math.sin(a), Math.cos(b), -Math.sin(b) * Math.cos(a));
+  const h = (c.head || 0) * RAD, t = (c.tilt || 0) * RAD;
+  const F = N.clone().multiplyScalar(Math.cos(h)).addScaledVector(E, Math.sin(h));
+  const T = U.clone().multiplyScalar(1 + demAt(c.lon, c.lat));
+  camera.position.copy(T).addScaledVector(U, c.range * Math.cos(t)).addScaledVector(F, -c.range * Math.sin(t));
+  camera.up.copy(F).multiplyScalar(Math.cos(t)).addScaledVector(U, Math.sin(t));
+  camera.lookAt(T);
+  if (c.roll) camera.rotateZ(c.roll * RAD);
+  camera.fov = FOV; camera.near = Math.max(.004, c.range * .05); camera.far = c.range + 3;
+  camera.setViewOffset(W, H, -(c.ox || 0) * W, -(c.oy || 0) * H, W, H);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+  globeMat.uniforms.camPos.value.copy(camera.position);
+}
+const _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// lon/lat -> screen px. Returns [x, y, visible]. With limb = true a point hidden behind the globe slides to the limb,
+// so that an outline that goes round the globe stays one closed shape (for fills and clips).
+function P(lon, lat, limb = false) {
+  const a = lon * RAD, b = lat * RAD, r = 1 + demAt(lon, lat), c = Math.cos(b) * r;
+  _v.set(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a));
+  let vis = _v.dot(camera.position) > r * r * .995;
+  if (!vis && limb) {
+    const D = camera.position.length(); _c.copy(camera.position).multiplyScalar(1 / D);
+    _v.addScaledVector(_c, -_v.dot(_c)); _v.multiplyScalar(Math.sqrt(1 - 1 / (D * D)) / (_v.length() || 1)).addScaledVector(_c, 1 / D); vis = true;
+  }
+  _v.project(camera);
+  return [(_v.x * .5 + .5) * W, (1 - (_v.y * .5 + .5)) * H, vis && _v.z < 1];
+}
+// screen pixels per km near the look-at point (for sizing things in km)
+function pxPerKm() { const p = P(CAM.lon, CAM.lat), q = P(CAM.lon + 1 / Math.cos(CAM.lat * RAD), CAM.lat); return Math.hypot(q[0] - p[0], q[1] - p[1]) / 111.2; }
+// point at distance d km and bearing brg (deg) from (lon, lat)
+function dest(lon, lat, brg, d) {
+  const δ = d / RE, θ = brg * RAD, φ1 = lat * RAD, λ1 = lon * RAD;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return [λ2 / RAD, φ2 / RAD];
+}
+function distKm(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dφ = φ2 - φ1, dλ = (b[0] - a[0]) * RAD;
+  const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+  return 2 * RE * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dλ = (b[0] - a[0]) * RAD;
+  return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / RAD;
+}
+
+// stars behind the globe (fixed directions, so they turn with the camera)
+const STARS = Array.from({ length: 7000 }, (_, i) => { const z = hash(i * 3.17 + .3) * 2 - 1, a = hash(i * 7.31 + 1.1) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return { d: new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a)), m: hash(i * 1.93 + 5.5) }; });
+function stars(a) {
+  if (a <= .01) return;
+  const f = 1 / Math.tan(camera.fov * RAD / 2), asp = W / H;
+  ctx.save(); ctx.fillStyle = '#dfe8ff';
+  for (const s of STARS) {
+    _v.copy(s.d).transformDirection(camera.matrixWorldInverse);
+    if (_v.z > -.5) continue;
+    const x = (_v.x / -_v.z * f / asp * .5 + .5) * W + (CAM.ox || 0) * W, y = (.5 - _v.y / -_v.z * f * .5) * H + (CAM.oy || 0) * H;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = a * (.18 + .82 * s.m * s.m * s.m); const r = 1 + s.m * 1.7; ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.restore();
+}
+// ---------------------------------------------------------------- shapes
+function dens(r, step = .8) {                              // densify so that long edges follow the globe
+  const o = [];
+  for (let i = 0; i < r.length - 1; i++) {
+    const a = r[i], b = r[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < n; k++) o.push([lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+  }
+  o.push(r[r.length - 1]); return o;
+}
+function chaikin(pts, n = 2) {
+  for (let k = 0; k < n; k++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1];
+    o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } o.push(pts[pts.length - 1]); pts = o; }
+  return pts;
+}
+const cum = pts => { const d = [0]; for (let i = 1; i < pts.length; i++) d.push(d[i - 1] + distKm(pts[i - 1], pts[i])); return d; };
+function along(pts, d, s) {                                // point at s km along a polyline with cumulative distances d
+  const n = pts.length; if (s <= 0) return pts[0]; if (s >= d[n - 1]) return pts[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m] <= s) lo = m; else hi = m; }
+  const u = (s - d[lo]) / (d[hi] - d[lo]); return [lerp(pts[lo][0], pts[hi][0], u), lerp(pts[lo][1], pts[hi][1], u)];
+}
+// rings -> canvas path. For a fill, hidden points slide to the limb (the shape stays closed); for a line (line = true) the hidden stretch is left out.
+function pathRings(c, rings, close = true, sh = null, line = false) {
+  c.beginPath();
+  for (const r of rings) {
+    let pen = false, whole = true;
+    for (const q of r) { const p = sh ? P(q[0] + sh[0], q[1] + sh[1], !line) : P(q[0], q[1], !line); if (!p[2]) { pen = false; whole = false; continue; } if (pen) c.lineTo(p[0], p[1]); else { c.moveTo(p[0], p[1]); pen = true; } }
+    if (close && whole) c.closePath();
+  }
+}
+function pathPts(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => { const p = P(q[0], q[1], true); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); if (close) c.closePath(); }
+function pathCircle(c, cen, km) { c.beginPath(); for (let i = 0; i <= 72; i++) { const q = dest(cen[0], cen[1], i * 5, km), p = P(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.closePath(); }
+function halfBlur(src, px) { hb.setTransform(1, 0, 0, 1, 0, 0); hb.clearRect(0, 0, W / 2, H / 2); hb.filter = `blur(${px / 2}px)`; hb.drawImage(src, 0, 0, W / 2, H / 2); hb.filter = 'none'; }
+function wipe(...cs) { for (const c of cs) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; c.clearRect(0, 0, W, H); c.lineJoin = c.lineCap = 'round'; } }
+function territory(parts, a, o = {}) {
+  if (a <= .004) return;
+  wipe(la, lr);
+  for (const p of parts) {
+    const pa = p.a ?? 1; if (pa <= .004) continue;
+    la.save(); lr.save();
+    for (const cl of p.clips || []) { pathPts(la, cl); la.clip(); pathPts(lr, cl); lr.clip(); }
+    pathRings(la, p.rings, true, p.shift); la.globalAlpha = pa; la.fillStyle = p.col; la.fill('evenodd');
+    if (p.rim !== 0) { pathRings(lr, p.rings, true, p.shift, true); lr.globalAlpha = pa * (p.rim ?? 1); lr.strokeStyle = p.hi || '#fff'; lr.lineWidth = p.rimW || 2.2; lr.stroke(); }
+    la.restore(); lr.restore();
+  }
+  for (const f of o.fronts || []) {
+    lr.save(); pathRings(lr, f.rings); lr.clip('evenodd'); for (const cl of f.clips || []) { pathPts(lr, cl); lr.clip(); }
+    pathPts(lr, f.pts, !f.open); lr.strokeStyle = f.col || '#fff'; lr.lineWidth = f.w || 5; lr.globalAlpha = f.a ?? 1; lr.stroke(); lr.restore();
+  }
+  lay(a, o);
+}
+// Scene 4, the khaganate growing: its lands show where a mask is. The mask = the core of 552 swelling evenly on all sides (rKm)
+// + the march to the west (wpts, a blob). The edge of the mask inside the lands glows as the moving frontier.
+function lay(a, o = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = a * (o.color ?? .82); ctx.drawImage(LA, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = a * (o.add ?? .14); ctx.drawImage(LA, 0, 0);
+  if (o.dark) { ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = a * o.dark; ctx.drawImage(LA, 0, 0); }
+  const glow = o.glow ?? .26, rim = o.rim ?? .7;
+  if (glow > 0) { halfBlur(LA, o.blur || 30); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * glow; ctx.drawImage(HB, 0, 0, W, H); }
+  if (rim > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * rim; ctx.drawImage(LR, 0, 0); halfBlur(LR, 12); ctx.globalAlpha = a * rim; ctx.drawImage(HB, 0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- drawing kit
+function font(c, size, weight = 700, fam = 'IN') { c.font = `${weight} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save(); font(ctx, o.size || 40, o.weight || 700, o.fam || 'IN'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.base || 'alphabetic';
+  ctx.letterSpacing = (o.ls || 0) + 'px'; ctx.globalAlpha *= o.alpha ?? 1;
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 20; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x + (o.ls || 0) / 2, y); ctx.restore();
+}
+// one centred line made of differently coloured parts: [[text, colour, alpha], ...]; the text '•' is drawn as a round dot (a legend mark)
+function line(parts, x, y, o = {}) {
+  const size = o.size || 60;
+  ctx.save(); font(ctx, size, o.weight || 800, o.fam || 'IT'); ctx.letterSpacing = (o.ls || 0) + 'px';
+  const ws = parts.map(p => p[0] === '•' ? size * 1.0 : ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0), ga = ctx.globalAlpha;
+  let cx = x - tot / 2; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 22; ctx.shadowOffsetY = 3; }
+  parts.forEach((p, i) => { ctx.globalAlpha = ga * (p[2] ?? 1); ctx.fillStyle = p[1] || '#fff';
+    if (ctx.globalAlpha > .004) { if (p[0] === '•') { ctx.beginPath(); ctx.arc(cx + size * .34, y - size * .36, size * .27, 0, 7); ctx.fill(); } else ctx.fillText(p[0], cx, y); }
+    cx += ws[i]; });
+  ctx.restore(); return tot;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function glowDot(x, y, r, col, a = 1) {
+  if (a <= .004 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, a)); g.addColorStop(.35, rgba(col, a * .42)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// a place on the map: soft glow + solid dot with a white ring
+function place(p, col, k, r = 7, glow = 46) {
+  if (k <= 0 || !p[2]) return;
+  glowDot(p[0], p[1], glow * k, col, .55 * k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.beginPath(); ctx.arc(p[0], p[1], r * easeBack(k), 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+// the label of the style guide: navy pill with a thin amber edge, amber dot, white name. (x, y) = centre, k = appear 0..1
+function pill(text, x, y, k, o = {}) {
+  if (k <= 0) return;
+  const size = o.size || 34, padX = size * .6, dot = o.dot === false ? 0 : size * .3, gap = size * .34;
+  ctx.save(); font(ctx, size, 600);
+  const w = ctx.measureText(text).width + padX * 2 + (dot ? dot + gap : 0), h = size * 1.74, s = lerp(.72, 1, easeBack(k));
+  x = clamp(x, w / 2 + 22, W - w / 2 - 22);
+  ctx.translate(x, y); ctx.scale(s, s); ctx.globalAlpha *= clamp(k * 1.7);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+  rr(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = o.fill || C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (!o.fill) { ctx.strokeStyle = C.line; ctx.lineWidth = 1.6; ctx.stroke(); }
+  let tx = -w / 2 + padX;
+  if (dot) { ctx.fillStyle = o.color || C.acc; ctx.beginPath(); ctx.arc(tx + dot / 2, 0, dot / 2, 0, 7); ctx.fill(); tx += dot + gap; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, tx, size * .05);
+  ctx.restore();
+}
+function mapPill(q, text, k, o = {}) {                      // a pill pinned to a place; it fades out when the place leaves the frame
+  const p = P(q[0], q[1]); if (!p[2] || k <= 0) return;
+  const off = Math.max(-p[0], p[0] - W, -p[1], p[1] - H, 0); if (off >= 60) return;
+  ctx.save(); ctx.globalAlpha *= 1 - off / 60; pill(text, p[0] + (o.dx || 0), p[1] + (o.dy ?? -56), k, o); ctx.restore();
+}
+// a line on the map between km distances s0..s1 along a polyline (pts with cumulative distances d)
+function pathAlong(pts, d, s0, s1) {
+  ctx.beginPath(); let pen = false;
+  const a = along(pts, d, s0), pa = P(a[0], a[1]); if (pa[2]) { ctx.moveTo(pa[0], pa[1]); pen = true; }
+  for (let i = 0; i < pts.length; i++) { if (d[i] <= s0) continue; if (d[i] >= s1) break; const p = P(pts[i][0], pts[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  const b = along(pts, d, s1), pb = P(b[0], b[1]); if (pb[2]) { if (pen) ctx.lineTo(pb[0], pb[1]); else ctx.moveTo(pb[0], pb[1]); }
+}
+function borders(a) { if (a <= .01) return; ctx.save(); ctx.lineWidth = 1.3; ctx.strokeStyle = `rgba(255,255,255,${a})`; pathRings(ctx, SH.borders, false); ctx.stroke(); ctx.restore(); }
+function ring(cen, km, col, a, w = 3) { if (a <= .004) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathCircle(ctx, cen, km); ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.stroke(); ctx.restore(); }
+
+// ---------------------------------------------------------------- camera
+const mixCam = (a, b, u) => ({ lon: lerp(a.lon, b.lon, u), lat: lerp(a.lat, b.lat, u), range: Math.exp(lerp(Math.log(a.range), Math.log(b.range), u)),
+  head: lerp(a.head || 0, b.head || 0, u), tilt: lerp(a.tilt || 0, b.tilt || 0, u), ox: lerp(a.ox || 0, b.ox || 0, u), oy: lerp(a.oy || 0, b.oy || 0, u) });
+const kn = (keys, T, f, log) => { const v = hermite(keys.map(k => k[0]), keys.map(k => { const x = f(k[1]) ?? 0; return log ? Math.log(x) : x; }), T); return log ? Math.exp(v) : v; };
+const camTrack = (keys, T) => ({ lon: kn(keys, T, c => c.lon), lat: kn(keys, T, c => c.lat), range: kn(keys, T, c => c.range, true), head: kn(keys, T, c => c.head),
+  tilt: kn(keys, T, c => c.tilt), ox: kn(keys, T, c => c.ox), oy: kn(keys, T, c => c.oy) });
+function shake(c, T, t0, amp) { const u = T - t0; if (u < 0 || u > .8) return; const e = amp * Math.exp(-u * 6.5); c.ox = (c.ox || 0) + e * noise1(T * 47); c.oy = (c.oy || 0) + e * .7 * noise1(T * 53 + 9); c.roll = e * 55 * noise1(T * 31 + 3); }
+
+// ---------------------------------------------------------------- places, lands, routes (lon, lat)
+const PL = { persepolis: [52.89, 29.93], behistun: [47.44, 34.39], syr: [65.2, 44.75], amu: [61.0, 39.6], aral: [59.9, 45.2], caspian: [50.6, 41.5],
+             zhet: [77.6, 44.6], saka: [70.2, 45.1], camp: [66.75, 43.33] };
+const SYR = SH.syr.map(r => dens(r, .2)), AMU = SH.amu.map(r => dens(r, .2));
+// the Persian empire of Darius (core of the Iranian plateau, up to Bactria; outline approximate)
+const PERSIA = [chaikin([[44.2, 38.6], [47.5, 39.6], [50.5, 37.6], [53.8, 37.2], [56.5, 38.1], [60.2, 37.0], [62.8, 37.6], [66.3, 38.6], [69.0, 37.6], [70.4, 35.2],
+  [68.6, 32.2], [66.4, 29.6], [63.2, 27.6], [61.6, 25.3], [57.6, 25.6], [54.2, 26.6], [51.2, 27.9], [49.4, 29.8], [48.0, 31.0], [46.2, 32.7], [45.4, 34.8], [44.4, 36.4], [44.2, 38.6]], 3).map(p => p)].map(r => dens(r, .5));
+// the lands of the Saka tigraxauda: a soft oval over the middle and lower Syr Darya up to Zhetysu (approximate, as in the school textbook)
+const SAKA = (() => { const o = []; for (let i = 0; i <= 120; i++) { const th = i * 3 * RAD, c = Math.cos(th), s = Math.sin(th);
+  const ry = 330 + 60 * Math.max(0, -c), rx = s > 0 ? 830 : 900, r = 1 / Math.sqrt((c / ry) ** 2 + (s / rx) ** 2);
+  o.push(dest(70.0, 44.7, i * 3 + 6, r * (1 + .05 * Math.sin(th * 3 + 1) + .03 * Math.sin(th * 7 + 2)))); } return [o]; })();
+// the march of Darius: Persepolis -> Merv -> across the Amu Darya -> the Syr Darya
+const MARCH = dens(chaikin([PL.persepolis, [55.6, 32.3], [58.6, 34.8], [61.6, 37.0], [63.6, 38.9], [65.3, 40.8], [66.4, 42.3], PL.camp], 3), .2), MARCHD = cum(MARCH);
+// the legend: Shyrak leads the army from the Syr Darya into the Kyzylkum, away from every river and well (the path is an illustration)
+const ROUTE = dens(chaikin([PL.camp, [66.15, 42.98], [65.55, 42.96], [65.0, 42.62], [64.75, 42.12], [64.2, 41.82], [63.7, 41.95], [63.3, 41.62], [63.0, 41.3]], 3), .03), ROUTED = cum(ROUTE), ROUTELEN = ROUTED[ROUTED.length - 1];
+const ROUTE_END = ROUTE[ROUTE.length - 1];
+
+// a river: dark under-stroke + a light blue glowing line
+function rivers(a) {
+  if (a <= .01) return;
+  ctx.save(); ctx.lineCap = ctx.lineJoin = 'round';
+  pathRings(ctx, [...SYR, ...AMU], false, null, true); ctx.strokeStyle = `rgba(4,16,30,${.45 * a})`; ctx.lineWidth = 5; ctx.stroke();
+  ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#3aa0ff'; ctx.shadowBlur = 8; ctx.strokeStyle = rgba(C.water, .75 * a); ctx.lineWidth = 2.4; ctx.stroke(); ctx.restore();
+}
+// the pointed cap of the Saka (Persian «tigraxauda»): a tall cone leaning back a little, with a brim and ear flaps. (x, y) = bottom centre, h = height
+function capPath(c, x, y, h) {
+  const w = h * .62; c.beginPath();
+  c.moveTo(x - w * .5, y); c.quadraticCurveTo(x - w * .42, y - h * .55, x + w * .06, y - h);       // left side up to the tip
+  c.quadraticCurveTo(x + w * .2, y - h * .62, x + w * .5, y);                                     // right side
+  c.closePath();
+}
+function capIcon(x, y, h, col, a = 1, o = {}) {
+  if (a <= .004) return;
+  ctx.save(); ctx.globalAlpha *= a;
+  if (o.disc) { ctx.beginPath(); ctx.arc(x, y - h * .48, h * .78, 0, 7); ctx.fillStyle = C.card; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 18; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke(); }
+  capPath(ctx, x, y, h); ctx.fillStyle = col; ctx.shadowColor = o.glow ? col : 'transparent'; ctx.shadowBlur = o.glow || 0; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.fillStyle = 'rgba(19,11,84,.55)';                          // the band of the brim
+  ctx.beginPath(); ctx.moveTo(x - h * .31, y); ctx.lineTo(x + h * .31, y); ctx.lineTo(x + h * .29, y - h * .12); ctx.lineTo(x - h * .29, y - h * .12); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// a tapered glowing arrow along a polyline (lon/lat) up to progress g (0..1)
+function arrowAlong(line, g, col, colHi, a = 1, wMax = 34, head = 120) {
+  if (g <= .02 || a <= 0) return;
+  const n = Math.max(2, Math.round(g * (line.length - 1))), pts = [], k = pxPerKm();
+  for (let i = 0; i <= n; i++) pts.push(P(line[i][0], line[i][1]));
+  const tip = pts[n], pr = pts[Math.max(0, n - 3)]; let dx = tip[0] - pr[0], dy = tip[1] - pr[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  let tot = 0; for (let i = 1; i <= n; i++) tot += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const hl = Math.min(head * k, tot * .5, 70), hw = hl * .62, lf = [], rt = []; let acc = 0;
+  for (let i = 0; i <= n; i++) {
+    if (i) acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (acc > tot - hl * .92) break;
+    const q = pts[Math.min(n, i + 1)], r = pts[Math.max(0, i - 1)]; let tx = q[0] - r[0], ty = q[1] - r[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    const w = Math.min(wMax * .5, (2.5 + wMax * .5 * Math.pow(acc / tot, 1.3))); lf.push([pts[i][0] - ty * w, pts[i][1] + tx * w]); rt.push([pts[i][0] + ty * w, pts[i][1] - tx * w]);
+  }
+  const bx = tip[0] - dx * hl, by = tip[1] - dy * hl;
+  ctx.save(); ctx.globalAlpha = a; ctx.beginPath();
+  lf.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+  ctx.lineTo(bx - dy * hw * .42, by + dx * hw * .42); ctx.lineTo(bx - dy * hw, by + dx * hw); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(bx + dy * hw, by - dx * hw); ctx.lineTo(bx + dy * hw * .42, by - dx * hw * .42);
+  for (let i = rt.length - 1; i >= 0; i--) ctx.lineTo(rt[i][0], rt[i][1]);
+  ctx.closePath();
+  const gr = ctx.createLinearGradient(pts[0][0], pts[0][1], tip[0], tip[1]); gr.addColorStop(0, rgba(col, 0)); gr.addColorStop(.3, rgba(col, .8)); gr.addColorStop(1, colHi);
+  ctx.shadowColor = col; ctx.shadowBlur = 30; ctx.fillStyle = gr; ctx.fill(); ctx.shadowBlur = 10; ctx.fill();
+  ctx.restore(); glowDot(tip[0], tip[1], 110, col, .45 * a);
+}
+// the army: a cloud of small red dots that follows a head point along a route (s = km along ROUTE of the head), thinning with the days
+const SOLDIERS = Array.from({ length: 260 }, (_, i) => ({ back: Math.pow(hash(i * 1.7 + .2), 1.5) * 60, side: (hash(i * 3.1 + .5) - .5) * 2, ph: hash(i * 5.3) * 6.28, q: hash(i * 7.9 + 3) }));
+function army(s, a, thin = 0, spread = 0) {
+  if (a <= .01) return;
+  const k = pxPerKm(); ctx.save(); ctx.fillStyle = C.warn; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 3;
+  for (const d of SOLDIERS) {
+    if (d.q < thin) continue;
+    const sb = s - 6 - d.back - spread * d.q * 30, p0 = along(ROUTE, ROUTED, Math.max(0, sb)), p1 = along(ROUTE, ROUTED, Math.max(0, sb) + 1.5);
+    const A = P(p0[0], p0[1]), Bp = P(p1[0], p1[1]); let nx = -(Bp[1] - A[1]), ny = Bp[0] - A[0]; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+    const off = d.side * (7 + d.back * .09 + spread * 26) * k * 4.2 + Math.sin(d.ph) * 2;
+    const r = 3.4 + 1.8 * d.q;
+    ctx.globalAlpha = a * (1 - .6 * d.back / 60);
+    ctx.beginPath(); ctx.arc(A[0] + nx * off, A[1] + ny * off, r, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+// a dotted route line (km s0..s1 along ROUTE)
+function dotted(s0, s1, col, a, w = 4.5) {
+  if (a <= .01 || s1 <= s0) return;
+  ctx.save(); ctx.lineCap = 'round'; ctx.setLineDash([.1, 15]); pathAlong(ROUTE, ROUTED, s0, s1);
+  ctx.strokeStyle = `rgba(0,0,0,${.45 * a})`; ctx.lineWidth = w + 3; ctx.stroke();
+  ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.stroke(); ctx.restore();
+}
+// a cross (×) where the route ends
+function cross(x, y, s, a) {
+  if (a <= .01) return;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.globalAlpha = a; ctx.lineCap = 'round';
+  for (const [w, c] of [[s * .34, 'rgba(0,0,0,.55)'], [s * .22, C.warn]]) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); }
+  ctx.restore();
+}
+// a waterskin (bag with a neck), full or empty
+function waterskin(x, y, s, full, a) {
+  if (a <= .01) return;
+  ctx.save(); ctx.translate(x, y); ctx.globalAlpha = a;
+  ctx.beginPath(); ctx.moveTo(-s * .12, -s * .62); ctx.lineTo(s * .12, -s * .62); ctx.lineTo(s * .14, -s * .4);
+  ctx.bezierCurveTo(s * .62, -s * .32, s * .58, s * .5, 0, s * .52); ctx.bezierCurveTo(-s * .58, s * .5, -s * .62, -s * .32, -s * .14, -s * .4); ctx.closePath();
+  ctx.fillStyle = full > .5 ? mixHex('#5fb4ff', '#9fd6ff', 0) : 'rgba(255,255,255,.06)'; ctx.globalAlpha = a * (full > .5 ? 1 : .9);
+  ctx.fillStyle = rgba('#7cc8ff', .25 + .6 * full); ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = rgba(full > .5 ? '#bfe4ff' : '#ffffff', .4 + .5 * full); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- photos (real reliefs, Wikimedia Commons) and film shots (Higgsfield)
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const PHOTOS = await fetch('photos/photos.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+for (const k in PHOTOS) PHOTOS[k].img = await loadImg('photos/' + PHOTOS[k].file);
+// a photo card: rounded, thin light edge, slow zoom from the whole picture towards its focus point (fx, fy = 0..1 of the image)
+// box = [x, y, w, h] on screen; k = appear 0..1; z = 0..1 progress of the zoom
+function photoCard(ph, box, k, z, o = {}) {
+  if (k <= .004) return;
+  const [x, y, w, h] = box, s = lerp(.86, 1, easeBack(clamp(k))), img = ph && ph.img;
+  ctx.save(); ctx.globalAlpha *= clamp(k * 1.4); ctx.translate(x + w / 2, y + h / 2); ctx.scale(s, s); ctx.rotate((o.rot || 0) * (1 - k) * RAD);
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 16; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = '#0b0636'; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.save(); rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.clip();
+  if (img) {
+    const zf = lerp(ph.z0 || 1, ph.z1 || 1.6, easeIO(z)), fx = lerp(.5, ph.fx ?? .5, easeIO(z)), fy = lerp(.5, ph.fy ?? .5, easeIO(z));
+    const sc = Math.max(w / img.width, h / img.height) * zf, dw = img.width * sc, dh = img.height * sc;
+    let ix = -fx * dw + (fx - .5) * w * 0, iy = -fy * dh; ix = clamp(ix, w / 2 - dw, -w / 2); iy = clamp(iy, h / 2 - dh, -h / 2);
+    ctx.filter = 'sepia(.35) saturate(1.05) contrast(1.08) brightness(.96)'; ctx.drawImage(img, ix, iy, dw, dh); ctx.filter = 'none';
+  } else { ctx.fillStyle = '#2a2140'; ctx.fillRect(-w / 2, -h / 2, w, h); txt('photo', 0, 0, { size: 40, color: 'rgba(255,255,255,.3)' }); }
+  const g = ctx.createLinearGradient(0, h / 2 - 230, 0, h / 2); g.addColorStop(0, 'rgba(10,6,40,0)'); g.addColorStop(1, 'rgba(10,6,40,.92)'); ctx.fillStyle = g; ctx.fillRect(-w / 2, h / 2 - 230, w, 230);
+  ctx.restore();
+  rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 2; ctx.stroke();
+  if (o.title) txt(o.title, -w / 2 + 34, h / 2 - 72, { size: 40, weight: 800, fam: 'IT', align: 'left', sb: 10 });
+  if (o.sub) txt(o.sub, -w / 2 + 34, h / 2 - 30, { size: 25, weight: 600, align: 'left', color: 'rgba(255,255,255,.8)', sb: 8 });
+  if (o.badge) { ctx.save(); font(ctx, 22, 700); ctx.letterSpacing = '4px'; const bw = ctx.measureText(o.badge).width + 36; rr(ctx, -w / 2 + 24, -h / 2 + 24, bw, 44, 22); ctx.fillStyle = C.acc; ctx.fill();
+    ctx.fillStyle = BR.navy; ctx.textBaseline = 'middle'; ctx.fillText(o.badge, -w / 2 + 42, -h / 2 + 47); ctx.restore(); }
+  if (o.after) o.after(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+// the Behistun relief as a line drawing (Darius, then the captives with roped necks, the last one with the tall pointed cap)
+function reliefSketch(x, y, w, k) {
+  if (k <= .004) return;
+  ctx.save(); ctx.translate(x, y); ctx.globalAlpha *= k; ctx.strokeStyle = C.accHi; ctx.lineWidth = 3.2; ctx.lineCap = ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 10;
+  const fig = (fx, h, capH, lean = 0) => {                      // a standing figure seen from the side
+    ctx.beginPath(); ctx.arc(fx, -h * .86, h * .07, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, -h * .79); ctx.lineTo(fx + lean, -h * .38); ctx.moveTo(fx + lean, -h * .38); ctx.lineTo(fx - h * .06, 0); ctx.moveTo(fx + lean, -h * .38); ctx.lineTo(fx + h * .07, 0);
+    ctx.moveTo(fx, -h * .7); ctx.lineTo(fx - h * .12, -h * .52); ctx.stroke();
+    if (capH) { ctx.beginPath(); ctx.moveTo(fx - h * .07, -h * .9); ctx.lineTo(fx + h * .02, -h * .9 - capH); ctx.lineTo(fx + h * .07, -h * .9); ctx.stroke(); }
+  };
+  const n = Math.ceil(clamp(k * 1.2) * 6);
+  if (n > 0) fig(-w * .38, w * .42, w * .05);                    // Darius, larger, with a crown
+  for (let i = 0; i < Math.min(5, n - 1); i++) fig(-w * .12 + i * w * .11, w * .3, i === 4 ? w * .13 : 0, -2);
+  if (n > 2) { ctx.beginPath(); ctx.moveTo(-w * .12, -w * .3 * .74); ctx.lineTo(-w * .12 + 4 * w * .11, -w * .3 * .74); ctx.setLineDash([6, 8]); ctx.stroke(); }
+  ctx.restore();
+}
+// film shots: frames extracted from the Higgsfield clips (clips/s<n>/0001.jpg ...), 60 fps after motion interpolation (prep_clips.sh)
+const CLIPS = await fetch('clips/clips.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+const frameCache = {};
+async function clipFrame(name, ct) {
+  const c = CLIPS[name]; if (!c) return null;
+  const i = clamp(Math.round(ct * c.fps), 0, c.n - 1) + 1, key = name + i;
+  if (frameCache[name] && frameCache[name].key === key) return frameCache[name].img;
+  const img = await loadImg(`clips/${name}/${String(i).padStart(4, '0')}.jpg`); frameCache[name] = { key, img }; return img;
+}
+// scene windows: film shots 1, 3, 5, 7 play their 5 s clip over the scene; a scene longer than the clip slows it down (no lower than 0.7x)
+const SC = [0, M.S2, M.S3, M.S4, M.S5, M.S6, M.S7, M.S8, M.S9, END];
+async function film(n, T) {
+  const t0 = SC[n - 1], t1 = SC[n], dur = t1 - t0, c = CLIPS['s' + n];
+  const cd = c ? c.n / c.fps : 5, rate = clamp(cd / dur, .7, 1), ct = (T - t0) * rate + Math.max(0, cd - dur * rate) * (n === 7 ? .5 : .15);
+  const img = await clipFrame('s' + n, ct);
+  if (img) {
+    const zoom = 1.03 + .03 * seg(T, t0, t1), sc = Math.max(W / img.width, H / img.height) * zoom, dw = img.width * sc, dh = img.height * sc;
+    ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  } else {                                                       // placeholder until the clip exists
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2a1606'); g.addColorStop(1, '#7a4a1c'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    txt('HIGGSFIELD · ' + n, W / 2, H / 2, { size: 60, weight: 800, color: 'rgba(255,255,255,.35)' });
+  }
+}
+
+// ---------------------------------------------------------------- camera
+const CAMS = {
+  2: [[M.S2, { lon: 57.5, lat: 36.0, range: 1.75, head: 0, tilt: 30 }], [M.darius + .6, { lon: 59.6, lat: 37.6, range: 1.62, head: 2, tilt: 33 }],
+      [M.saka + .2, { lon: 63.4, lat: 40.2, range: 1.58, head: 3, tilt: 34 }], [M.S3 + .5, { lon: 64.5, lat: 41.0, range: 1.5, head: 4, tilt: 35 }]],
+  4: null,                                                          // follows the route (see camAt)
+  6: [[M.S6, { lon: 63.6, lat: 41.4, range: .5, head: -8, tilt: 46 }], [M.S6 + 1.2, { lon: 62.6, lat: 41.0, range: .62, head: -6, tilt: 44 }],
+      [M.behistun - .1, { lon: 55.8, lat: 37.6, range: 1.32, head: 0, tilt: 34 }], [M.memory + .2, { lon: 55.4, lat: 37.9, range: 1.26, head: 0, tilt: 34 }],
+      [M.S7 + .5, { lon: 60.5, lat: 40.2, range: .95, head: -3, tilt: 38 }]],
+  8: [[M.S8 - .2, { lon: 60.5, lat: 37.6, range: 1.75, head: 0, tilt: 28 }], [END, { lon: 61.0, lat: 38.0, range: 1.62, head: 1, tilt: 30 }]],
+};
+// km along ROUTE reached by the head (Shyrak and the army): the route starts when he says «I'll show you the way», the 7 days run with «seven days»
+const DAY0 = M.days - .25, DAY7 = M.S5 - .15;
+const routeHead = T => T < DAY0 ? lerp(0, ROUTELEN * .08, ease(seg(T, M.road - .2, DAY0))) : lerp(ROUTELEN * .08, ROUTELEN, easeIO(seg(T, DAY0, DAY7)));
+const dayF = T => T < DAY0 ? 0 : 7 * clamp((routeHead(T) / ROUTELEN - .08) / .92);          // days walked (0..7), from the head's position
+const dayAt = T => T < DAY0 ? 0 : Math.min(7, 1 + Math.floor(dayF(T) * .9999));
+function camAt(T) {
+  if (T < M.S4 || (T >= M.S6 && T < M.S8) || T >= M.S8) {
+    const keys = T < M.S4 ? CAMS[2] : T < M.S8 ? CAMS[6] : CAMS[8]; return camTrack(keys, T);
+  }
+  // scene 4: from the camp on the Syr Darya, following the head of the route into the desert
+  const s = routeHead(T), q = along(ROUTE, ROUTED, Math.min(ROUTELEN, s + 18)), u = seg(T, M.S4, DAY7);
+  return { lon: lerp(66.4, q[0], ease(seg(T, M.S4, M.road + .6)) * .85) , lat: lerp(43.1, q[1], ease(seg(T, M.S4, M.road + .6)) * .85) - .05,
+           range: lerp(.3, .38, easeIO(u)), head: lerp(-14, -4, u), tilt: lerp(50, 44, u) };
+}
+
+// ---------------------------------------------------------------- the map, scene by scene
+const PERSIA_LOOK = { color: .38, add: .02, dark: .1, glow: .08, rim: .5 };
+const SAKA_LOOK = { color: .42, add: .14, glow: .26, rim: .8 };
+function persiaLand(a) { territory([{ rings: PERSIA, col: C.persia, hi: C.warnHi, rimW: 2 }], a, PERSIA_LOOK); }
+function sakaLand(a, pulse = 0) { territory([{ rings: SAKA, col: C.acc, hi: C.accHi, rimW: 2.4 }], a, { ...SAKA_LOOK, glow: SAKA_LOOK.glow * (1 + pulse), add: SAKA_LOOK.add * (1 + pulse) }); }
+function mapS2(T) {                                          // 519 BC: Persia of Darius, the march north-east, the lands of the Saka in pointed caps
+  rivers(.9);
+  persiaLand(.8 * ap(T, M.S2 + .15, .5));
+  const g = easeIO(seg(T, M.S2 + .6, M.saka + .4));
+  arrowAlong(MARCH, g, C.warn, '#ffe0d6', 1);
+  const pk = ap(T, M.S2 + .3, .3); place(P(...PL.persepolis), C.warn, pk, 7, 40); mapPill(PL.persepolis, L.persia, pk, { color: C.warn, dy: 52 });
+  const sk = ap(T, M.saka - .1, .5), pulse = Math.exp(-Math.max(0, T - M.saka) * 2.5) * (T > M.saka ? 1 : 0);
+  sakaLand(sk, .6 * pulse);
+  mapPill(PL.syr, L.syr, ap(T, M.S2 + .9, .3), { dot: false, size: 26, dy: -6 });
+  mapPill(PL.aral, L.aral, ap(T, M.S2 + 1.1, .3), { dot: false, size: 26, dy: 0 });
+  mapPill(PL.caspian, L.caspian, ap(T, M.S2 + 1.0, .3), { dot: false, size: 26, dy: 0 });
+  const sp = P(...PL.saka); if (sp[2] && sk > 0) { capIcon(sp[0], sp[1] - 34, 66, C.acc, sk, { disc: true }); pill(L.saka, sp[0], sp[1] + 44, sk, { size: 32 }); }
+}
+function mapS4(T) {                                          // the legend: 7 days into the waterless desert
+  rivers(1);
+  const s = routeHead(T), d = dayAt(T), hp = along(ROUTE, ROUTED, s), H0 = P(hp[0], hp[1]);
+  place(P(...PL.camp), C.warn, ap(T, M.S4 + .1, .3) * (1 - seg(T, DAY0, DAY0 + .6)), 6, 30);
+  dotted(0, s, C.acc, ap(T, M.road - .2, .3));
+  for (let i = 1; i <= 7; i++) {                               // the day marks along the route
+    const sd = ROUTELEN * (.08 + .92 * (i - .5) / 7), on = T >= DAY0 && s >= sd; if (!on) continue;
+    const q = along(ROUTE, ROUTED, sd), p = P(q[0], q[1]), k = clamp((s - sd) / 8);
+    if (!p[2]) continue;
+    ctx.save(); ctx.globalAlpha = k; ctx.beginPath(); ctx.arc(p[0], p[1], 13, 0, 7); ctx.fillStyle = C.card; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = C.acc; ctx.stroke(); ctx.restore();
+    txt(String(i), p[0], p[1] + 6.5, { size: 17, weight: 800, color: C.acc, alpha: k, shadow: 0 });
+  }
+  army(s, ap(T, M.S4 + .2, .4), seg(T, DAY0 + .8, DAY7) * .45);
+  const sk = ap(T, M.S4 + .35, .3);                             // Shyrak walks in front
+  if (H0[2]) { place(H0, C.acc, sk, 8, 54); mapPill(hp, L.shyrakPill, sk, { dy: -58 }); }
+  const ak = ap(T, M.S4 + .7, .3) * (1 - seg(T, DAY0, DAY0 + .4)), back = along(ROUTE, ROUTED, Math.max(0, s - 40));
+  mapPill(back, L.army, ak, { color: C.warn, dy: 62, dx: 40, size: 28 });
+}
+function mapS6(T) {                                          // the end of the route; what the sources say: Behistun, Skunkha
+  rivers(.9);
+  const xk = ap(T, M.S6 + .15, .35), ep = P(ROUTE_END[0], ROUTE_END[1]);
+  dotted(0, ROUTELEN, C.acc, lerp(1, .55, seg(T, M.S6 + 1, M.behistun)));
+  army(ROUTELEN, 1 - seg(T, M.S6, M.S6 + 1.4), .55, seg(T, M.S6, M.S6 + 1.4));
+  if (ep[2]) cross(ep[0], ep[1], 40 * easeBack(xk), xk);
+  const bk = ap(T, M.behistun - .2, .35); place(P(...PL.behistun), C.acc, bk, 7, 44); mapPill(PL.behistun, L.behistun, bk, { dy: 54 });
+  persiaLand(.45 * ap(T, M.behistun - .4, .5));
+  const fk = ap(T, M.feat - .1, .4);                            // the memory of the people: the route lights up again in amber
+  if (fk > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; pathAlong(ROUTE, ROUTED, 0, ROUTELEN * fk); ctx.strokeStyle = rgba(C.acc, .9); ctx.lineWidth = 5; ctx.shadowColor = C.acc; ctx.shadowBlur = 22; ctx.stroke(); ctx.restore();
+    if (ep[2]) glowDot(ep[0], ep[1], 120, C.acc, .6 * fk); mapPill(ROUTE_END, L.feat, fk, { dy: 58 }); }
+}
+function mapS8(T) {                                          // what to remember: the map sinks into navy, three labels stay
+  rivers(.6); persiaLand(.5); sakaLand(.6);
+  const k1 = ap(T, M.e2 - .1, .3), k2 = ap(T, M.e3 - .1, .3);
+  place(P(...PL.persepolis), C.warn, k1, 7, 36); mapPill(PL.persepolis, L.persia, k1, { color: C.warn, dy: 50 });
+  const sp = P(...PL.saka); if (sp[2] && k2 > 0) { capIcon(sp[0], sp[1] - 30, 58, C.acc, k2, { disc: true }); pill(L.saka, sp[0], sp[1] + 34, k2, { size: 30 }); }
+}
+
+// ---------------------------------------------------------------- titles
+// ---------------------------------------------------------------- titles
+function vignette(top = 1) {
+  let g = ctx.createLinearGradient(0, 0, 0, 600); g.addColorStop(0, `rgba(0,0,0,${.9 * top})`); g.addColorStop(.5, `rgba(0,0,0,${.46 * top})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 600);
+  g = ctx.createLinearGradient(0, 1080, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.42, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,.92)');
+  ctx.fillStyle = g; ctx.fillRect(0, 1080, W, H - 1080);
+  g = ctx.createRadialGradient(W / 2, H / 2, 620, W / 2, H / 2, 1180); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function odometer(v, cx, y, size, col, a = 1, suffix = '', sufA = 0) {     // rolling three-digit year
+  ctx.save(); ctx.globalAlpha *= a; font(ctx, size, 800, 'IT');
+  const dw = ctx.measureText('0').width, n = 3, fs = size * .36; let sw = 0;
+  if (suffix && sufA > 0) { font(ctx, fs, 800, 'IT'); sw = (ctx.measureText(suffix).width + size * .05) * sufA; font(ctx, size, 800, 'IT'); }
+  const x0 = cx - (dw * n + sw) / 2, lh = size * .96;
+  ctx.save(); ctx.beginPath(); ctx.rect(x0 - 30, y - size * .8, dw * n + 60, size * .88); ctx.clip();
+  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  for (let i = 0; i < n; i++) {
+    const pw = 10 ** i, d = Math.floor(v / pw) % 10, low = v % pw; let f = i === 0 ? v % 1 : (low > pw - 1 ? low - (pw - 1) : 0);
+    f = ease(seg(f, .25, 1)); const x = x0 + dw * (n - 1 - i) + dw / 2;
+    ctx.fillText(String(d), x, y - f * lh); if (f > 0) ctx.fillText(String((d + 1) % 10), x, y - f * lh + lh);
+  }
+  ctx.restore();
+  if (sw > 0) { font(ctx, fs, 800, 'IT'); ctx.textAlign = 'left'; ctx.globalAlpha *= sufA; ctx.fillStyle = col; ctx.fillText(suffix, x0 + dw * n + size * .05, y); }
+  ctx.restore();
+}
+const YEAR_Y = 430, CAP_Y = 494;
+const cap = (parts, a, y = CAP_Y) => { if (a > 0) { ctx.save(); ctx.globalAlpha = a; line(parts, W / 2, y + (1 - a) * 10, { size: 31, weight: 700, fam: 'IN', ls: 5, sb: 12 }); ctx.restore(); } };
+
+// ---------------------------------------------------------------- titles, panels, the call to action
+const titleLine = (parts, y, size, a, o = {}) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; line(parts.map(p => [p[0], PAL[p[1]]]), W / 2, y + (1 - a) * 14, { size, ...o }); ctx.restore(); };
+const tag = (s, y, a, col = C.acc) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; rr(ctx, W / 2 - 30, y - 52, 60, 6, 3); ctx.fill(); ctx.restore();
+  txt(s, W / 2, y + (1 - a) * 8, { size: 28, weight: 700, ls: 7, color: col, alpha: a, sb: 10 }); };
+function yearPlate(a, y = 330) {                              // «б.з.б. 519» in a navy plate with an amber edge
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; font(ctx, 96, 800, 'IT'); const wy = ctx.measureText(L.year).width; font(ctx, 40, 700, 'IN'); const wa = L.yearA ? ctx.measureText(L.yearA).width + 22 : 0, wb = L.yearB ? ctx.measureText(L.yearB).width + 22 : 0;
+  const w = wy + wa + wb + 80, h = 136, x = W / 2 - w / 2, s = lerp(.9, 1, easeBack(a));
+  ctx.translate(W / 2, y); ctx.scale(s, s); ctx.translate(-W / 2, -y);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; rr(ctx, x, y - h / 2, w, h, 22); ctx.fillStyle = C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = rgba(C.acc, .7); ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  let cx = W / 2 - w / 2 + 40;
+  if (L.yearA) { txt(L.yearA, cx, y + 14, { size: 40, weight: 700, align: 'left', alpha: a, color: 'rgba(255,255,255,.88)', shadow: 0 }); cx += wa; }
+  txt(L.year, cx, y + 34, { size: 96, weight: 800, fam: 'IT', align: 'left', color: C.acc, alpha: a, shadow: 0 }); cx += wy + 22;
+  if (L.yearB) txt(L.yearB, cx, y + 14, { size: 40, weight: 700, align: 'left', alpha: a, color: 'rgba(255,255,255,.88)', shadow: 0 });
+}
+function hud(T, sc) {
+  if (sc === 1) {                                              // the hook over the film shot
+    titleLine(L.hook, 300, KK ? 70 : 66, ap(T, .25, .4) * (1 - seg(T, M.S2 - .5, M.S2 - .1)));
+  } else if (sc === 2) {
+    yearPlate(ap(T, M.S2 + .1, .4));
+    titleLine([[L.king, 3]], 464, 58, ap(T, M.darius - .1, .35));
+  } else if (sc === 3) {
+    const a = ap(T, M.shyrak - .2, .45);
+    tag(L.legend, 262, ap(T, M.S3 + .3, .4) * (1 - seg(T, M.S4 - .4, M.S4 - .1)));
+    if (a > 0) { ctx.save(); ctx.translate(W / 2, 400); const s = lerp(1.12, 1, easeOut(seg(T, M.shyrak - .2, M.shyrak + .5))); ctx.scale(s, s);
+      txt(L.shyrak, 0, 0, { size: 150, weight: 800, fam: 'IT', color: C.acc, alpha: a * (1 - seg(T, M.S4 - .4, M.S4 - .1)), ls: 10, sb: 34 }); ctx.restore(); }
+  } else if (sc === 4) {
+    tag(L.legend, 262, ap(T, M.S4 + .1, .35));
+    const d = dayAt(T), dk = ap(T, DAY0, .3);
+    if (dk > 0) {                                              // day counter + seven waterskins that empty one by one
+      const flip = clamp((dayF(T) - (d - 1)) * 3);
+      ctx.save(); ctx.globalAlpha = dk; font(ctx, 150, 800, 'IT'); ctx.restore();
+      txt(L.day, W / 2, 330, { size: 34, weight: 700, ls: 8, color: 'rgba(255,255,255,.8)', alpha: dk, sb: 10 });
+      ctx.save(); ctx.translate(W / 2, 470); const s = lerp(1.18, 1, easeOut(flip)); ctx.scale(s, s); txt(String(Math.max(1, d)), 0, 0, { size: 150, weight: 800, fam: 'IT', color: d >= 7 ? C.warn : C.acc, alpha: dk, sb: 28 }); ctx.restore();
+      for (let i = 0; i < 7; i++) {
+        const full = 1 - clamp((dayF(T) - i - .5) * 3);
+        waterskin(W / 2 + (i - 3) * 74, 560, 52, full, dk);
+      }
+    }
+    titleLine(L.days, 690, 56, ap(T, DAY7 - .35, .35));
+  } else if (sc === 6) {
+    tag(L.sources, 262, ap(T, M.S6 + .2, .35), '#fff');
+    titleLine(L.vs, 350, 70, ap(T, M.darius2 - .1, .35));
+  }
+}
+// scene 2 and 6: the real reliefs over the map
+function photos(T, sc) {
+  if (sc === 2) {
+    const t0 = M.darius + .25, t1 = Math.min(M.caps + 1.35, M.S3 - .25), k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
+    photoCard(PHOTOS.persepolis, [150, 540, 780, 580], k, seg(T, t0, t1), { title: L.photo1, sub: L.photo1b, badge: 'PERSEPOLIS', rot: -3 });
+  } else if (sc === 6) {
+    const t0 = M.behistun - .05, tr = M.darius2 - .1, t1 = Math.min(M.memory - .1, M.S7 - .5), k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
+    if (k <= 0) return;
+    const box = [90, 520, 900, 690], sw = ease(seg(T, tr, tr + .6));
+    if (sw < 1) {                                              // the line drawing first
+      ctx.save(); ctx.globalAlpha = k * (1 - sw); rr(ctx, box[0], box[1], box[2], box[3], 22); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.globalAlpha = k * (1 - sw); reliefSketch(W / 2 + 40, box[1] + box[3] - 150, 760, seg(T, t0, t0 + 1.2)); ctx.restore();
+    }
+    if (sw > 0) {
+      const ph = PHOTOS.behistun, sk = ap(T, M.skunkha - .15, .35);
+      photoCard(ph, box, k * sw, seg(T, M.skunkha - .3, t1), { title: L.photo2, sub: L.photo2b, badge: 'BEHISTUN', after: (x, y, w, h) => {
+        if (sk <= 0 || !ph || !ph.img) return;                 // arrow + label on Skunkha (his position in the photo is in photos.json: sx, sy at the full zoom)
+        const ax = x + w * (ph.sx ?? .78), ay = y + h * (ph.sy ?? .3);
+        ctx.save(); ctx.globalAlpha *= sk; ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(ax, ay, 70 * lerp(1.4, 1, easeOut(sk)), 0, 7); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.globalAlpha *= sk; pill(L.skunkhaArrow, clamp(ax, x + 150, x + w - 150), ay - 110, sk, { size: 34 }); ctx.restore();
+      } });
+    }
+    pill(L.skunkha, W / 2, 1290, ap(T, M.skunkha, .35) * (1 - seg(T, t1 - .3, t1)), { size: 34 });
+  }
+}
+function remember(T) {                                       // scene 8: the ENT table
+  const a = ap(T, M.S8 + .1, .35); tag(L.remember, 256, a);
+  const rows = [[M.e1, L.rows[0]], [M.e2, L.rows[1]], [M.e3, L.rows[2]]];
+  const x = 90, w = W - 180, y0 = 470, rh = 150;
+  const pa = ap(T, M.e1 - .35, .35);
+  if (pa > 0) { ctx.save(); ctx.globalAlpha = pa; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; rr(ctx, x, y0 - 30, w, rh * 3 + 60, 26); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); }
+  rows.forEach(([t0, r], i) => {
+    const k = ap(T, t0 - .1, .35), y = y0 + i * rh + rh / 2; if (k <= 0) return;
+    if (i) { ctx.save(); ctx.globalAlpha = k * .5; ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(x + 40, y - rh / 2, w - 80, 2); ctx.restore(); }
+    txt(r[0], x + 50 + (1 - k) * -20, y + 16, { size: 50, weight: 800, fam: 'IT', align: 'left', color: i === 1 ? C.warn : C.acc, alpha: k, shadow: 0 });
+    txt(r[1], x + w - 46, y + 13, { size: 33, weight: 600, align: 'right', alpha: k, shadow: 0, color: 'rgba(255,255,255,.92)' });
+  });
+}
+// scene 9: the Saka cap turns into an arrow that points up at the profile header; the profile card with the link row
+function s9(T) {
+  const dim = ease(seg(T, M.S9 - .1, M.S9 + .5)); ctx.fillStyle = rgba('#0c0738', .92 * dim); ctx.fillRect(0, 0, W, H);
+  const X = W / 2, st = ap(T, M.S9 + .1, .35);
+  if (st > 0) txt(L.study, X, 300 + (1 - st) * 12, { size: 56, weight: 800, fam: 'IT', alpha: st * (1 - seg(T, M.link - .3, M.link)), sb: 14 });
+  // the cap (0) -> the arrow (1)
+  const m = easeIO(seg(T, M.link - .25, M.link + .45)), ca = ap(T, M.S9 + .2, .4), cy = lerp(980, 1120, m);
+  if (ca > 0 && m < 1) capIcon(X, cy + 110, 300 * (1 - .4 * m), C.acc, ca * (1 - m), { glow: 30 });
+  if (m > 0) {
+    const ay = cy + 20 + 14 * Math.sin(T * 6.5) * seg(T, M.link + .4, M.link + .8), hh = 150;
+    ctx.save(); ctx.globalAlpha = m; ctx.strokeStyle = C.acc; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.moveTo(X, ay + hh * .7); ctx.lineTo(X, ay - hh * .55); ctx.moveTo(X - 62, ay - hh * .05); ctx.lineTo(X, ay - hh * .6); ctx.lineTo(X + 62, ay - hh * .05); ctx.stroke(); ctx.restore();
+  }
+  const l = ap(T, M.link - .12, .4), hi = ap(T, M.bio - .25, .3);
+  if (l > 0) {
+    const cw = 840, ch = 206, cx = X - cw / 2, cyc = 740 + (1 - l) * 40;
+    ctx.save(); ctx.globalAlpha = l;
+    line(L.go.map(p => [p[0], p[1] ? C.acc : '#fff']), X, cyc - ch / 2 - 46, { size: 56, sb: 14 });
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cyc - ch / 2, cw, ch, 24); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 62, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 51, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
+    ctx.drawImage(LOGO_AV, cx + 106 - LOGO_AV.width / 2, cyc - LOGO_AV.height / 2);
+    txt('JAS EDUCATION', cx + 206, cyc - 43, { size: 36, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 206, cyc - 24, 504, 17, 8.5); ctx.fill();
+    const lx = cx + 199, ly = cyc + 14, lw = 360, lh = 60, my = ly + lh / 2;
+    rr(ctx, lx, ly, lw, lh, 30); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineWidth = 5.4; ctx.lineCap = 'round';
+    ctx.save(); ctx.translate(lx + 43, my); ctx.rotate(-.7); rr(ctx, -23, -8.5, 26.5, 17, 8.5); ctx.stroke(); rr(ctx, -3.5, -8.5, 26.5, 17, 8.5); ctx.stroke(); ctx.restore();
+    txt(L.linkword, lx + 82, my + 12, { size: 35, weight: 700, align: 'left', color: C.acc, shadow: 0 });
+    ctx.restore();
+    for (const dl of [0, .16]) { const u = (T - M.go - dl) / .6; if (u <= 0 || u >= 1) continue;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .75 * (1 - u) ** 2); ctx.lineWidth = 5 - 3 * u;
+      const g = 6 + 74 * easeOut(u); rr(ctx, lx - g, ly - g, lw + 2 * g, lh + 2 * g, 30 + g); ctx.stroke(); ctx.restore(); }
+    if (hi > 0) { glowDot(lx + lw / 2, my, 230, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6))); txt(L.where.toUpperCase(), X, 1330 + (1 - hi) * 10, { size: 40, weight: 700, ls: 5, alpha: hi, sb: 12 }); }
+  }
+}
+
+// ---------------------------------------------------------------- the brand in the frame
+const END0 = M.last - .1;
+function logo() { ctx.save(); ctx.globalAlpha = .82; ctx.drawImage(LOGO, W - 48 - LOGO.width, 48); ctx.restore(); }
+function credit(T, sc) {                                     // small print: map sources on the map scenes, the photo source while a photo is shown
+  const map = sc === 2 || sc === 4 || sc === 6 || sc === 8; if (!map) return;
+  const ph = sc === 2 ? PHOTOS.persepolis : PHOTOS.behistun, on = ph && ph.credit && ((sc === 2 && T > M.darius + .2 && T < M.S3 - .3) || (sc === 6 && T > M.darius2 - .1 && T < M.S7 - .5));
+  txt(on ? ph.credit : L.credit, W / 2, 1880, { size: 19, weight: 500, color: 'rgba(255,255,255,.42)', shadow: 0 });
+}
+function endCard(T) {
+  const k = ease(seg(T, END0, END0 + .5)); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
+  const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
+}
+
+// ---------------------------------------------------------------- captions: the chunk being spoken, word by word
+const CAPCOL = { w: '#ffffff', t: C.acc, n: C.acc, r: C.warn, g: C.acc, b: C.acc };
+const CHUNKS = []; B.words.forEach(w => { if (!/[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(w.w)) return; (CHUNKS[w.k] ||= { ws: [], t0: w.t }).ws.push(w); CHUNKS[w.k].t1 = w.e; });
+const CH = CHUNKS.filter(Boolean);
+function captions(T, y) {
+  let i = -1; for (let k = 0; k < CH.length; k++) if (T >= CH[k].t0 - .07) i = k;
+  if (i < 0) return; const c = CH[i], tEnd = Math.min(i + 1 < CH.length ? CH[i + 1].t0 - .07 : 1e9, c.t1 + .5);
+  if (T > tEnd) return;
+  const its = c.ws.map(w => { const key = w.c !== 'w', size = key ? 60 : 54, weight = key ? 800 : 700, s = w.w.replace(/[.,:;!?]+$/, ''); font(ctx, size, weight); return { w, s, size, weight, wd: ctx.measureText(s).width }; });
+  let tot = 0; its.forEach((it, k) => { tot += it.wd + (k < its.length - 1 && !it.w.g ? 17 : 0); });
+  const sc = Math.min(1, 960 / tot), a = seg(T, c.t0 - .07, c.t0 + .03) * (1 - seg(T, tEnd - .06, tEnd));
+  ctx.save(); ctx.translate(W / 2, y + (1 - seg(T, c.t0 - .07, c.t0 + .05)) * 10); ctx.scale(sc, sc); let x = -tot / 2;
+  for (const it of its) {
+    const on = seg(T, it.w.t - .04, it.w.t + .05), pop = 1 + .07 * Math.sin(Math.PI * seg(T, it.w.t - .02, it.w.t + .2));
+    ctx.save(); ctx.translate(x + it.wd / 2, 0); ctx.scale(pop, pop); font(ctx, it.size, it.weight); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3; ctx.globalAlpha = a * lerp(.4, 1, on); ctx.fillStyle = CAPCOL[it.w.c] || '#fff';
+    ctx.fillText(it.s, 0, 0); ctx.shadowBlur = 5; ctx.fillText(it.s, 0, 0); ctx.restore();
+    x += it.wd + (it.w.g ? 0 : 17);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- frame
+// transitions: 1->2 a dip into warm sand, 6->7 and 7->8 a dip to black, the other cuts are hard cuts with a soft white flash
+const DIPS = [[M.S2, '#c99a5b', .45], [M.S7, '#000000', .5], [M.S8, '#000000', .5]];
+const FLASH = [M.S3, M.S4, M.S5, M.S6];
+async function render(T) {
+  T = clamp(T, 0, END);
+  const sc = T < M.S2 ? 1 : T < M.S3 ? 2 : T < M.S4 ? 3 : T < M.S5 ? 4 : T < M.S6 ? 5 : T < M.S7 ? 6 : T < M.S8 ? 7 : T < M.S9 ? 8 : 9;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const isFilm = sc === 1 || sc === 3 || sc === 5 || sc === 7;
+  if (isFilm) {
+    await film(sc, T);
+    // a light grade to bind the shots to the map: warm, a little darker at the top and bottom for the text
+    ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = 'rgba(214,150,70,.22)'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    vignette(.85);
+  } else {
+    const cam = window.CAMQ || camAt(T); setCam(cam);
+    globeMat.uniforms.expo.value = (sc === 8 ? lerp(.74, .5, ease(seg(T, M.S8, M.S8 + .8))) : sc === 9 ? .5 : .74);
+    globeMat.uniforms.sat.value = .95; globeMat.uniforms.haze.value = .7; atmo.material.uniforms.k.value = .5;
+    renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+    borders(.14);
+    if (sc === 2) mapS2(T); else if (sc === 4) mapS4(T); else if (sc === 6) mapS6(T); else mapS8(T);
+    vignette(1);
+    if (sc === 8 || sc === 9) { ctx.fillStyle = rgba('#0c0738', .62 * ease(seg(T, M.S8, M.S8 + .6))); ctx.fillRect(0, 0, W, H); }
+  }
+  if (sc === 9) s9(T); else if (sc === 8) remember(T); else hud(T, sc);
+  photos(T, sc);
+  captions(T, 1450);
+  credit(T, sc); logo(); if (sc === 9) endCard(T);
+  for (const [t0, col, d] of DIPS) { const u = Math.abs(T - t0) / d; if (u < 1) { ctx.fillStyle = rgba(col, (1 - u) ** 1.6 * (col === '#000000' ? 1 : .85)); ctx.fillRect(0, 0, W, H); } }
+  for (const tc of FLASH) if (T >= tc && T < tc + .16) { ctx.fillStyle = `rgba(255,255,255,${.2 * (1 - (T - tc) / .16) ** 2})`; ctx.fillRect(0, 0, W, H); }
+  if (T < .3) { ctx.fillStyle = `rgba(0,0,0,${1 - T / .3})`; ctx.fillRect(0, 0, W, H); }
+}
+window.render = render; window.setCamQ = c => { window.CAMQ = c; }; window.END = END; window.M = M;
+window.ready = true;
+</script>
+</body></html>
