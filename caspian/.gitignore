@@ -1,0 +1,5 @@
+*.mp4
+*.wav
+rec.log
+out/
+*.wav

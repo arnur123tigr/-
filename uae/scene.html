@@ -1,0 +1,290 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «ОАЭ, Абу-Даби и Дубай: в чём разница» — remake, RU, voice Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 75;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'uae', l0: 47, l1: 60, b0: 18, b1: 31, minppd: 30 });
+const EC = { ad: '#38c6f4', du: '#ff8a1f', sh: '#ffd23f', aj: '#ff4d8d', uq: '#9b6bff', rk: '#46e04a', fu: '#ff4a4a' };
+const ORDER = ['ad', 'du', 'sh', 'aj', 'uq', 'rk', 'fu'];
+const NUMPOS = { ad: [53.7, 23.6], du: [54.6, 25.55], sh: [55.05, 26.05], aj: [55.45, 26.5], uq: [55.9, 26.95], rk: [56.8, 26.05], fu: [57.0, 25.25] };
+const ADCITY = [54.37, 24.47], DUCITY = [55.27, 25.2];
+const RED = '#ff3b2f';
+
+// ---------- helpers ----------
+function rng(s) { return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+function head(s, a, col, y = H * .17, size = 84) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 960 / tw(s, size, 'MB')), '#fff', 'MB', { shadow: col, blur: 26, dy: 0, stroke: 9, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+}
+function label2(lines, lon, lat, a, col, size = 64, dy = 0) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const p = back(clamp(a * 1.4));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y + dy); ctx.scale(p, p);
+  lines.forEach((l, i) => txt(l, 0, (i - (lines.length - 1) / 2) * size * 1.08, size, '#fff', 'MB', { shadow: col, blur: 24, dy: 0, stroke: size * .12, sc: 'rgba(0,0,0,.55)' }));
+  ctx.restore();
+}
+function captions(t) {
+  const vt = t - OFF; if (vt >= B.cta - .05) return; const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .05); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1);
+  ctx.save(); ctx.globalAlpha = a; txt(c[2], W / 2, H * .845, 52, '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 7, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+}
+function em(k, a, o) { glowFill(SH.em[k], EC[k], a, Object.assign({ fill: .55, lw: 4, blur: 20 }, o || {})); }
+function star(x, y, r, a, col = BR.acc) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const rr_ = i % 2 ? r * .45 : r, an = -Math.PI / 2 + i * Math.PI / 5; ctx.lineTo(Math.cos(an) * rr_, Math.sin(an) * rr_); }
+  ctx.closePath(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+function numDisc(n, x, y, a, col) {
+  if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 34, 0, 7); ctx.fillStyle = BR.navy; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = col; ctx.stroke();
+  txt(String(n), 0, 3, 40, '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function sheikh(x, y, r, a, ring = BR.acc, crown = 0) {   // stylised portrait disc: ghutra + agal
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#2a2070'); g.addColorStop(1, BR.navy); ctx.fillStyle = g;
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16; ctx.fill(); ctx.shadowBlur = 0; ctx.save(); ctx.clip();
+  const k = r / 100;
+  ctx.fillStyle = '#f4f4f4'; ctx.beginPath(); ctx.moveTo(-70 * k, 100 * k); ctx.quadraticCurveTo(-62 * k, -10 * k, -40 * k, -48 * k); ctx.quadraticCurveTo(0, -78 * k, 40 * k, -48 * k);
+  ctx.quadraticCurveTo(62 * k, -10 * k, 70 * k, 100 * k); ctx.closePath(); ctx.fill();   // ghutra
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(0, 100 * k, 78 * k, 40 * k, 0, Math.PI, 0); ctx.fill();   // thobe shoulders
+  ctx.fillStyle = '#c8956b'; ctx.beginPath(); ctx.ellipse(0, -2 * k, 24 * k, 30 * k, 0, 0, 7); ctx.fill();   // face
+  ctx.fillStyle = '#3a2a22'; ctx.beginPath(); ctx.ellipse(0, 18 * k, 20 * k, 14 * k, 0, 0, Math.PI); ctx.fill();   // beard
+  ctx.strokeStyle = '#151515'; ctx.lineWidth = 9 * k; ctx.beginPath(); ctx.ellipse(0, -44 * k, 38 * k, 9 * k, 0, 0, 7); ctx.stroke();   // agal
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.lineWidth = Math.max(3, r * .08); ctx.strokeStyle = ring; ctx.stroke();
+  if (crown > 0) { ctx.save(); ctx.globalAlpha = a * crown; ctx.translate(0, -r - 18 * (r / 60)); const c = r / 60; ctx.scale(c, c);
+    ctx.beginPath(); ctx.moveTo(-34, 14); ctx.lineTo(-38, -16); ctx.lineTo(-17, 0); ctx.lineTo(0, -24); ctx.lineTo(17, 0); ctx.lineTo(38, -16); ctx.lineTo(34, 14); ctx.closePath();
+    ctx.fillStyle = BR.acc; ctx.shadowColor = BR.acc; ctx.shadowBlur = 18; ctx.fill(); ctx.restore(); }
+  ctx.restore();
+}
+function panel(a, kind = 'grid') {   // navy blueprint background (brand)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(W / 2, H * .45, 100, W / 2, H * .45, H * .8); g.addColorStop(0, '#1d2a6e'); g.addColorStop(1, '#0a0730'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(120,150,255,.12)'; ctx.lineWidth = 2; for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); } ctx.restore();
+}
+function shapeAt(o, cx, cy, ppd, col, a, s = 1) {   // centred country outline at true relative size
+  if (a <= 0) return; const kx = Math.cos(o.lat * Math.PI / 180) * ppd * s, ky = ppd * s;
+  ctx.save(); ctx.globalAlpha = a; ctx.beginPath();
+  for (const r of o.r) r.forEach(([x, y], i) => i ? ctx.lineTo(cx + x * kx, cy - y * ky) : ctx.moveTo(cx + x * kx, cy - y * ky));
+  ctx.closePath(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+function cutFade(t, cuts) { let a = 0; for (const c of cuts) a = Math.max(a, 1 - Math.abs(t - c) / .22); if (a > 0) { ctx.save(); ctx.globalAlpha = clamp(a); ctx.fillStyle = '#05060f'; ctx.fillRect(0, 0, W, H); ctx.restore(); } }
+
+// ---------- family tree ----------
+function tree(t, a) {
+  if (a <= 0) return; panel(a);
+  const t0 = V('family'); ctx.save(); ctx.globalAlpha = a;
+  const L = [[[W / 2, 420]], [[300, 700], [780, 700]], [[180, 980], [420, 980], [660, 980], [900, 980]], [[300, 1260], [540, 1260], [780, 1260]]];
+  const path = [[0, 0], [1, 1], [2, 2], [3, 1]];
+  for (let l = 1; l < L.length; l++) for (const [x, y] of L[l]) { const par = L[l - 1].reduce((b, p) => Math.abs(p[0] - x) < Math.abs(b[0] - x) ? p : b);
+    ctx.strokeStyle = 'rgba(200,210,255,.35)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(par[0], par[1] + 60); ctx.lineTo(par[0], (par[1] + y) / 2); ctx.lineTo(x, (par[1] + y) / 2); ctx.lineTo(x, y - 60); ctx.stroke(); }
+  for (let i = 1; i < path.length; i++) { const p = clamp(ap(t, t0 + .4 + i * .55, .5)); if (p <= 0) continue;
+    const A_ = L[path[i - 1][0]][path[i - 1][1]], Bp = L[path[i][0]][path[i][1]]; const pts = [[A_[0], A_[1] + 60], [A_[0], (A_[1] + Bp[1]) / 2], [Bp[0], (A_[1] + Bp[1]) / 2], [Bp[0], Bp[1] - 60]];
+    polyScreen(pts, p); }
+  L.forEach((row, l) => row.forEach(([x, y], i) => { const on = path.some(([pl, pi], k) => pl === l && pi === i && t > t0 + .4 + k * .55);
+    sheikh(x, y, 58, clamp(ap(t, t0 + l * .12, .3)), on ? BR.acc : 'rgba(200,210,255,.5)', l === 0 ? 1 : 0); }));
+  ctx.restore();
+  head('Власть — по наследству', a * ap(t, t0, .3), BR.acc, H * .1, 70);
+}
+function polyScreen(pts, p) {
+  let Lt = 0; const d = [0]; for (let i = 1; i < pts.length; i++) { Lt += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); d.push(Lt); }
+  const lim = Lt * p; ctx.save(); ctx.strokeStyle = BR.acc; ctx.lineWidth = 9; ctx.shadowColor = BR.acc; ctx.shadowBlur = 20; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(...pts[0]);
+  for (let i = 1; i < pts.length; i++) { if (d[i] <= lim) ctx.lineTo(...pts[i]); else { const k = (lim - d[i - 1]) / (d[i] - d[i - 1]); ctx.lineTo(lerp(pts[i - 1][0], pts[i][0], k), lerp(pts[i - 1][1], pts[i][1], k)); break; } }
+  ctx.stroke(); ctx.restore();
+}
+
+// ---------- skyline + Burj Khalifa ----------
+let TOWERS = [];
+function buildTowers() { const r = rng(21); for (let i = 0; i < 26; i++) TOWERS.push([i * 46 - 40 + r() * 20, 220 + r() * 380, 50 + r() * 50, r(), r() < .3]); }
+function skyline(t, a) {
+  if (a <= 0) return; const t0 = V('sky');
+  ctx.save(); ctx.globalAlpha = a; let g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0b0a35'); g.addColorStop(.55, '#3b2a7a'); g.addColorStop(.8, '#f08a4b'); g.addColorStop(1, '#ffc46b');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const base = H * .8;
+  // sea strip
+  g = ctx.createLinearGradient(0, base, 0, H); g.addColorStop(0, '#1d4a66'); g.addColorStop(1, '#0d2333'); ctx.fillStyle = g; ctx.fillRect(0, base, W, H - base);
+  TOWERS.forEach(([x, h, w, s, tip], i) => { const p = eout(ap(t, t0 + .1 + (i % 9) * .08, .7)); const hh = h * p; if (hh < 2) return;
+    const gg = ctx.createLinearGradient(x, base - hh, x + w, base); gg.addColorStop(0, '#2b3f8f'); gg.addColorStop(1, '#141c4a'); ctx.fillStyle = gg; ctx.fillRect(x, base - hh, w, hh);
+    if (tip) { ctx.beginPath(); ctx.moveTo(x, base - hh); ctx.lineTo(x + w / 2, base - hh - 50 * p); ctx.lineTo(x + w, base - hh); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,214,120,.55)'; for (let yy = base - hh + 14; yy < base - 10; yy += 22) for (let xx = x + 8; xx < x + w - 8; xx += 14) if (((xx * 7 + yy * 3 + i) % 5) < 2) ctx.fillRect(xx, yy, 6, 9); });
+  // Burj Khalifa
+  const pb = eout(ap(t, V('burj'), 1.4));
+  if (pb > 0) { const Hb = 1180 * pb, cx = W / 2; const seg = [[110, 0], [92, .18], [76, .34], [60, .5], [44, .64], [30, .76], [18, .86], [8, .93], [3, 1]];
+    ctx.save(); ctx.shadowColor = 'rgba(160,210,255,.8)'; ctx.shadowBlur = 40; g = ctx.createLinearGradient(cx - 110, 0, cx + 110, 0); g.addColorStop(0, '#9fb4d8'); g.addColorStop(.5, '#eef4ff'); g.addColorStop(1, '#6f86b4');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(cx - seg[0][0], base);
+    for (let i = 0; i < seg.length; i++) { const [w, f] = seg[i], nf = i < seg.length - 1 ? seg[i + 1][1] : 1; ctx.lineTo(cx - w, base - Hb * f); ctx.lineTo(cx - w, base - Hb * nf); }
+    for (let i = seg.length - 1; i >= 0; i--) { const [w, f] = seg[i], nf = i < seg.length - 1 ? seg[i + 1][1] : 1; ctx.lineTo(cx + w * .8, base - Hb * nf); ctx.lineTo(cx + w * .8, base - Hb * f); }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.fillStyle = 'rgba(255,230,160,.8)'; for (let f = .04; f < .9 * pb; f += .025) ctx.fillRect(cx - 4, base - Hb * f, 8, 5); ctx.restore();
+    const la = ap(t, V('burj') + 1.2, .4); if (la > 0) { pill('828 м', cx + 200, base - Hb * .62, 46, la, { line: BR.acc }); head('Бурдж-Халифа', la, '#7fb6ff', H * .13, 92); } }
+  ctx.restore();
+  head('Небоскрёбы', a * win(t, V('sky') + .3, V('burj') + 1.1, .25), BR.acc, H * .17, 96);
+}
+
+// ---------- Dubai Mall vs Vatican ----------
+const VAT = [[-.95, .1], [-.7, .55], [-.2, .8], [.35, .75], [.8, .5], [.95, .05], [.75, -.45], [.25, -.7], [-.35, -.65], [-.8, -.35]];
+const MALL = [[-.9, -.5], [.2, -.6], [.25, -.2], [.9, -.15], [.85, .45], [.1, .5], [.05, .8], [-.7, .75], [-.75, .2], [-.95, .1]];
+function mall(t, a) {
+  if (a <= 0) return; panel(a); const t0 = V('mall'), tv = V('vatican');
+  const poly = (P_, cx, cy, s, col, al) => { if (al <= 0) return; ctx.save(); ctx.globalAlpha = a * al; ctx.beginPath(); P_.forEach(([x, y], i) => i ? ctx.lineTo(cx + x * s, cy - y * s) : ctx.moveTo(cx + x * s, cy - y * s)); ctx.closePath();
+    ctx.fillStyle = col; ctx.globalAlpha = a * al * .55; ctx.fill(); ctx.globalAlpha = a * al; ctx.shadowColor = col; ctx.shadowBlur = 24; ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.stroke(); ctx.restore(); };
+  const m = eout(ap(tv + .6, 0, 1)), k = eout(ap(t, tv + .9, .9));
+  const mx = lerp(W / 2, W / 2, k), my = lerp(H * .48, H * .48, k);
+  poly(MALL, mx, my, 330 * back(clamp(ap(t, t0 + .2, .5))), '#46beff', 1);
+  pill('Дубай Молл', W / 2, H * .25, 50, a * ap(t, t0 + .4, .3), { line: '#46beff' });
+  const va = ap(t, tv, .4); poly(VAT, lerp(W / 2 + 120, W / 2, k), lerp(H * .7, H * .48, k), 310 * back(clamp(va)), BR.acc, va);
+  pill('Ватикан', W / 2, H * .7 + 10 - 0 * k, 50, a * va * (1 - k) + a * va * k, { line: BR.acc, col: BR.acc });
+  head('Почти как Ватикан', a * ap(t, tv + 1, .3), BR.acc, H * .12, 80);
+}
+
+// ---------- Palm island ----------
+function palm(t, a) {
+  if (a <= 0) return; const t0 = V('palm');
+  ctx.save(); ctx.globalAlpha = a; let g = ctx.createRadialGradient(W / 2, H * .45, 50, W / 2, H * .45, H * .7); g.addColorStop(0, '#2c8ea0'); g.addColorStop(1, '#0e3b4f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // coast
+  ctx.fillStyle = '#d9c08a'; ctx.beginPath(); ctx.moveTo(0, H * .86); for (let x = 0; x <= W; x += 40) ctx.lineTo(x, H * .86 + Math.sin(x / 140) * 14); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+  ctx.fillStyle = '#b9a272'; ctx.fillRect(0, H * .9, W, H * .1);
+  const cx = W / 2, top = H * .3, bot = H * .86, p = eout(ap(t, t0, 1.6));
+  const sand = '#f2dfae';
+  ctx.lineCap = 'round'; ctx.strokeStyle = sand; ctx.shadowColor = 'rgba(255,240,200,.5)'; ctx.shadowBlur = 14;
+  ctx.lineWidth = 34; ctx.beginPath(); ctx.moveTo(cx, bot); ctx.lineTo(cx, lerp(bot, top + 140, p)); ctx.stroke();   // trunk
+  for (let i = 0; i < 8; i++) for (const sd of [-1, 1]) { const q = clamp((p - .2 - i * .06) / .3); if (q <= 0) continue;
+    const y0 = top + 170 + i * 52, L = (260 - Math.abs(i - 3) * 18) * q; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(cx, y0);
+    ctx.quadraticCurveTo(cx + sd * L * .6, y0 - 30 - i * 3, cx + sd * L, y0 - 70 + i * 8); ctx.stroke(); }
+  const cr = clamp((p - .55) / .45); if (cr > 0) { ctx.lineWidth = 22; ctx.beginPath(); const st = Math.PI * .5 + .5; ctx.ellipse(cx, top + 330, 420, 360, 0, st, st + (Math.PI * 2 - 1) * cr, false); ctx.stroke(); }
+  ctx.restore();
+  head('Острова-пальмы', a * ap(t, t0 + .4, .3), BR.acc, H * .13, 92);
+}
+
+// ---------- CTA + end card ----------
+function ctaLink(t) {
+  const t0 = V('cta'), a = ap(t, t0, .4); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .62; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const p1 = eout(ap(t, t0, .5));
+  ctx.save(); ctx.globalAlpha = p1; ctx.translate(0, (1 - p1) * 40);
+  txt('Хочешь больше', W / 2, H * .36, 76, '#fff', 'MB'); txt('таких фактов?', W / 2, H * .36 + 96, 76, BR.acc, 'MB'); ctx.restore();
+  const p2 = ap(t, V('link') - .1, .45);
+  if (p2 > 0) {
+    ctx.save(); ctx.globalAlpha = p2; txt('Переходи по ссылке', W / 2, H * .56, 62, '#fff', 'MX'); ctx.restore();
+    const pk = back(ap(t, V('link') + .5, .45));
+    if (pk > 0) { ctx.save(); ctx.translate(W / 2, H * .655); ctx.scale(pk, pk); const s = 'в шапке профиля', w = tw(s, 74, 'MB') + 110;
+      rr(-w / 2, -70, w, 140, 44); ctx.fillStyle = BR.acc; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 5, 74, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+      const bob = Math.sin(t * 6) * 14; ctx.save(); ctx.globalAlpha = clamp(pk); ctx.translate(W / 2, H * .29 + bob); ctx.fillStyle = BR.acc; ctx.shadowColor = BR.acc; ctx.shadowBlur = 20;
+      ctx.beginPath(); ctx.moveTo(0, -60); ctx.lineTo(50, 0); ctx.lineTo(18, 0); ctx.lineTo(18, 50); ctx.lineTo(-18, 50); ctx.lineTo(-18, 0); ctx.lineTo(-50, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  }
+}
+function endCardLink(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 400 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt('Ссылка', W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt('в шапке профиля', W / 2, H * .62 + 95, 86, BR.acc, 'MB', { blur: 0 });
+  ctx.restore();
+}
+
+// ---------- camera ----------
+let CAMK = [], CUTS = [];
+function buildCam() {
+  const U = [54.3, 24.5, 170], U7 = [55.0, 25.1, 165];
+  CAMK = [
+    [0, 54.6, 24.8, 120], [V('uae'), ...U], [V('me') - .1, 54.3, 24.4, 176, 'l'],
+    [V('me') + 1.2, 50, 22, 9], [V('area'), 49, 22, 8.6, 'l'],
+    [V('seven') - .01, 49, 22, 8.6], [V('seven') + .01, 54.3, 24.5, 70], [V('seven') + .8, ...U7], [V('usa') - .01, 55.0, 25.1, 170, 'l'],
+    [V('usa'), -97, 39, 8.5], [V('emname') - .01, -97, 39, 9.5, 'l'],
+    [V('emname'), ...U7], [V('family') - .01, 55.0, 25.1, 172, 'l'],
+    [V('council'), 54.6, 24.6, 165], [V('trad'), 54.6, 24.6, 168, 'l'],
+    [V('big'), 54.0, 24.3, 175], [V('adcity') - .1, 54.0, 24.3, 180, 'l'],
+    [V('adcity') + .8, 54.5, 24.45, 280], [V('dubai') - .1, 54.5, 24.45, 290, 'l'],
+    [V('dubai') + .8, 55.15, 25.0, 230], [V('ducity'), 55.15, 25.0, 236, 'l'], [V('ducity') + .9, 55.27, 25.15, 300], [V('sky'), 55.27, 25.15, 310, 'l'],
+    [V('cta'), 54.6, 24.8, 170], [V('vend') + 4, 54.6, 24.8, 175, 'l'],
+  ];
+  CUTS = [V('seven'), V('usa'), V('emname')];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  // 1. UAE, Abu Dhabi, Dubai
+  { glowFill(SH.uae, '#46beff', A('uae', 'ad', .2), { fill: .5 }); label2(['ОАЭ'], 54.0, 23.9, A('uae', 'ad', .15), '#46beff', 96);
+    em('ad', A('ad', 'du', .2)); label2(['Абу-Даби'], 53.7, 23.6, A('ad', 'du', .15), '#2ab0e0', 84);
+    em('du', A('du', 'country', .2), { fill: .7 }); label2(['Дубай'], 55.3, 25.0, A('du', 'country', .15), '#ff6a00', 84, -110); }
+  // 2. country
+  { const a = A('country', 'me', .25); glowFill(SH.uae, '#46beff', a, { fill: .45 });
+    head('Страна', A('country', 'official', .2), '#46beff', H * .2, 110);
+    const o = A('official', 'me', .2); if (o > 0) { const p = back(clamp(o * 1.4)); ctx.save(); ctx.globalAlpha = clamp(o * 2); ctx.translate(W / 2, H * .2); ctx.scale(p, p);
+      [['О', 'бъединённые'], ['А', 'рабские'], ['Э', 'мираты']].forEach(([c, r], i) => { const y = (i - 1) * 92, wc = tw(c, 84, 'MB'), wr = tw(r, 84, 'MB'), x0 = -(wc + wr) / 2;
+        txt(c, x0 + wc / 2, y, 84, BR.acc, 'MB', { stroke: 9, sc: 'rgba(0,0,0,.5)', dy: 0 }); txt(r, x0 + wc + wr / 2, y, 84, '#fff', 'MB', { stroke: 9, sc: 'rgba(0,0,0,.5)', dy: 0 }); }); ctx.restore(); } }
+  // 3. Middle East / Arabian Peninsula
+  { const a = A('me', 'area', .3); glowFill(SH.arabia, BR.acc, A('arabia', 'area', .3), { fill: .25, lw: 4 }); glowFill(SH.uae, '#46beff', a, { fill: .8, lw: 3, blur: 14 });
+    head('Ближний Восток', A('me', 'arabia', .25), '#46beff', H * .17, 90); head('Аравийский полуостров', A('arabia', 'area', .25), BR.acc, H * .17, 80); }
+  // 4. size comparison
+  { const a = A('area', 'seven', .3); if (a > 0) { panel(a); const ppd = 70;
+      shapeAt(SH.are_c, W / 2, H * .5, ppd, '#2f6bff', a * back(clamp(ap(t, V('area'), .5)))); pill('83 600 км²', W / 2, H * .5, 44, a * ap(t, V('area') + .4, .3));
+      const pa = a * ap(t, V('prt'), .4); shapeAt(SH.prt, W / 2, H * .25, ppd, '#3fbf4a', pa); pill('Португалия · 92 200 км²', W / 2, H * .25 + 225, 36, pa);
+      const aa = a * ap(t, V('aut'), .4); shapeAt(SH.aut, W / 2, H * .74, ppd, '#c0283a', aa); pill('Австрия · 83 900 км²', W / 2, H * .74 + 95, 36, aa);
+      head('Площадь ОАЭ', a * (1 - ap(t, V('prt') - .2, .3)), BR.acc, H * .1, 84); } }
+  // 5. seven emirates
+  { const a = A('seven', 'usa', .2); ORDER.forEach((k, i) => { const q = a * clamp(ap(t, V('seven') + .4 + i * .18, .3)); em(k, q * .9);
+      if (q > 0) { const [lx, ly] = P(...NUMPOS[k]); const [cx, cy] = P(SH.em_c[k][0], SH.em_c[k][1]);
+        if (k !== 'ad') { ctx.save(); ctx.globalAlpha = q; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(cx, cy); ctx.stroke(); ctx.restore(); }
+        numDisc(i + 1, lx, ly, q * 1.2, EC[k]); } });
+    head('7 эмиратов', a, BR.acc, H * .17, 104); }
+  // 6. like US states
+  { const a = A('usa', 'emname', .15); if (a > 0) { for (const r of SH.us) glowFill([r], '#5aa0ff', a * .7, { fill: .35, lw: 2, blur: 8 }); head('Штаты', a, '#5aa0ff', H * .2, 110); } }
+  { const a = A('emname', 'sheikh', .2); ORDER.forEach(k => em(k, a * .85));
+    head('Эмираты', A('emname', 'name', .2), BR.acc, H * .17, 104);
+    const o = A('name', 'sheikh', .2); if (o > 0) { const p = back(clamp(o * 1.4)); ctx.save(); ctx.globalAlpha = clamp(o * 2); ctx.translate(W / 2, H * .2); ctx.scale(p, p);
+      txt('Объединённые', 0, -92, 78, '#fff', 'MB', { stroke: 9, sc: 'rgba(0,0,0,.5)', dy: 0 }); txt('Арабские', 0, 0, 78, '#fff', 'MB', { stroke: 9, sc: 'rgba(0,0,0,.5)', dy: 0 });
+      txt('Эмираты', 0, 98, 96, BR.acc, 'MB', { stroke: 10, sc: 'rgba(0,0,0,.5)', shadow: BR.acc, blur: 24, dy: 0 }); ctx.restore(); } }
+  // 7. a sheikh per emirate
+  { const a = A('sheikh', 'family', .25); ORDER.forEach((k, i) => { em(k, a * .7); const [x, y] = P(...NUMPOS[k]); sheikh(x, y - 20, 56, a * clamp(back(ap(t, V('sheikh') + .2 + i * .12, .35))), EC[k]); });
+    head('Шейх', a, BR.acc, H * .17, 110); }
+  tree(t, A('family', 'council', .3));
+  // 8. Supreme Council + president
+  { const a = A('council', 'trad', .3); if (a > 0) { ORDER.forEach(k => em(k, a * .5)); const cx = W / 2, cy = H * .48, R = 210;
+      ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(cx, cy, (R + 110) * eout(ap(t, V('council') + .5, .6)), 0, 7); ctx.strokeStyle = BR.acc; ctx.lineWidth = 10; ctx.shadowColor = BR.acc; ctx.shadowBlur = 24; ctx.stroke(); ctx.restore();
+      const pr = ap(t, V('president'), .5);
+      ORDER.forEach((k, i) => { const an = -Math.PI / 2 + i * 2 * Math.PI / 7, gather = eout(ap(t, V('council'), .7));
+        const [sx, sy] = P(...NUMPOS[k]); const x = lerp(sx, cx + Math.cos(an) * R, gather), y = lerp(sy, cy + Math.sin(an) * R, gather);
+        const big = i === 0 ? pr : 0; sheikh(lerp(x, cx, big), lerp(y, cy, big), 70 + 60 * big, a * (i === 0 ? 1 : 1 - .5 * pr), EC[k], big); });
+      const hc = a * (1 - clamp(pr * 3)); head('Высший совет', hc, BR.acc, H * .15, 96); head('федерации', hc, BR.acc, H * .15 + 100, 96);
+      head('Президент', a * clamp(pr * 2 - .6), BR.acc, H * .17, 110); } }
+  // 9. Abu Dhabi: president's emirate, 85 %
+  { const a = A('trad', 'adcity', .3); ORDER.slice(1).forEach(k => em(k, a * (.6 - .45 * ap(t, V('pct'), .4)))); em('ad', a, { fill: .7, lw: 6, blur: 34 });
+    const [x, y] = P(53.7, 23.4); sheikh(x, y - 20, 80, a * ap(t, V('adsheikh'), .4), EC.ad, 1);
+    label2(['Абу-Даби'], 53.6, 23.0, A('big', 'adcity', .25), '#2ab0e0', 90);
+    head('Самый большой эмират', A('big', 'pct', .25), '#38c6f4', H * .17, 76);
+    { const pa = A('pct', 'adcity', .25); head('≈ 85%', pa, BR.acc, H * .19, 170); if (pa > 0) pill('территории страны', W / 2, H * .27, 44, pa); } }
+  // 10. Abu Dhabi city = capital
+  { const a = A('adcity', 'dubai', .3); em('ad', a * .55, { fill: .3 }); const [x, y] = P(...ADCITY);
+    star(x, y, 34 * back(clamp(ap(t, V('adcity') + .8, .4))), a);
+    pill('эмират Абу-Даби', W / 2 - 120, H * .62, 40, a * ap(t, V('adcity') + .3, .3), { line: EC.ad });
+    pill('город Абу-Даби', x, y - 70, 40, a * ap(t, V('adcity') + 1.2, .3), { line: BR.acc });
+    head('Столица ОАЭ', A('capital', 'dubai', .25), BR.acc, H * .17, 100); }
+  // 11. Dubai emirate + city
+  { const a = A('dubai', 'sky', .3); em('du', a, { fill: .7, lw: 6, blur: 30 }); label2(['Дубай'], 55.45, 24.85, A('dubai', 'ducity', .25), '#ff6a00', 90);
+    head('Другой эмират', A('dubai', 'ducity', .25), '#ff8a1f', H * .17, 96);
+    const [x, y] = P(...DUCITY); star(x, y, 34 * back(clamp(ap(t, V('ducity') + .3, .4))), A('ducity', 'sky', .25));
+    pill('город Дубай', x, y - 70, 40, A('ducity', 'sky', .25), { line: BR.acc }); head('и город Дубай', A('ducity', 'sky', .25), BR.acc, H * .17, 96); }
+  skyline(t, A('sky', 'mall', .35));
+  mall(t, A('mall', 'palm', .35));
+  palm(t, A('palm', 'cta', .35));
+  cutFade(t, CUTS);
+  captions(t);
+  ctaLink(t);
+  logo(.8);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam(); buildTowers();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('uae', 'tex/uae.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
