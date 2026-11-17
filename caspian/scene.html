@@ -1,0 +1,178 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему Каспийское море — это озеро» — remake, RU, voice Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 83;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'casp', l0: 40, l1: 62, b0: 33, b1: 50, minppd: 26 });
+const BLUE = '#3fb6ff', RED = '#ff3b2f';
+const CTY = { RUS: ['Россия', '#e8413a', 46.5, 49.2], KAZ: ['Казахстан', '#d98b2b', 55.5, 46.3], TKM: ['Туркменистан', '#f2cf3a', 57.5, 39.6], IRN: ['Иран', '#45c45a', 52.5, 35.6], AZE: ['Азербайджан', '#36c9e0', 46.8, 40.6] };
+</script>
+<script src="helpers.js"></script>
+<script>
+// ---------- panels ----------
+function wavePanel(t, a) {
+  if (a <= 0) return; const t0 = V('storm');
+  ctx.save(); ctx.globalAlpha = a; let g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1b2440'); g.addColorStop(.5, '#3a4a6a'); g.addColorStop(1, '#0b1a2c'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // rain
+  ctx.strokeStyle = 'rgba(200,220,255,.25)'; ctx.lineWidth = 2; const r = rng(3);
+  for (let i = 0; i < 90; i++) { const x = (r() * W + t * 300) % W, y = (r() * H + t * 900) % H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 10, y + 34); ctx.stroke(); }
+  const sea = H * .66, M = 3.1 * 105;     // 3 storeys ≈ 10 m -> px
+  // house (3 storeys) standing on the "sea level" line for scale
+  const hx = W * .72, hp = eout(ap(t, V('wave') - .2, .5));
+  if (hp > 0) { ctx.save(); ctx.globalAlpha = a * hp; ctx.fillStyle = '#c9472e'; ctx.fillRect(hx - 90, sea - M, 180, M); ctx.fillStyle = '#7a2a1c'; ctx.beginPath(); ctx.moveTo(hx - 105, sea - M); ctx.lineTo(hx, sea - M - 70); ctx.lineTo(hx + 105, sea - M); ctx.fill();
+    ctx.fillStyle = '#ffd680'; for (let f = 0; f < 3; f++) for (let w_ = 0; w_ < 3; w_++) ctx.fillRect(hx - 70 + w_ * 52, sea - M + 22 + f * 105, 36, 54); ctx.restore();
+    pill('≈ 10 м', hx, sea - M - 120, 46, a * hp, { line: BR.acc }); }
+  // wave crest growing to the house height
+  const wp = eout(ap(t, t0 + .2, 1.6)), Hw = M * wp, ph = t * 2.2;
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 10) { const crest = Math.exp(-(((x - W * .32) / 190) ** 2)); ctx.lineTo(x, sea - Hw * crest + Math.sin(x / 60 + ph) * 12); }
+  ctx.lineTo(W, H); ctx.closePath(); g = ctx.createLinearGradient(0, sea - M, 0, H); g.addColorStop(0, '#7fd3e6'); g.addColorStop(.3, '#1e6f96'); g.addColorStop(1, '#0a2740'); ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 6; ctx.stroke();
+  ctx.restore();
+  head('Шторм', a * win(t, t0 + .2, V('wave') + .2, .25), '#7fd3e6', H * .17, 110); head('Волны с 3-этажный дом', a * ap(t, V('wave'), .3), BR.acc, H * .17, 72);
+}
+function depthPanel(t, a) {
+  if (a <= 0) return; const t0 = V('depth');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#9cc8ee'; ctx.fillRect(0, 0, W, H);
+  const top = H * .22, sc = (H * .62) / 1100, bottom = top + 1025 * sc;
+  let g = ctx.createLinearGradient(0, top, 0, bottom); g.addColorStop(0, '#2a8fc4'); g.addColorStop(1, '#06223f'); ctx.fillStyle = g; ctx.fillRect(0, top, W, H - top);
+  ctx.fillStyle = '#7b6650'; ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(120, top + 40); ctx.lineTo(300, top + 380); ctx.lineTo(W * .5, bottom); ctx.lineTo(W - 280, top + 420); ctx.lineTo(W - 90, top + 60); ctx.lineTo(W, top); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  const lp = eout(ap(t, V('d1000') - .3, .8)); const lx = W * .5 + 150;
+  if (lp > 0) { ctx.strokeStyle = BR.acc; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(lx, top); ctx.lineTo(lx, lerp(top, bottom, lp)); ctx.stroke();
+    ctx.fillStyle = BR.acc; ctx.beginPath(); ctx.arc(lx, top, 10, 0, 7); ctx.fill(); pill('1 025 м', lx + 110, lerp(top, bottom, .5), 48, lp, { line: BR.acc }); }
+  const bp = eout(ap(t, V('burj'), 1.2)); if (bp > 0) { const hb = 828 * sc * bp, cx = W * .5 - 20; const seg = [[60, 0], [48, .2], [38, .38], [28, .55], [18, .7], [10, .83], [4, .93], [1.5, 1]];
+    ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.beginPath(); ctx.moveTo(cx - 60, bottom);
+    for (let i = 0; i < seg.length; i++) { const nf = i < seg.length - 1 ? seg[i + 1][1] : 1; ctx.lineTo(cx - seg[i][0], bottom - hb * seg[i][1]); ctx.lineTo(cx - seg[i][0], bottom - hb * nf); }
+    for (let i = seg.length - 1; i >= 0; i--) { const nf = i < seg.length - 1 ? seg[i + 1][1] : 1; ctx.lineTo(cx + seg[i][0], bottom - hb * nf); ctx.lineTo(cx + seg[i][0], bottom - hb * seg[i][1]); }
+    ctx.fill(); pill('Бурдж-Халифа · 828 м', cx - 150, bottom - hb - 50, 36, ap(t, V('burj') + 1, .3)); }
+  ctx.restore();
+  head('Глубина', a * (1 - ap(t, V('burj') + .8, .3)), '#3fb6ff', H * .1, 110); head('Небоскрёб под водой', a * ap(t, V('burj') + .9, .3), BR.acc, H * .1, 76);
+}
+function checklist(t, a) {
+  if (a <= 0) return; const items = [['большое', V('seems') + .3, 1], ['глубокое', V('seems') + .7, 1], ['солёная вода', V('seems') + 1.1, 1], ['связь с океаном', V('ocean'), 0]];
+  const x0 = W / 2 - 300, y0 = H * .3;
+  ctx.save(); ctx.globalAlpha = a; rr(x0 - 40, y0 - 90, 680, 600, 40); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(254,179,0,.6)'; ctx.lineWidth = 3; ctx.stroke();
+  txt('Признаки моря', W / 2, y0 - 20, 56, BR.acc, 'MB', { blur: 0, dy: 0 });
+  items.forEach(([s, t1, ok], i) => { const p = back(clamp(ap(t, t1, .35))); if (p <= 0) return; const y = y0 + 90 + i * 115;
+    ctx.save(); ctx.translate(x0 + 30, y); ctx.scale(p, p); ctx.beginPath(); ctx.arc(0, 0, 34, 0, 7); ctx.fillStyle = ok ? '#2fbf5a' : RED; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); if (ok) { ctx.moveTo(-14, 0); ctx.lineTo(-3, 12); ctx.lineTo(16, -12); } else { ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); } ctx.stroke(); ctx.restore();
+    txt(s, x0 + 90, y + 3, 52, ok ? '#fff' : '#ff8a80', 'MX', { align: 'left', blur: 0, dy: 0 }); });
+  ctx.restore();
+}
+function lock(x, y, s, a, open = 0) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.strokeStyle = '#d9dde6'; ctx.lineWidth = 22; ctx.beginPath(); ctx.arc(0, -60 - open * 30, 52, Math.PI, 0); ctx.lineTo(52, -60 - open * 30 + 30); ctx.moveTo(-52, -60 - open * 30); ctx.lineTo(-52, -30); ctx.stroke();
+  const g = ctx.createLinearGradient(0, -40, 0, 80); g.addColorStop(0, '#ffd23f'); g.addColorStop(1, '#d89400'); ctx.fillStyle = g; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; rr(-80, -40, 160, 130, 22); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#5a3c00'; ctx.beginPath(); ctx.arc(0, 15, 16, 0, 7); ctx.fill(); ctx.fillRect(-6, 15, 12, 40); ctx.restore();
+}
+function saltGrains(t, t0, a, n = 40) {
+  if (a <= 0) return; const r = rng(9); const poly = SH.caspian[0];
+  let k = 0; for (let i = 0; i < 400 && k < n; i++) { const lon = 47 + r() * 8, lat = 37 + r() * 10; if (!inPoly(lon, lat, poly)) continue; k++;
+    const p = back(clamp(ap(t, t0 + k * .03, .3))); if (p <= 0) continue; const [x, y] = P(lon, lat);
+    ctx.save(); ctx.globalAlpha = a * clamp(p); ctx.translate(x, y); ctx.rotate(r() * 2); ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(255,255,255,.8)'; ctx.shadowBlur = 8; ctx.fillRect(-9 * p, -9 * p, 18 * p, 18 * p); ctx.restore(); }
+}
+function inPoly(x, y, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function boat(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = '#6b3d1f'; ctx.beginPath(); ctx.moveTo(-40, 0); ctx.lineTo(40, 0); ctx.lineTo(28, 16); ctx.lineTo(-28, 16); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f3e6c8'; ctx.beginPath(); ctx.moveTo(2, -4); ctx.lineTo(2, -62); ctx.lineTo(34, -8); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(-3, -4); ctx.lineTo(-3, -50); ctx.lineTo(-28, -8); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function lakeLabel(t, a, t1, y0) {   // «Каспийское море» -> «море» struck, «озеро» in amber
+  if (a <= 0) return; const [x, y] = P(SH.casp_c[0], SH.casp_c[1] + (y0 || 0));
+  ctx.save(); ctx.globalAlpha = a; txt('Каспийское', x, y - 50, 72, '#fff', 'MB', { shadow: BLUE, blur: 24, dy: 0, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  txt('море', x, y + 30, 72, '#fff', 'MB', { shadow: BLUE, blur: 24, dy: 0, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  const s = ap(t, t1, .3); if (s > 0) { const w = tw('море', 72, 'MB'); ctx.strokeStyle = RED; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 10, y + 30); ctx.lineTo(x - w / 2 - 10 + (w + 20) * s, y + 30); ctx.stroke(); }
+  const o = back(clamp(ap(t, t1 + .2, .4))); if (o > 0) { ctx.save(); ctx.translate(x, y + 125); ctx.scale(o, o); txt('озеро', 0, 0, 96, BR.acc, 'MB', { shadow: BR.acc, blur: 28, dy: 0, stroke: 10, sc: 'rgba(0,0,0,.55)' }); ctx.restore(); }
+  ctx.restore();
+}
+const casp = (a, col = BLUE, o) => glowFill(SH.caspian, col, a, Object.assign({ fill: .55, lw: 5, blur: 26 }, o || {}));
+
+// ---------- camera ----------
+let CAMK = [], CUTS = [];
+function buildCam() {
+  const C = [51, 42, 52], C2 = [50.5, 42, 44];
+  CAMK = [
+    [0, 51, 43, 40], [V('lake'), ...C], [V('largest') - .1, 51, 42, 54, 'l'], [V('largest') + 1.1, 50, 38, 5.5], [V('len') - .1, 50, 38, 5.6, 'l'],
+    [V('len') + 1, ...C], [V('five') - .1, 51, 42, 54, 'l'], [V('five') + .9, ...C2], [V('storm'), 50.5, 42, 45, 'l'],
+    [V('confuse'), ...C], [V('black') - .1, 51, 42, 56, 'l'],
+    [V('black') + 1, 36, 43, 26], [V('bosp') - .2, 35, 43, 27, 'l'], [V('bosp') + 1, 29, 40.5, 30], [V('med') + .2, 25, 39, 16], [V('gib') + .2, 3, 37, 11], [V('atl') + .6, -8, 38, 10],
+    [V('landlocked') - .01, -8, 38, 10.4, 'l'], [V('landlocked') + .01, 51, 42, 30], [V('landlocked') + 1, ...C], [V('once') - .1, 51, 42, 55, 'l'],
+    [V('once') + 1, 37, 44, 13], [V('split') + 1, 38, 44, 14, 'l'],
+    [V('salt'), 51, 42, 50], [V('ancient') - .1, 52, 44, 32], [V('name'), 51, 42, 52], [V('cta'), 51, 42, 55, 'l'], [V('vend') + 4, 51, 42, 57, 'l'],
+  ];
+  CUTS = [V('landlocked')];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  // 1. sea or lake
+  casp(A('q', 'largest', .3) * (.8 + .2 * Math.sin(t * 4))); lakeLabel(t, A('q', 'largest', .25), V('lake'));
+  // 2. largest lake on Earth
+  { const a = A('largest', 'len', .3); casp(a * (.7 + .3 * Math.sin(t * 6)), BR.acc, { fill: .8, lw: 4 }); head('Самое большое', a, BR.acc, H * .15, 96); head('озеро на Земле', a, BR.acc, H * .15 + 100, 96);
+    if (a > 0) pill('≈ 371 000 км²', W / 2, H * .3, 44, a * ap(t, V('largest') + .8, .3)); }
+  // 3. length + five countries
+  { const a = A('len', 'storm', .3); casp(a * .7);
+    const la = A('len', 'five', .25); if (la > 0) { const [x1, y1] = P(51.2, 47.1), [x2, y2] = P(51.2, 36.6), p = eout(ap(t, V('len') + .3, .8)), ym = (y1 + y2) / 2;
+      ctx.save(); ctx.globalAlpha = la; ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(x1 - 160, lerp(ym, y1, p)); ctx.lineTo(x1 - 160, lerp(ym, y2, p)); ctx.stroke();
+      for (const [yy, d] of [[lerp(ym, y1, p), -1], [lerp(ym, y2, p), 1]]) { ctx.beginPath(); ctx.moveTo(x1 - 160, yy + d * 6); ctx.lineTo(x1 - 185, yy - d * 30); ctx.lineTo(x1 - 135, yy - d * 30); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill(); } ctx.restore();
+      pill('≈ 1 200 км', x1 - 160, ym, 44, la * ap(t, V('num'), .3), { line: BR.acc }); }
+    const ca = A('five', 'storm', .25); Object.entries(CTY).forEach(([k, [n, col, lon, lat]], i) => { const q = ca * clamp(ap(t, V('five') + .2 + i * .18, .3)); glowFill(SH.cty[k], col, q * .8, { fill: .45, lw: 3, blur: 12 });
+      if (q > 0) pill(n, P(lon, lat)[0], P(lon, lat)[1], 34, q, { line: col }); });
+    head('5 стран', ca, BR.acc, H * .15, 110); }
+  wavePanel(t, A('storm', 'depth', .3));
+  depthPanel(t, A('depth', 'confuse', .3));
+  // 4. salty + checklist
+  { const a = A('confuse', 'black', .3); casp(a * .8); head('Но есть загадка', A('confuse', 'salty', .25), BR.acc, H * .15, 86);
+    head('Вода солёная', A('salty', 'seems', .25), '#ffffff', H * .15, 96); saltGrains(t, V('salty'), A('salty', 'seems', .25));
+    checklist(t, A('seems', 'black', .3)); }
+  // 5. Black Sea -> Atlantic
+  { const a = A('black', 'landlocked', .3); glowFill(SH.black, '#36c9e0', a, { fill: .55 }); glowFill(SH.azov, '#36c9e0', a * .8, { fill: .5, lw: 3 });
+    head('Чёрное море', A('black', 'bosp', .25), '#36c9e0', H * .15, 96); lock(P(34, 43.2)[0], P(34, 43.2)[1] - 10, .9, A('closed', 'bosp', .25), ap(t, V('bosp') - .4, .4));
+    polyPartial(SH.route, ap(t, V('bosp'), V('atl') - V('bosp') + .6), { col: '#7ff0ff', lw: 9, glow: '#36c9e0', blur: 18, a });
+    glowFill(SH.marmara, '#36c9e0', A('bosp', 'landlocked', .3) * .9, { fill: .6, lw: 3 }); glowFill(SH.aegean, '#36c9e0', A('bosp', 'landlocked', .3) * .7, { fill: .4, lw: 3 });
+    { const b = A('bosp', 'med', .2); if (b > 0) pill('Босфор', P(29.05, 41.2)[0], P(29.05, 41.2)[1] - 60, 38, b, { line: '#36c9e0' }); }
+    glowFill(SH.med, '#36c9e0', A('med', 'landlocked', .3) * .7, { fill: .4, lw: 3 }); head('Средиземное море', A('med', 'gib', .25), '#36c9e0', H * .15, 86);
+    { const g = A('gib', 'landlocked', .25); if (g > 0) { pill('Гибралтар', P(-5.6, 35.95)[0], P(-5.6, 35.95)[1] + 60, 38, g, { line: BR.acc }); } }
+    head('Атлантический океан', A('atl', 'landlocked', .25), '#3fb6ff', H * .15, 80); }
+  // 6. landlocked -> lake
+  { const a = A('landlocked', 'why', .3); casp(a, '#ff6a3d', { fill: .35 }); const [x, y] = P(...SH.casp_c);
+    lock(x, y, 1, A('landlocked', 'lakeclass', .25)); head('Окружён сушей', A('landlocked', 'lakeclass', .25), '#ff6a3d', H * .15, 90);
+    head('Значит — озеро', A('lakeclass', 'why', .25), BR.acc, H * .15, 90); label2(['ОЗЕРО'], x / 1, 0, 0, BR.acc); }
+  { const a = A('why', 'once', .25); casp(a); head('Почему солёная?', a, '#ffffff', H * .15, 90); }
+  // 7. Paratethys
+  { const a = A('once', 'salt', .3); const pf = 1 - ap(t, V('rose'), 2.6);
+    glowFill([SH.para], '#3f8dff', a * Math.max(pf, 0) * ap(t, V('para') - .8, .8), { fill: .5, lw: 5, blur: 24 });
+    label2(['Паратетис'], 36, 46.5, a * ap(t, V('para'), .3) * clamp(pf * 1.5), '#3f8dff', 72);
+    head('Древнее море', A('once', 'rose', .25), '#3f8dff', H * .15, 96);
+    const rem = a * ap(t, V('split') - .3, .6); casp(rem, BLUE); glowFill(SH.black, '#36c9e0', rem, { fill: .55 });
+    head('Распалось на части', A('split', 'salt', .25), BR.acc, H * .15, 86); }
+  // 8. salt from the old sea + rivers
+  { const a = A('salt', 'ancient', .3); casp(a * .7); saltGrains(t, V('salt') + .3, a, 50); head('Соль древнего моря', A('salt', 'rivers', .25), '#ffffff', H * .15, 80);
+    const ra = A('rivers', 'ancient', .25); SH.rivers.forEach(r => polyPartial(r, ap(t, V('rivers') + .1, 1.2), { col: '#7fd8ff', lw: 6, glow: '#3fb6ff', blur: 12, a: ra }));
+    head('+ соль от рек', ra, '#7fd8ff', H * .15, 96); }
+  // 9. ancient people
+  { const a = A('ancient', 'name', .3); casp(a * .6); [[49.5, 44.5], [52.5, 40.5], [50.0, 39.5]].forEach(([lon, lat], i) => { const [x, y] = P(lon + Math.sin(t * .5 + i) * .4, lat); boat(x, y, 1.4, a * ap(t, V('ancient') + i * .3, .4)); });
+    head('Для древних — море', a, BR.acc, H * .15, 86); }
+  // 10. the name stuck
+  { const a = A('name', 'cta', .3); casp(a * (.8 + .2 * Math.sin(t * 4))); lakeLabel(t, a, V('giant')); }
+  cutFade(t, CUTS);
+  captions(t);
+  ctaLink(t);
+  logo(.8);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  B.except = B.except_; END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('casp', 'tex/casp.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
