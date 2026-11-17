@@ -9,7 +9,7 @@ LANG = sys.argv[1] if len(sys.argv) > 1 else 'ru'
 DUR = json.load(open('beats.json'))[LANG]['end']
 OFF = .30                       # the voice starts this late in the video (OFF in timing.py)
 TARGET, CEIL = -14.0, -1.5      # loudness of the result (LUFS) and its peak ceiling (dBFS)
-VOICE, MUSIC, SFX = -18.0, -29.0, -3.0   # voice and music: loudness before the master (LUFS); effects: plain gain (dB), their track is peak-normalised
+VOICE, MUSIC, SFX = -18.0, -30.0, -7.0   # voice and music: loudness before the master (LUFS); effects: plain gain (dB), their track is peak-normalised
 VLIM = 'alimiter=limit=-6.5dB:attack=3:release=70:level=false'   # the voice is spiky (peaks 23 dB over its loudness): a limiter evens it out and keeps the phrasing
 SRC = [f'vo_{LANG}.wav', f'sfx_{LANG}.wav', f'music_{LANG}.wav']
 

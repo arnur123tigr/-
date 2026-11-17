@@ -68,7 +68,7 @@ def drum(d=.35):
 S = {k: M[k] for k in M}
 nxt = lambda s: M['s%d' % (int(s[1:]) + 1)] if 's%d' % (int(s[1:]) + 1) in M else END
 # scene 1: boom, counter clicks, the dive
-put(sfx, 0.02, boom(), .9)
+put(sfx, 0.02, boom(), .35)
 t = .4
 while t < M['five'] + .2: put(sfx, t, click(), .5); t += .055
 put(sfx, M['five'] + .15, ding(990, 1.2), .4)
@@ -89,9 +89,9 @@ while t < M['s4'] - .3: put(sfx, t, puff(), .5); t += 1 / 4.4
 put(sfx, M['flow'] + .3, hiss(1.8), .25)
 # scene 4: shimmer at the merge, sizzle while pouring, "dzin" when the axe comes out and at the real photo
 put(sfx, M['s4'], whoosh(.4, 600, 5000), .3)
-put(sfx, M['mix'] - .05, shimmer(), .6)
+put(sfx, M['mix'] - .05, shimmer(), .3)
 pour0, pour1 = M['mix'] + 1.1, M['ph1'] - .9
-put(sfx, pour0, hiss(max(.4, pour1 - pour0)), .5)
+put(sfx, pour0, hiss(max(.4, pour1 - pour0)), .2)
 put(sfx, pour1 + .4, ding(1320, 2.2), .7)
 put(sfx, M['ph1'], whoosh(.5, 500, 4000), .35)
 # scene 6: wheel creaks, hooves, distant cows
