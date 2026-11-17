@@ -1,0 +1,857 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>1916: Амангелді және 50 мың сарбаз</title>
+<style>
+@font-face{font-family:IN;src:url(fonts/Inter.ttf);font-weight:100 900}
+@font-face{font-family:IN;src:url(fonts/Inter-Italic.ttf);font-weight:100 900;font-style:italic}
+@font-face{font-family:IT;src:url(fonts/InterTight.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «1916: Амангелді және 50 мың сарбаз / Амангельды и 50 тысяч воинов» — the uprising of 1916 in Turgay and Zhetysu. RU / KZ: scene.html?lang=ru|kk.
+// Film shots 1, 4, 6 (Higgsfield clips, frames in clips/) alternate with map scenes 2, 3, 5, 7 on the dark satellite globe; 8 = ENT quiz, 9 = call to action.
+// render(T) is deterministic, T = video seconds. All cues come from beats.json (voiceover word times, see timing.py).
+import * as THREE from 'three';
+
+const W = 1080, H = 1920;
+const Q = new URLSearchParams(location.search), LANG = Q.get('lang') === 'kk' ? 'kk' : 'ru', KK = LANG === 'kk';
+const STEP = +(Q.get('step') || 2);                      // terrain mesh step in DEM cells (1 = finest)
+const [BEATS, SH, demBuf] = await Promise.all([
+  fetch('beats.json').then(r => r.json()), fetch('shapes.json').then(r => r.json()), fetch('dem.bin').then(r => r.arrayBuffer())]);
+const B = BEATS[LANG], M = B.m, END = B.end;
+for (const f of ['400 40px IN', '500 40px IN', '600 40px IN', '700 40px IN', '800 40px IN', '600 40px IT', '700 40px IT', '800 40px IT', '900 40px IT'])
+  await document.fonts.load(f, 'АБВабв123ӘҒҚҢӨҰҮІәғқңөұүі→⟷«»');
+
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const LA = mk(), la = LA.getContext('2d'), LR = mk(), lr = LR.getContext('2d'), HB = mk(W / 2, H / 2), hb = HB.getContext('2d');
+
+// ---------------------------------------------------------------- helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeOut5 = t => 1 - Math.pow(1 - clamp(t), 5);
+const easeIn = t => Math.pow(clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const easeBack = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const ap = (T, t0, d = .3) => easeOut(seg(T, t0, t0 + d));       // appear 0..1
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+const RAD = Math.PI / 180, RE = 6371;                  // Earth radius, km (globe radius = 1)
+// smooth curve through keys (monotone cubic), at rest at both ends
+function hermite(ts, vs, T) {
+  const n = ts.length; if (T <= ts[0]) return vs[0]; if (T >= ts[n - 1]) return vs[n - 1];
+  let i = 0; while (T > ts[i + 1]) i++;
+  const sl = k => { if (k <= 0 || k >= n - 1) return 0; const a = (vs[k] - vs[k - 1]) / (ts[k] - ts[k - 1]), b = (vs[k + 1] - vs[k]) / (ts[k + 1] - ts[k]); return a * b <= 0 ? 0 : 2 * a * b / (a + b); };
+  const h = ts[i + 1] - ts[i], u = (T - ts[i]) / h, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * h * sl(i) + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * h * sl(i + 1);
+}
+// ---------------------------------------------------------------- palette
+// Brand (JAS EDUCATION, references/STYLE_GUIDE.md): navy panels, amber for key words, numbers and the rebels, white text,
+// red-orange only for the enemy (the tsarist side). The map is the dark Blue Marble satellite picture.
+const BR = { navy: '#130B54', amber: '#FEB300', enemy: '#E8502F' };
+const C = { acc: BR.amber, accHi: '#ffe7a6', warn: BR.enemy, warnHi: '#ffb39f', persia: '#d2452a', water: '#7cc8ff',
+            pill: 'rgba(19,11,84,.84)', card: 'rgba(19,11,84,.95)', line: 'rgba(254,179,0,.32)', sand: '#c99a5b' };
+const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgba = (h, a) => { const c = hex(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const mixHex = (a, b, t) => { const p = hex(a), q = hex(b); return `rgb(${Math.round(lerp(p[0], q[0], t))},${Math.round(lerp(p[1], q[1], t))},${Math.round(lerp(p[2], q[2], t))})`; };
+
+// ---------------------------------------------------------------- texts
+const L = KK ? {
+  trap: 'ҰБТ ТҰЗАҒЫ', year: '1916', hookSub: 'ТОРҒАЙ · ЖЕТІСУ',
+  ent: 'ҰБТ-ДА ЖИІ КЕЛЕДІ', date: '25.06.1916', age: '19–43 ЖАС', people: 'АДАМ · ТЫЛ ЖҰМЫСЫНА', illus: 'жарлық · иллюстрация',
+  turgay: 'Торғай', zhet: 'Жетісу',
+  rows: [['ХАН', 'Ә. Жанбосынов'], ['САРДАРБЕК', 'Амангелді Иманов'], ['МЕРГЕН', 'Кейкі батыр']],
+  pTitle: 'Амангелді Иманов', pSub: '1873–1919 · сардарбек', town: 'Торғай қаласы', k15: '15 000', k15b: 'САРБАЗ',
+  nov: 'ҚАРАША 1916', k50b: 'САРБАЗ',
+  battles: 'ШАЙҚАСТАР', bnames: ['Доғал-Үрпек', 'Батпаққара', 'Аққұм'], tlA: '1916 · ҚАЗАН', tlB: '1917 · АҚПАН',
+  k238b: 'АДАМ', china: '→ ҚЫТАЙ',
+  boral: 'Боралдай асуы', bek: 'Бекболат Әшекеев', bekSub: 'Жетісу көтерілісінің басшысы', mTitle: 'Амангелді ескерткіші', mSub: 'Алматы',
+  sum: [['500 000', 'жұмысқа алынбақ'], ['50 000', 'Амангелді қолында'], ['238 000', 'Қытайға ауды']],
+  quiz: 'ҰБТ СҰРАҒЫ', q: ['1916 жылғы ең ұйымдасқан', 'көтеріліс қай жерде?'], opts: [['А', 'Жетісу'], ['Ә', 'Торғай'], ['Б', 'Маңғыстау']],
+  chips: ['Сардарбек: Амангелді Иманов', 'Мерген: Кейкі батыр'],
+  plate: [['ҰБТ: ', 1], ['1916 · Торғай · Амангелді · Кейкі', 0]],
+  go: [['Сілтемеге', 1], [' өтіңіз', 0]], linkword: 'сілтеме', where: 'профиль шапкасында',
+  endA: 'Сілтемеге өтіңіз', endB: 'профиль шапкасында',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · орындары шамамен',
+} : {
+  trap: 'ЛОВУШКА ЕНТ', year: '1916', hookSub: 'ТУРГАЙ · СЕМИРЕЧЬЕ',
+  ent: 'ЧАСТАЯ ТЕМА НА ЕНТ', date: '25.06.1916', age: '19–43 ЛЕТ', people: 'ЧЕЛОВЕК · НА ТЫЛОВЫЕ РАБОТЫ', illus: 'указ · иллюстрация',
+  turgay: 'Тургай', zhet: 'Семиречье',
+  rows: [['ХАН', 'А. Жанбосынов'], ['САРДАРБЕК', 'Амангельды Иманов'], ['МЕРГЕН', 'Кейки батыр']],
+  pTitle: 'Амангельды Иманов', pSub: '1873–1919 · сардарбек', town: 'город Тургай', k15: '15 000', k15b: 'ВОИНОВ',
+  nov: 'НОЯБРЬ 1916', k50b: 'ВОИНОВ',
+  battles: 'БОИ', bnames: ['Догал-Урпек', 'Батпаккара', 'Аккум'], tlA: 'ОКТ 1916', tlB: 'ФЕВ 1917',
+  k238b: 'ЧЕЛОВЕК', china: '→ КИТАЙ',
+  boral: 'перевал Боролдай', bek: 'Бекболат Ашекеев', bekSub: 'лидер восстания в Семиречье', mTitle: 'Памятник Амангельды', mSub: 'Алматы',
+  sum: [['500 000', 'хотели забрать'], ['50 000', 'воинов у Амангельды'], ['238 000', 'ушли в Китай']],
+  quiz: 'ВОПРОС С ЕНТ', q: ['Где было самое организованное', 'восстание 1916 года?'], opts: [['А', 'Семиречье'], ['Б', 'Тургай'], ['В', 'Мангыстау']],
+  chips: ['Сардарбек: Амангельды Иманов', 'Мерген: Кейки батыр'],
+  plate: [['ЕНТ: ', 1], ['1916 · Тургай · Амангельды · Кейки', 0]],
+  go: [['Перейдите ', 0], ['по ссылке', 1]], linkword: 'ссылка', where: 'в шапке профиля',
+  endA: 'Перейдите по ссылке', endB: 'в шапке профиля',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · места примерные',
+};
+const PAL = ['#fff', C.acc, 'rgba(255,255,255,.55)', C.warn];     // colour codes used in the [text, code] title lines above
+// the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
+const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
+function scaled(img, w) {
+  let c = img, cw = img.width, ch = img.height; const h = Math.round(w * ch / cw);
+  const draw = (nw, nh) => { const n = document.createElement('canvas'); n.width = nw; n.height = nh; const x = n.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh); c = n; cw = nw; ch = nh; };
+  while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
+  if (cw !== w) draw(w, h); return c;
+}
+const LOGO = scaled(LOGO0, 75), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
+// ---------------------------------------------------------------- globe
+const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
+const dem = new Int16Array(demBuf), EXAG = 9 / 6371000;
+function demAt(lon, lat) {                                // exaggerated height above the sphere (globe units)
+  const e = Math.min(lon - MLON0, MLON1 - lon, lat - MLAT0, MLAT1 - lat);
+  if (e <= 0) return 0;
+  const fx = clamp((lon - MLON0) / CELL - .5, 0, DEMW - 1), fy = clamp((MLAT1 - lat) / CELL - .5, 0, DEMH - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, DEMW - 1), y1 = Math.min(y0 + 1, DEMH - 1), ax = fx - x0, ay = fy - y0;
+  const h = (dem[y0 * DEMW + x0] * (1 - ax) + dem[y0 * DEMW + x1] * ax) * (1 - ay) + (dem[y1 * DEMW + x0] * (1 - ax) + dem[y1 * DEMW + x1] * ax) * ay;
+  return h * EXAG * clamp(e / 1.5);
+}
+const dirv = (lon, lat, r = 1) => { const a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r; return new THREE.Vector3(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a)); };
+
+function axis(a0, a1, w0, w1, coarse, fine) {
+  const v = [];
+  for (let x = a0; x < w0 - 1e-6; x += coarse) v.push(x);
+  const n = Math.round((w1 - w0) / fine); for (let i = 0; i <= n; i++) v.push(w0 + (w1 - w0) * i / n);
+  for (let x = Math.ceil((w1 + 1e-6) / coarse) * coarse; x < a1 - 1e-6; x += coarse) v.push(x);
+  v.push(a1); return v;
+}
+function globeGeometry() {
+  const LONS = axis(-180, 180, MLON0, MLON1, 2, CELL * STEP), LATS = axis(-90, 90, MLAT0, MLAT1, 2, CELL * STEP);
+  const nx = LONS.length, ny = LATS.length, pos = new Float32Array(nx * ny * 3), ll = new Float32Array(nx * ny * 2);
+  for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++, k++) {
+    const lon = LONS[i], lat = LATS[j], r = 1 + demAt(lon, lat), a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r;
+    pos[k * 3] = c * Math.sin(a); pos[k * 3 + 1] = Math.sin(b) * r; pos[k * 3 + 2] = c * Math.cos(a); ll[k * 2] = lon; ll[k * 2 + 1] = lat;
+  }
+  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  for (let j = 0, q = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = a; idx[q++] = c; idx[q++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ll', new THREE.BufferAttribute(ll, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const loadTex = url => new Promise(res => new THREE.TextureLoader().load(url, t => {
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; res(t); }));
+const [tW, tM, tA] = await Promise.all(['tex/world.jpg', 'tex/main.jpg', 'tex/detail.jpg'].map(loadTex));
+const win = (a, b, c, d) => new THREE.Vector4(a, 1 / (b - a), c, 1 / (d - c));
+const globeMat = new THREE.ShaderMaterial({
+  uniforms: { tW: { value: tW }, tM: { value: tM }, tA: { value: tA }, wM: { value: win(10, 146.5, 12, 78) }, wA: { value: win(58, 82, 41, 53) },
+              camPos: { value: new THREE.Vector3() }, expo: { value: 1 }, sat: { value: 1 }, haze: { value: 1 } },
+  vertexShader: `attribute vec2 ll; varying vec2 vLL; varying vec3 vP;
+    void main(){ vLL = ll; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float;
+    uniform sampler2D tW, tM, tA; uniform vec4 wM, wA; uniform vec3 camPos; uniform float expo, sat, haze;
+    varying vec2 vLL; varying vec3 vP;
+    void main(){
+      vec3 col = texture2D(tW, vec2((vLL.x + 180.) / 360., (vLL.y + 90.) / 180.)).rgb;
+      vec2 uM = vec2((vLL.x - wM.x) * wM.y, (vLL.y - wM.z) * wM.w), eM = min(uM, 1. - uM);
+      vec2 uA = vec2((vLL.x - wA.x) * wA.y, (vLL.y - wA.z) * wA.w), eA = min(uA, 1. - uA);
+      vec2 mx = dFdx(uM), my = dFdy(uM), ax = dFdx(uA), ay = dFdy(uA);
+      float mM = smoothstep(0., .012, eM.x) * smoothstep(0., .024, eM.y);
+      if (mM > 0.) col = mix(col, textureGrad(tM, uM, mx, my).rgb, mM);
+      float mA = smoothstep(0., .10, eA.x) * smoothstep(0., .14, eA.y);
+      if (mA > 0.) col = mix(col, textureGrad(tA, uA, ax, ay).rgb, mA);
+      float l = dot(col, vec3(.30, .59, .11));
+      col = mix(vec3(l), col, sat) * expo;
+      vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = clamp(dot(N, V), 0., 1.);
+      col *= mix(.14, 1., smoothstep(0., .42, mu));                       // the limb falls into shadow
+      col += vec3(.13, .36, .9) * pow(1. - mu, 5.) * haze * .5;            // thin blue air at the horizon
+      gl_FragColor = vec4(col, 1.);
+    }` });
+const scene = new THREE.Scene();
+const globe = new THREE.Mesh(globeGeometry(), globeMat); globe.frustumCulled = false; scene.add(globe);
+// atmosphere: back side of a shell 5 % above the ground, brightest right at the limb, gone at its own edge
+const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 96), new THREE.ShaderMaterial({
+  uniforms: { camPos: globeMat.uniforms.camPos, k: { value: 1 } }, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float; uniform vec3 camPos; uniform float k; varying vec3 vP;
+    void main(){ vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = dot(N, V);
+      float a = pow(clamp(-mu / .305, 0., 1.), 3.4); gl_FragColor = vec4(vec3(.2, .46, 1.) * k, a * k * .8); }` }));
+scene.add(atmo);
+const FOV = 30, camera = new THREE.PerspectiveCamera(FOV, W / H, 0.02, 30);
+
+// camera rig like Google Earth: look at (lon, lat) from `range` globe radii, heading clockwise from north, tilt 0 = straight down.
+// ox / oy shift the picture on screen (fractions of the frame, + = right / lower).
+let CAM = null;
+function setCam(c) {
+  CAM = c;
+  const U = dirv(c.lon, c.lat), a = c.lon * RAD, b = c.lat * RAD;
+  const E = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), N = new THREE.Vector3(-Math.sin(b) * Math.sin(a), Math.cos(b), -Math.sin(b) * Math.cos(a));
+  const h = (c.head || 0) * RAD, t = (c.tilt || 0) * RAD;
+  const F = N.clone().multiplyScalar(Math.cos(h)).addScaledVector(E, Math.sin(h));
+  const T = U.clone().multiplyScalar(1 + demAt(c.lon, c.lat));
+  camera.position.copy(T).addScaledVector(U, c.range * Math.cos(t)).addScaledVector(F, -c.range * Math.sin(t));
+  camera.up.copy(F).multiplyScalar(Math.cos(t)).addScaledVector(U, Math.sin(t));
+  camera.lookAt(T);
+  if (c.roll) camera.rotateZ(c.roll * RAD);
+  camera.fov = FOV; camera.near = Math.max(.004, c.range * .05); camera.far = c.range + 3;
+  camera.setViewOffset(W, H, -(c.ox || 0) * W, -(c.oy || 0) * H, W, H);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+  globeMat.uniforms.camPos.value.copy(camera.position);
+}
+const _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// lon/lat -> screen px. Returns [x, y, visible]. With limb = true a point hidden behind the globe slides to the limb,
+// so that an outline that goes round the globe stays one closed shape (for fills and clips).
+function P(lon, lat, limb = false) {
+  const a = lon * RAD, b = lat * RAD, r = 1 + demAt(lon, lat), c = Math.cos(b) * r;
+  _v.set(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a));
+  let vis = _v.dot(camera.position) > r * r * .995;
+  if (!vis && limb) {
+    const D = camera.position.length(); _c.copy(camera.position).multiplyScalar(1 / D);
+    _v.addScaledVector(_c, -_v.dot(_c)); _v.multiplyScalar(Math.sqrt(1 - 1 / (D * D)) / (_v.length() || 1)).addScaledVector(_c, 1 / D); vis = true;
+  }
+  _v.project(camera);
+  return [(_v.x * .5 + .5) * W, (1 - (_v.y * .5 + .5)) * H, vis && _v.z < 1];
+}
+// screen pixels per km near the look-at point (for sizing things in km)
+function pxPerKm() { const p = P(CAM.lon, CAM.lat), q = P(CAM.lon + 1 / Math.cos(CAM.lat * RAD), CAM.lat); return Math.hypot(q[0] - p[0], q[1] - p[1]) / 111.2; }
+// point at distance d km and bearing brg (deg) from (lon, lat)
+function dest(lon, lat, brg, d) {
+  const δ = d / RE, θ = brg * RAD, φ1 = lat * RAD, λ1 = lon * RAD;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return [λ2 / RAD, φ2 / RAD];
+}
+function distKm(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dφ = φ2 - φ1, dλ = (b[0] - a[0]) * RAD;
+  const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+  return 2 * RE * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dλ = (b[0] - a[0]) * RAD;
+  return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / RAD;
+}
+
+// stars behind the globe (fixed directions, so they turn with the camera)
+const STARS = Array.from({ length: 7000 }, (_, i) => { const z = hash(i * 3.17 + .3) * 2 - 1, a = hash(i * 7.31 + 1.1) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return { d: new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a)), m: hash(i * 1.93 + 5.5) }; });
+function stars(a) {
+  if (a <= .01) return;
+  const f = 1 / Math.tan(camera.fov * RAD / 2), asp = W / H;
+  ctx.save(); ctx.fillStyle = '#dfe8ff';
+  for (const s of STARS) {
+    _v.copy(s.d).transformDirection(camera.matrixWorldInverse);
+    if (_v.z > -.5) continue;
+    const x = (_v.x / -_v.z * f / asp * .5 + .5) * W + (CAM.ox || 0) * W, y = (.5 - _v.y / -_v.z * f * .5) * H + (CAM.oy || 0) * H;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = a * (.18 + .82 * s.m * s.m * s.m); const r = 1 + s.m * 1.7; ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.restore();
+}
+// ---------------------------------------------------------------- shapes
+function dens(r, step = .8) {                              // densify so that long edges follow the globe
+  const o = [];
+  for (let i = 0; i < r.length - 1; i++) {
+    const a = r[i], b = r[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < n; k++) o.push([lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+  }
+  o.push(r[r.length - 1]); return o;
+}
+function chaikin(pts, n = 2) {
+  for (let k = 0; k < n; k++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1];
+    o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } o.push(pts[pts.length - 1]); pts = o; }
+  return pts;
+}
+const cum = pts => { const d = [0]; for (let i = 1; i < pts.length; i++) d.push(d[i - 1] + distKm(pts[i - 1], pts[i])); return d; };
+function along(pts, d, s) {                                // point at s km along a polyline with cumulative distances d
+  const n = pts.length; if (s <= 0) return pts[0]; if (s >= d[n - 1]) return pts[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m] <= s) lo = m; else hi = m; }
+  const u = (s - d[lo]) / (d[hi] - d[lo]); return [lerp(pts[lo][0], pts[hi][0], u), lerp(pts[lo][1], pts[hi][1], u)];
+}
+// rings -> canvas path. For a fill, hidden points slide to the limb (the shape stays closed); for a line (line = true) the hidden stretch is left out.
+function pathRings(c, rings, close = true, sh = null, line = false) {
+  c.beginPath();
+  for (const r of rings) {
+    let pen = false, whole = true;
+    for (const q of r) { const p = sh ? P(q[0] + sh[0], q[1] + sh[1], !line) : P(q[0], q[1], !line); if (!p[2]) { pen = false; whole = false; continue; } if (pen) c.lineTo(p[0], p[1]); else { c.moveTo(p[0], p[1]); pen = true; } }
+    if (close && whole) c.closePath();
+  }
+}
+function pathPts(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => { const p = P(q[0], q[1], true); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); if (close) c.closePath(); }
+function pathCircle(c, cen, km) { c.beginPath(); for (let i = 0; i <= 72; i++) { const q = dest(cen[0], cen[1], i * 5, km), p = P(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.closePath(); }
+function halfBlur(src, px) { hb.setTransform(1, 0, 0, 1, 0, 0); hb.clearRect(0, 0, W / 2, H / 2); hb.filter = `blur(${px / 2}px)`; hb.drawImage(src, 0, 0, W / 2, H / 2); hb.filter = 'none'; }
+function wipe(...cs) { for (const c of cs) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; c.clearRect(0, 0, W, H); c.lineJoin = c.lineCap = 'round'; } }
+function territory(parts, a, o = {}) {
+  if (a <= .004) return;
+  wipe(la, lr);
+  for (const p of parts) {
+    const pa = p.a ?? 1; if (pa <= .004) continue;
+    la.save(); lr.save();
+    for (const cl of p.clips || []) { pathPts(la, cl); la.clip(); pathPts(lr, cl); lr.clip(); }
+    pathRings(la, p.rings, true, p.shift); la.globalAlpha = pa; la.fillStyle = p.col; la.fill('evenodd');
+    if (p.rim !== 0) { pathRings(lr, p.rings, true, p.shift, true); lr.globalAlpha = pa * (p.rim ?? 1); lr.strokeStyle = p.hi || '#fff'; lr.lineWidth = p.rimW || 2.2; lr.stroke(); }
+    la.restore(); lr.restore();
+  }
+  for (const f of o.fronts || []) {
+    lr.save(); pathRings(lr, f.rings); lr.clip('evenodd'); for (const cl of f.clips || []) { pathPts(lr, cl); lr.clip(); }
+    pathPts(lr, f.pts, !f.open); lr.strokeStyle = f.col || '#fff'; lr.lineWidth = f.w || 5; lr.globalAlpha = f.a ?? 1; lr.stroke(); lr.restore();
+  }
+  lay(a, o);
+}
+// Scene 4, the khaganate growing: its lands show where a mask is. The mask = the core of 552 swelling evenly on all sides (rKm)
+// + the march to the west (wpts, a blob). The edge of the mask inside the lands glows as the moving frontier.
+function lay(a, o = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = a * (o.color ?? .82); ctx.drawImage(LA, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = a * (o.add ?? .14); ctx.drawImage(LA, 0, 0);
+  if (o.dark) { ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = a * o.dark; ctx.drawImage(LA, 0, 0); }
+  const glow = o.glow ?? .26, rim = o.rim ?? .7;
+  if (glow > 0) { halfBlur(LA, o.blur || 30); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * glow; ctx.drawImage(HB, 0, 0, W, H); }
+  if (rim > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * rim; ctx.drawImage(LR, 0, 0); halfBlur(LR, 12); ctx.globalAlpha = a * rim; ctx.drawImage(HB, 0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- drawing kit
+function font(c, size, weight = 700, fam = 'IN') { c.font = `${weight} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save(); font(ctx, o.size || 40, o.weight || 700, o.fam || 'IN'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.base || 'alphabetic';
+  ctx.letterSpacing = (o.ls || 0) + 'px'; ctx.globalAlpha *= o.alpha ?? 1;
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 20; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x + (o.ls || 0) / 2, y); ctx.restore();
+}
+// one centred line made of differently coloured parts: [[text, colour, alpha], ...]; the text '•' is drawn as a round dot (a legend mark)
+function line(parts, x, y, o = {}) {
+  const size = o.size || 60;
+  ctx.save(); font(ctx, size, o.weight || 800, o.fam || 'IT'); ctx.letterSpacing = (o.ls || 0) + 'px';
+  const ws = parts.map(p => p[0] === '•' ? size * 1.0 : ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0), ga = ctx.globalAlpha;
+  let cx = x - tot / 2; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 22; ctx.shadowOffsetY = 3; }
+  parts.forEach((p, i) => { ctx.globalAlpha = ga * (p[2] ?? 1); ctx.fillStyle = p[1] || '#fff';
+    if (ctx.globalAlpha > .004) { if (p[0] === '•') { ctx.beginPath(); ctx.arc(cx + size * .34, y - size * .36, size * .27, 0, 7); ctx.fill(); } else ctx.fillText(p[0], cx, y); }
+    cx += ws[i]; });
+  ctx.restore(); return tot;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function glowDot(x, y, r, col, a = 1) {
+  if (a <= .004 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, a)); g.addColorStop(.35, rgba(col, a * .42)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// a place on the map: soft glow + solid dot with a white ring
+function place(p, col, k, r = 7, glow = 46) {
+  if (k <= 0 || !p[2]) return;
+  glowDot(p[0], p[1], glow * k, col, .55 * k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.beginPath(); ctx.arc(p[0], p[1], r * easeBack(k), 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+// the label of the style guide: navy pill with a thin amber edge, amber dot, white name. (x, y) = centre, k = appear 0..1
+function pill(text, x, y, k, o = {}) {
+  if (k <= 0) return;
+  const size = o.size || 34, padX = size * .6, dot = o.dot === false ? 0 : size * .3, gap = size * .34;
+  ctx.save(); font(ctx, size, 600);
+  const w = ctx.measureText(text).width + padX * 2 + (dot ? dot + gap : 0), h = size * 1.74, s = lerp(.72, 1, easeBack(k));
+  x = clamp(x, w / 2 + 22, W - w / 2 - 22);
+  ctx.translate(x, y); ctx.scale(s, s); ctx.globalAlpha *= clamp(k * 1.7);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+  rr(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = o.fill || C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (!o.fill) { ctx.strokeStyle = C.line; ctx.lineWidth = 1.6; ctx.stroke(); }
+  let tx = -w / 2 + padX;
+  if (dot) { ctx.fillStyle = o.color || C.acc; ctx.beginPath(); ctx.arc(tx + dot / 2, 0, dot / 2, 0, 7); ctx.fill(); tx += dot + gap; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, tx, size * .05);
+  ctx.restore();
+}
+function mapPill(q, text, k, o = {}) {                      // a pill pinned to a place; it fades out when the place leaves the frame
+  const p = P(q[0], q[1]); if (!p[2] || k <= 0) return;
+  const off = Math.max(-p[0], p[0] - W, -p[1], p[1] - H, 0); if (off >= 60) return;
+  ctx.save(); ctx.globalAlpha *= 1 - off / 60; pill(text, p[0] + (o.dx || 0), p[1] + (o.dy ?? -56), k, o); ctx.restore();
+}
+// a line on the map between km distances s0..s1 along a polyline (pts with cumulative distances d)
+function pathAlong(pts, d, s0, s1) {
+  ctx.beginPath(); let pen = false;
+  const a = along(pts, d, s0), pa = P(a[0], a[1]); if (pa[2]) { ctx.moveTo(pa[0], pa[1]); pen = true; }
+  for (let i = 0; i < pts.length; i++) { if (d[i] <= s0) continue; if (d[i] >= s1) break; const p = P(pts[i][0], pts[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  const b = along(pts, d, s1), pb = P(b[0], b[1]); if (pb[2]) { if (pen) ctx.lineTo(pb[0], pb[1]); else ctx.moveTo(pb[0], pb[1]); }
+}
+function borders(a) { if (a <= .01) return; ctx.save(); ctx.lineWidth = 1.3; ctx.strokeStyle = `rgba(255,255,255,${a})`; pathRings(ctx, SH.borders, false); ctx.stroke(); ctx.restore(); }
+function ring(cen, km, col, a, w = 3) { if (a <= .004) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathCircle(ctx, cen, km); ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.stroke(); ctx.restore(); }
+
+// ---------------------------------------------------------------- camera
+const mixCam = (a, b, u) => ({ lon: lerp(a.lon, b.lon, u), lat: lerp(a.lat, b.lat, u), range: Math.exp(lerp(Math.log(a.range), Math.log(b.range), u)),
+  head: lerp(a.head || 0, b.head || 0, u), tilt: lerp(a.tilt || 0, b.tilt || 0, u), ox: lerp(a.ox || 0, b.ox || 0, u), oy: lerp(a.oy || 0, b.oy || 0, u) });
+const kn = (keys, T, f, log) => { const v = hermite(keys.map(k => k[0]), keys.map(k => { const x = f(k[1]) ?? 0; return log ? Math.log(x) : x; }), T); return log ? Math.exp(v) : v; };
+const camTrack = (keys, T) => ({ lon: kn(keys, T, c => c.lon), lat: kn(keys, T, c => c.lat), range: kn(keys, T, c => c.range, true), head: kn(keys, T, c => c.head),
+  tilt: kn(keys, T, c => c.tilt), ox: kn(keys, T, c => c.ox), oy: kn(keys, T, c => c.oy) });
+function shake(c, T, t0, amp) { const u = T - t0; if (u < 0 || u > .8) return; const e = amp * Math.exp(-u * 6.5); c.ox = (c.ox || 0) + e * noise1(T * 47); c.oy = (c.oy || 0) + e * .7 * noise1(T * 53 + 9); c.roll = e * 55 * noise1(T * 31 + 3); }
+
+
+// ---------------------------------------------------------------- places (lon, lat); battle sites are approximate
+const PL = { turgay: [63.50, 49.63], zhet: [78.6, 45.0], verny: [76.92, 43.25], boral: [76.72, 43.40],
+             dogal: [62.55, 48.85], batpak: [65.3, 50.2], akkum: [64.75, 48.25], ghulja: [81.3, 43.92] };
+// Kazakhstan: the main outline only (Baikonur lies inside it and is filled with the rest; the Caspian islets are left out)
+const KZR = [SH.kz.reduce((a, r) => r.length > a.length ? r : a, [])].map(r => dens(r, .3));
+const BALK = SH.balkhash.map(r => dens(r, .3)), ARAL = SH.aral.map(r => dens(r, .3));
+function kzLand(a, glow = 1) { territory([{ rings: KZR, col: C.acc, hi: C.accHi, rimW: 2.8 }], a, { color: .3, add: .1 * glow, glow: .3 * glow, rim: 1 }); }
+function lakes(a) {                                           // the Aral (full in 1916) and Balkhash: a thin light edge so that they read on the dark map
+  if (a <= .01) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathRings(ctx, [...ARAL, ...BALK], true, null, true);
+  ctx.strokeStyle = rgba(C.water, .35 * a); ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+}
+const fmt = v => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+// a big counter that rolls up to `to` between t0 and t1; (x, y) = centre of the baseline
+function counter(T, to, t0, t1, x, y, size, col, a = 1) {
+  if (a <= .004) return;
+  const u = easeOut5(seg(T, t0, t1)), v = u < 1 ? Math.round(to * u / 100) * 100 : to, pop = 1 + .06 * Math.sin(Math.PI * seg(T, t1 - .05, t1 + .3));
+  ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); txt(fmt(v), 0, 0, { size, weight: 800, fam: 'IT', color: col, alpha: a, sb: 30, ls: 2 }); ctx.restore();
+}
+
+// ---------------------------------------------------------------- photos (real, see photos/photos.json) and film shots (Higgsfield)
+// ---------------------------------------------------------------- photos (real reliefs, Wikimedia Commons) and film shots (Higgsfield)
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const PHOTOS = await fetch('photos/photos.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+for (const k in PHOTOS) PHOTOS[k].img = await loadImg('photos/' + PHOTOS[k].file);
+// a photo card: rounded, thin light edge, slow zoom from the whole picture towards its focus point (fx, fy = 0..1 of the image)
+// box = [x, y, w, h] on screen; k = appear 0..1; z = 0..1 progress of the zoom
+function photoCard(ph, box, k, z, o = {}) {
+  if (k <= .004) return;
+  const [x, y, w, h] = box, s = lerp(.86, 1, easeBack(clamp(k))), img = ph && ph.img;
+  ctx.save(); ctx.globalAlpha *= clamp(k * 1.4); ctx.translate(x + w / 2, y + h / 2); ctx.scale(s, s); ctx.rotate((o.rot || 0) * (1 - k) * RAD);
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 16; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = '#0b0636'; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.save(); rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.clip();
+  if (img) {
+    const zf = lerp(ph.z0 || 1, ph.z1 || 1.6, easeIO(z)), fx = lerp(.5, ph.fx ?? .5, easeIO(z)), fy = lerp(.5, ph.fy ?? .5, easeIO(z));
+    const sc = Math.max(w / img.width, h / img.height) * zf, dw = img.width * sc, dh = img.height * sc;
+    let ix = -fx * dw + (fx - .5) * w * 0, iy = -fy * dh; ix = clamp(ix, w / 2 - dw, -w / 2); iy = clamp(iy, h / 2 - dh, -h / 2);
+    ctx.filter = 'sepia(.35) saturate(1.05) contrast(1.08) brightness(.96)'; ctx.drawImage(img, ix, iy, dw, dh); ctx.filter = 'none';
+  } else { ctx.fillStyle = '#2a2140'; ctx.fillRect(-w / 2, -h / 2, w, h); txt('photo', 0, 0, { size: 40, color: 'rgba(255,255,255,.3)' }); }
+  const g = ctx.createLinearGradient(0, h / 2 - 230, 0, h / 2); g.addColorStop(0, 'rgba(10,6,40,0)'); g.addColorStop(1, 'rgba(10,6,40,.92)'); ctx.fillStyle = g; ctx.fillRect(-w / 2, h / 2 - 230, w, 230);
+  ctx.restore();
+  rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 2; ctx.stroke();
+  if (o.title) txt(o.title, -w / 2 + 34, h / 2 - 72, { size: o.tsize || 40, weight: 800, fam: 'IT', align: 'left', sb: 10 });
+  if (o.sub) txt(o.sub, -w / 2 + 34, h / 2 - 30, { size: 25, weight: 600, align: 'left', color: 'rgba(255,255,255,.8)', sb: 8 });
+  if (o.badge) { ctx.save(); font(ctx, 22, 700); ctx.letterSpacing = '4px'; const bw = ctx.measureText(o.badge).width + 36; rr(ctx, -w / 2 + 24, -h / 2 + 24, bw, 44, 22); ctx.fillStyle = C.acc; ctx.fill();
+    ctx.fillStyle = BR.navy; ctx.textBaseline = 'middle'; ctx.fillText(o.badge, -w / 2 + 42, -h / 2 + 47); ctx.restore(); }
+  if (o.after) o.after(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+// film shots: frames extracted from the Higgsfield clips (clips/s<n>/0001.jpg ...), 60 fps after motion interpolation (prep_clips.sh)
+const CLIPS = await fetch('clips/clips.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+const frameCache = {};
+async function clipFrame(name, ct) {
+  const c = CLIPS[name]; if (!c) return null;
+  const i = clamp(Math.round(ct * c.fps), 0, c.n - 1) + 1, key = name + i;
+  if (frameCache[name] && frameCache[name].key === key) return frameCache[name].img;
+  const img = await loadImg(`clips/${name}/${String(i).padStart(4, '0')}.jpg`); frameCache[name] = { key, img }; return img;
+}
+
+// scene windows. Film shots 1, 4, 6 play their clip over the scene; a scene longer than the clip slows it down (no lower than 0.6x)
+const SC = [0, M.S2, M.S3, M.S4, M.S5, M.S6, M.S7, M.S8, M.S9, END];
+const HF4 = await loadImg('hf/s4.png');
+async function film(n, T) {
+  const t0 = SC[n - 1], t1 = SC[n], dur = t1 - t0, c = CLIPS['s' + n];
+  const cd = c ? c.n / c.fps : 5, rate = clamp(cd / dur, .6, 1), ct = (T - t0) * rate + Math.max(0, cd - dur * rate) * .2;
+  const img = await clipFrame('s' + n, ct);
+  if (img) {
+    const zoom = (n === 1 ? 1.02 + .06 * easeIO(seg(T, t0, t1)) : 1.03 + .03 * seg(T, t0, t1)), sc = Math.max(W / img.width, H / img.height) * zoom, dw = img.width * sc, dh = img.height * sc;
+    if (n === 1) ctx.filter = 'grayscale(1) contrast(1.06)';
+    ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh); ctx.filter = 'none';
+  } else {                                                       // placeholder until the clip exists: the still
+    const st = n === 1 ? PHOTOS.portrait && PHOTOS.portrait.img : n === 4 ? HF4 : HF6;
+    if (st) { const sc = Math.max(W / st.width, H / st.height) * (1.03 + .04 * seg(T, t0, t1)), dw = st.width * sc, dh = st.height * sc;
+      if (n === 1) ctx.filter = 'grayscale(1)'; ctx.drawImage(st, (W - dw) / 2, (H - dh) / 2, dw, dh); ctx.filter = 'none'; }
+    txt('HIGGSFIELD · ' + n, W / 2, 1700, { size: 30, weight: 800, color: 'rgba(255,255,255,.35)' });
+  }
+}
+const HF6 = await loadImg('hf/s6.png');
+// old film on the archival shot: grain, dust, a scratch, a little flicker (deterministic per frame)
+function oldFilm(T, a = 1) {
+  const f = Math.floor(T * 24);
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = `rgba(255,248,230,${.03 + .03 * hash(f * 1.3)})`; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 26; i++) { const x = hash(f * 7.1 + i) * W, y = hash(f * 3.7 + i * 1.9) * H, r = .8 + 2.6 * hash(f + i * 5.3);
+    ctx.fillStyle = hash(i + f * .7) > .5 ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.45)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+  if (hash(f * .37) > .45) { const x = hash(Math.floor(f / 6) * 2.3) * W; ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(x, 0, 1.6, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- camera
+const CAMS = {
+  2: [[M.S2, { lon: 67.5, lat: 46.4, range: 1.55, tilt: 18, oy: .06 }], [M.turgay - .5, { lon: 68.3, lat: 46.2, range: 1.42, tilt: 22, oy: .07 }], [M.S3, { lon: 68.6, lat: 46.0, range: 1.36, tilt: 24, oy: .07 }]],
+  3: [[M.S3, { lon: 63.9, lat: 48.6, range: .62, tilt: 36, head: -4, oy: .08 }], [M.k15 - .3, { lon: 63.6, lat: 48.9, range: .5, tilt: 40, head: -2, oy: .08 }],
+      [M.k15 + .9, { lon: 63.5, lat: 49.35, range: .27, tilt: 46, oy: .1 }], [M.S4, { lon: 63.5, lat: 49.42, range: .23, tilt: 48, oy: .1 }]],
+  5: [[M.S5, { lon: 63.0, lat: 48.3, range: .32, tilt: 42, oy: .06 }], [M.b2 + .2, { lon: 64.6, lat: 49.4, range: .32, tilt: 42, oy: .06 }], [M.b3 + .5, { lon: 64.4, lat: 47.9, range: .34, tilt: 43, oy: .06 }],
+      [M.feb, { lon: 64.0, lat: 48.3, range: .64, tilt: 38, oy: .04 }], [M.S6, { lon: 64.0, lat: 48.3, range: .68, tilt: 37, oy: .04 }]],
+  7: [[M.S7, { lon: 76.3, lat: 43.2, range: .56, tilt: 38, oy: .06 }], [M.bek, { lon: 76.6, lat: 43.1, range: .38, tilt: 44, oy: .08 }],
+      [M.boral + .5, { lon: 76.72, lat: 43.2, range: .22, tilt: 50, oy: .1 }], [M.S8, { lon: 76.74, lat: 43.22, range: .19, tilt: 52, oy: .1 }]],
+};
+const camAt = (sc, T) => { const c = camTrack(CAMS[sc], T); if (sc === 3) shake(c, T, M.siege, .006); return c; };
+
+// ---------------------------------------------------------------- map scenes
+function town(q, text, k, col = C.warn, o = {}) { place(P(q[0], q[1]), col, k, 7, 40); mapPill(q, text, k, { color: col, ...o }); }
+function mapS2(T) {                                          // the decree, then the two centres of the uprising
+  lakes(.8); kzLand(.85 * ap(T, M.S2 + .2, .6));
+  for (const [q, nm, t0] of [[PL.turgay, L.turgay, M.turgay], [PL.zhet, L.zhet, M.zhet]]) {
+    const k = ap(T, t0 - .1, .3); if (k <= 0) continue; const p = P(q[0], q[1]);
+    const pu = seg(T, t0 - .1, t0 + 1.2); if (pu < 1 && p[2]) for (const d of [0, .35]) { const u = clamp(pu * 1.3 - d); if (u > 0 && u < 1) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warn, .8 * (1 - u)); ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p[0], p[1], 14 + 120 * easeOut(u), 0, 7); ctx.stroke(); ctx.restore(); } }
+    glowDot(p[0], p[1], 90 * k, C.warn, .5 * k); place(p, C.warn, k, 10, 50); mapPill(q, nm, k, { color: C.warn, dy: -64, size: 38 });
+  }
+}
+// 15 000 warriors close a ring around the town (amber dots = the rebels, the town itself red = the tsarist garrison)
+const RING = Array.from({ length: 520 }, (_, i) => ({ a: i / 520 * Math.PI * 2 + (hash(i) - .5) * .05, r: (hash(i * 3.3) - .5), ph: hash(i * 9.1) * 6.28, d: hash(i * 5.7) }));
+function mapS3(T) {
+  lakes(.8); kzLand(.45);
+  const tk = ap(T, M.S3 + .3, .35); town(PL.turgay, L.town, tk, C.warn, { dy: 64, size: 34 });
+  const k = ap(T, M.k15 - .1, .5); if (k <= 0) return;
+  const u = easeIO(seg(T, M.k15, M.S4 - .2)), R = lerp(100, 32, u), kp = pxPerKm(), c = P(...PL.turgay);
+  ctx.save(); ctx.fillStyle = C.acc; ctx.shadowColor = C.acc; ctx.shadowBlur = 6;
+  for (const d of RING) {
+    if (d.d > k * 1.05) continue;
+    const rr2 = R * (1 + d.r * .32) + 1.5 * Math.sin(T * 2 + d.ph), q = dest(PL.turgay[0], PL.turgay[1], d.a / RAD, rr2), p = P(q[0], q[1]); if (!p[2]) continue;
+    ctx.globalAlpha = clamp(k * 1.4 - d.d * .4); ctx.beginPath(); ctx.arc(p[0], p[1], 3.2, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+  ring(PL.turgay, R * 1.18, C.acc, .55 * k, 3); ring(PL.turgay, R * .82, C.acc, .25 * k, 2);
+  glowDot(c[0], c[1], 120, C.warn, .35 * k);
+}
+// a battle: burst + crossed sabres in a navy disc + the name
+function sabres(x, y, s, col) {
+  ctx.save(); ctx.translate(x, y); ctx.strokeStyle = col; ctx.lineWidth = s * .12; ctx.lineCap = 'round';
+  for (const sg of [-1, 1]) { ctx.save(); ctx.rotate(sg * .78); ctx.beginPath(); ctx.moveTo(0, s * .62); ctx.quadraticCurveTo(s * .14 * sg, 0, 0, -s * .62); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-s * .2, s * .38); ctx.lineTo(s * .2, s * .38); ctx.stroke(); ctx.restore(); }
+  ctx.restore();
+}
+function battle(q, name, t0, T) {
+  const k = ap(T, t0 - .1, .35); if (k <= 0) return; const p = P(q[0], q[1]); if (!p[2]) return;
+  const u = seg(T, t0 - .1, t0 + .8);
+  if (u < 1) { glowDot(p[0], p[1], 40 + 200 * easeOut(u), '#ff8a3c', .9 * (1 - u)); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warn, .9 * (1 - u)); ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p[0], p[1], 20 + 150 * easeOut(u), 0, 7); ctx.stroke(); ctx.restore(); }
+  const s = lerp(1.5, 1, easeBack(k));
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.translate(p[0], p[1]); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 34, 0, 7); ctx.fillStyle = C.card; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 3; ctx.strokeStyle = C.acc; ctx.stroke(); sabres(0, 0, 40, C.acc); ctx.restore();
+  pill(name, p[0], p[1] + 70, k, { size: 34, color: C.warn });
+}
+function mapS5(T) {
+  lakes(.8); kzLand(.4);
+  town(PL.turgay, L.turgay, ap(T, M.S5, .3) * .9, C.warn, { dy: -50, size: 28 });
+  battle(PL.dogal, L.bnames[0], M.b1, T); battle(PL.batpak, L.bnames[1], M.b2, T); battle(PL.akkum, L.bnames[2], M.b3, T);
+}
+// the pass of Boraldai near Almaty: a memorial light
+function memorial(x, y, k, T) {
+  if (k <= 0) return; glowDot(x, y - 30, 120, '#ffcf6b', .5 * k * (.85 + .15 * Math.sin(T * 9)));
+  ctx.save(); ctx.globalAlpha = k; ctx.translate(x, y);
+  rr(ctx, -14, -46, 28, 46, 5); ctx.fillStyle = '#f1e6cf'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10; ctx.fill(); ctx.shadowColor = 'transparent';
+  const fl = 1 + .08 * Math.sin(T * 13) + .05 * noise1(T * 7);
+  ctx.beginPath(); ctx.moveTo(0, -48 - 30 * fl); ctx.quadraticCurveTo(13, -60, 0, -48); ctx.quadraticCurveTo(-13, -60, 0, -48 - 30 * fl); ctx.fillStyle = C.acc; ctx.shadowColor = C.acc; ctx.shadowBlur = 20; ctx.fill();
+  ctx.restore();
+}
+function mapS7(T) {
+  lakes(.7); kzLand(.3);
+    const bk = ap(T, M.S7 + .6, .4), p = P(...PL.boral);
+  if (p[2]) { memorial(p[0], p[1], bk, T); const hi = ap(T, M.boral - .1, .3); mapPill(PL.boral, L.boral, bk, { dy: 48, size: hi > 0 ? 38 : 32 }); }
+}
+
+// ---------------------------------------------------------------- titles and panels
+function vignette(top = 1) {
+  let g = ctx.createLinearGradient(0, 0, 0, 640); g.addColorStop(0, `rgba(0,0,0,${.9 * top})`); g.addColorStop(.5, `rgba(0,0,0,${.46 * top})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 640);
+  g = ctx.createLinearGradient(0, 1080, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.42, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,.92)');
+  ctx.fillStyle = g; ctx.fillRect(0, 1080, W, H - 1080);
+  g = ctx.createRadialGradient(W / 2, H / 2, 620, W / 2, H / 2, 1180); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+const titleLine = (parts, y, size, a, o = {}) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; line(parts.map(p => [p[0], PAL[p[1]]]), W / 2, y + (1 - a) * 14, { size, ...o }); ctx.restore(); };
+const tag = (s, y, a, col = C.acc) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; rr(ctx, W / 2 - 30, y - 52, 60, 6, 3); ctx.fill(); ctx.restore();
+  txt(s, W / 2, y + (1 - a) * 8, { size: 28, weight: 700, ls: 7, color: col, alpha: a, sb: 10 }); };
+// an amber plate with navy text (the «ENT trap» of the first frame, the chips)
+function plate(s, x, y, size, a, o = {}) {
+  if (a <= 0) return;
+  ctx.save(); font(ctx, size, 800, 'IT'); ctx.letterSpacing = (o.ls ?? 4) + 'px'; const w = ctx.measureText(s).width + size * 1.1, h = size * 1.55, sc = o.pop ? lerp(1.25, 1, easeBack(a)) : 1;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.rotate((o.rot || 0) * RAD); ctx.globalAlpha *= clamp(a * 1.5);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6; rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = o.fill || C.acc; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.fillStyle = o.color || BR.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, (o.ls ?? 4) / 2, size * .06); ctx.restore();
+}
+function datePlate(s, a, y = 330) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; font(ctx, 84, 800, 'IT'); const w = ctx.measureText(s).width + 90, h = 124, sc = lerp(.9, 1, easeBack(a));
+  ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = rgba(C.acc, .7); ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  txt(s, W / 2, y + 30, { size: 84, weight: 800, fam: 'IT', color: C.acc, alpha: a, shadow: 0, ls: 2 });
+}
+// the decree of 25 June 1916 as a drawn document (no scan of it is in open archives): paper, heading, lines, the round seal
+function decree(T, k) {
+  if (k <= .004) return;
+  const t0 = M.date - .15, fall = easeOut(seg(T, t0, t0 + .55)), out = easeIO(seg(T, M.age + 1.5, M.age + 2.1));
+  const w = 620, h = 800, x = W / 2 + out * 1150, y = lerp(-500, 930, fall), rot = lerp(-14, -3, fall) + out * 18;
+  const slam = seg(T, M.decree - .08, M.decree + .25), ss = T >= M.decree - .08 ? lerp(1.9, 1, easeOut(slam)) : 0;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot * RAD); ctx.globalAlpha = k;
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 20; rr(ctx, -w / 2, -h / 2, w, h, 6); ctx.fillStyle = '#e8dcc0'; ctx.fill(); ctx.shadowColor = 'transparent';
+  const g = ctx.createRadialGradient(0, 0, 100, 0, 0, 560); g.addColorStop(0, 'rgba(120,90,40,0)'); g.addColorStop(1, 'rgba(120,80,30,.35)'); ctx.fillStyle = g; ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.strokeStyle = 'rgba(60,40,20,.55)'; ctx.lineWidth = 2; ctx.strokeRect(-w / 2 + 26, -h / 2 + 26, w - 52, h - 52); ctx.lineWidth = 1; ctx.strokeRect(-w / 2 + 34, -h / 2 + 34, w - 68, h - 68);
+  const ink = 'rgba(40,26,14,.88)'; ctx.fillStyle = ink; ctx.textAlign = 'center';
+  font(ctx, 23, 600, 'IN'); ctx.letterSpacing = '6px'; ctx.fillText('ВЫСОЧАЙШЕЕ', 0, -h / 2 + 100); ctx.fillText('ПОВЕЛѢНІЕ', 0, -h / 2 + 134);
+  ctx.letterSpacing = '0px'; font(ctx, 19, 500, 'IN'); ctx.fillText('25 іюня 1916 года', 0, -h / 2 + 176);
+  font(ctx, 17, 500, 'IN'); const body = ['о привлеченіи мужского инородческаго', 'населенія Имперіи для работъ', 'по устройству оборонительныхъ', 'сооруженій и военныхъ сообщеній', 'въ районѣ дѣйствующей арміи,', 'въ возрастѣ отъ 19 до 43 лѣтъ'];
+  body.forEach((s, i) => ctx.fillText(s, 0, -h / 2 + 232 + i * 32));
+  ctx.fillStyle = 'rgba(40,26,14,.28)'; for (let i = 0; i < 7; i++) { const lw = (w - 150) * (.7 + .3 * hash(i * 2.1)); ctx.fillRect(-lw / 2, -h / 2 + 452 + i * 30, lw, 7); }
+  ctx.fillStyle = ink; font(ctx, 26, 500, 'IN'); ctx.font = 'italic 500 30px IN'; ctx.textAlign = 'right'; ctx.fillText('Николай', w / 2 - 70, h / 2 - 82);
+  // the 19–43 highlight
+  const hk = ap(T, M.age - .1, .3); if (hk > 0) { ctx.globalAlpha = k * hk * .55; ctx.fillStyle = C.acc; ctx.fillRect(-170, -h / 2 + 232 + 5 * 32 - 22, 340 * easeOut(hk), 30); ctx.globalAlpha = k; }
+  if (ss > 0) {                                                 // the seal
+    ctx.save(); ctx.translate(-w / 2 + 170, h / 2 - 150); ctx.scale(ss, ss); ctx.rotate(-.25); ctx.globalAlpha = k * clamp(slam * 4) * .85;
+    ctx.strokeStyle = '#a82e24'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0, 0, 80, 0, 7); ctx.stroke(); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, 66, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#a82e24'; ctx.textAlign = 'center'; font(ctx, 40, 800, 'IT'); ctx.fillText('1916', 0, 6); font(ctx, 16, 700, 'IN'); ctx.letterSpacing = '3px'; ctx.fillText('25 · VI', 0, 34); ctx.restore();
+  }
+  ctx.restore();
+  txt(L.illus, x, y + h / 2 + 40, { size: 20, weight: 500, color: 'rgba(255,255,255,.45)', alpha: k * (1 - out), shadow: 0 });
+}
+// the staff chart of the Turgay rising: khan -> sardarbek -> mergen
+function hierarchy(T) {
+  const out = 1 - seg(T, M.k15 - .45, M.k15 - .1); if (out <= 0) return;
+  const ts = [M.khan - .25, M.sardar - .25, M.sardar + .9];
+  L.rows.forEach(([role, name], i) => {
+    const k = ap(T, ts[i], .35) * out; if (k <= 0) return; const y = 300 + i * 132, w = 780, h = 96, x = W / 2 - w / 2 + (1 - k) * -40;
+    if (i) { ctx.save(); ctx.globalAlpha = k; ctx.strokeStyle = rgba(C.acc, .7); ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(W / 2, y - h / 2 - 34); ctx.lineTo(W / 2, y - h / 2); ctx.stroke(); ctx.restore(); }
+    ctx.save(); ctx.globalAlpha = k; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 24; rr(ctx, x, y - h / 2, w, h, 18); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = i === 1 ? C.acc : C.line; ctx.lineWidth = i === 1 ? 3 : 2; ctx.stroke(); ctx.restore();
+    txt(role, x + 36, y + 11, { size: 28, weight: 800, align: 'left', ls: 4, color: C.acc, alpha: k, shadow: 0 });
+    txt(name, x + w - 36, y + 14, { size: 40, weight: 800, fam: 'IT', align: 'right', alpha: k, shadow: 0 });
+  });
+}
+function hud(T, sc) {
+  if (sc === 1) {                                              // the hook: the ENT trap plate in the very first frame, the year
+    const out = 1 - seg(T, M.S2 - .5, M.S2 - .1);
+    plate(L.trap, W / 2, 290, 62, out, { rot: -2 });
+    titleLine([[L.year, 0]], 520, 190, out * (T < .05 ? 1 : 1), { weight: 800, ls: 6 });
+    if (out > 0) { ctx.save(); ctx.globalAlpha = out; ctx.fillStyle = C.acc; rr(ctx, W / 2 - 120, 552, 240, 8, 4); ctx.fill(); ctx.restore(); }
+    tag(L.hookSub, 630, ap(T, M.rise - .2, .4) * out);
+  } else if (sc === 2) {
+    tag(L.ent, 262, ap(T, M.S2 + .15, .35) * (1 - seg(T, M.date - .4, M.date - .1)));
+    datePlate(L.date, ap(T, M.date - .1, .35));
+    decree(T, 1);
+    plate(L.age, W / 2, 1290, 52, ap(T, M.age - .05, .3) * (1 - seg(T, M.age + 1.5, M.age + 1.9)), { pop: 1 });
+    const ck = ap(T, M.age + 1.6, .4);
+    counter(T, 500000, M.age + 1.7, M.turgay - .6, W / 2, 560, 150, C.acc, ck);
+    if (ck > 0) txt(L.people, W / 2, 630, { size: 30, weight: 700, ls: 5, alpha: ck, sb: 10 });
+  } else if (sc === 3) {
+    hierarchy(T);
+    const k15 = ap(T, M.k15 - .05, .35);
+    if (k15 > 0) { counter(T, 15000, M.k15, M.k15 + 1.0, W / 2, 470, 150, C.acc, k15); txt(L.k15b, W / 2, 540, { size: 32, weight: 700, ls: 7, alpha: k15, sb: 10 }); }
+  } else if (sc === 4) {
+    const k = ap(T, M.k50 - .25, .35);
+    tag(L.nov, 262, ap(T, M.S4 + .2, .35));
+    counter(T, 50000, M.k50 - .2, M.k50 + .9, W / 2, 470, 190, C.acc, k);
+    if (k > 0) txt(L.k50b, W / 2, 545, { size: 36, weight: 700, ls: 8, alpha: k, sb: 14 });
+  } else if (sc === 5) {
+    tag(L.battles, 262, ap(T, M.S5 + .1, .35));
+    timeline(T);
+  } else if (sc === 6) {
+    const k = ap(T, M.k238 - .25, .35);
+    counter(T, 238000, M.k238 - .2, M.k238 + 1.0, W / 2, 440, 170, '#ffffff', k);
+    if (k > 0) txt(L.k238b, W / 2, 512, { size: 34, weight: 700, ls: 8, alpha: k, sb: 14 });
+    const ck = ap(T, M.china - .15, .35); if (ck > 0) titleLine([[L.china, 3]], 620, 84, ck, { weight: 800 });
+  } else if (sc === 7) {
+    s7cards(T);
+  }
+}
+function timeline(T) {                                        // October 1916 -> February 1917
+  const a = ap(T, M.S5 + .3, .4); if (a <= 0) return;
+  const x0 = 150, x1 = W - 150, y = 1250, g = easeIO(seg(T, M.S5 + .4, M.feb + .2));
+  ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  ctx.strokeStyle = C.acc; ctx.shadowColor = C.acc; ctx.shadowBlur = 16; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(lerp(x0, x1, g), y); ctx.stroke(); ctx.shadowBlur = 0;
+  [[.18, M.b1], [.42, M.b2], [.62, M.b3]].forEach(([f, t0]) => { const k = ap(T, t0, .3); if (k <= 0) return; ctx.fillStyle = C.warn; ctx.beginPath(); ctx.arc(lerp(x0, x1, f), y, 11 * easeBack(k), 0, 7); ctx.fill(); });
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x0, y, 10, 0, 7); ctx.fill(); ctx.restore();
+  txt(L.tlA, x0, y + 58, { size: 28, weight: 700, align: 'left', alpha: a, sb: 10 });
+  const fk = ap(T, M.feb - .1, .35);
+  if (fk > 0) { glowDot(x1, y, 110, C.acc, .6 * fk); ctx.save(); ctx.globalAlpha = fk; ctx.fillStyle = C.acc; ctx.beginPath(); ctx.arc(x1, y, 15 * easeBack(fk), 0, 7); ctx.fill(); ctx.restore(); }
+  txt(L.tlB, x1, y + 58, { size: fk > 0 ? 34 : 28, weight: 800, align: 'right', alpha: a, color: fk > 0 ? C.acc : 'rgba(255,255,255,.7)', sb: 10 });
+}
+// scene 7: the name card, then (in the pause) the monument photo and the three numbers
+function s7cards(T) {
+  const bk = ap(T, M.bek - .1, .35), P7 = M.S8 - 2.85, pk = ap(T, P7, .45);
+  if (bk > 0) {
+    const w = 840, h = 150, x = W / 2 - w / 2, y = 300 + (1 - bk) * 20;
+    ctx.save(); ctx.globalAlpha = bk; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; rr(ctx, x, y - h / 2, w, h, 22); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke(); ctx.fillStyle = C.warn; rr(ctx, x, y - h / 2, 10, h, 5); ctx.fill(); ctx.restore();
+    txt(L.bek, W / 2, y - 2, { size: 52, weight: 800, fam: 'IT', alpha: bk, shadow: 0 });
+    txt(L.bekSub, W / 2, y + 44, { size: 28, weight: 600, alpha: bk, color: 'rgba(255,255,255,.75)', shadow: 0 });
+  }
+  if (pk <= 0) return;
+  ctx.fillStyle = rgba('#0c0738', .55 * pk); ctx.fillRect(0, 0, W, H);
+  photoCard(PHOTOS.monument, [50, 470, 430, 600], pk, seg(T, P7, M.S8), { title: L.mTitle, sub: L.mSub, rot: -4, tsize: 30 });
+  L.sum.forEach(([n, s], i) => {
+    const k = ap(T, P7 + .5 + i * .5, .35); if (k <= 0) return; const y = 560 + i * 190, x = 535 + (1 - k) * 30;
+    txt(n, x, y, { size: 74, weight: 800, fam: 'IT', align: 'left', color: i === 2 ? C.warn : C.acc, alpha: k, sb: 16 });
+    txt(s, x, y + 48, { size: 28, weight: 600, align: 'left', alpha: k, color: 'rgba(255,255,255,.88)', sb: 10 });
+  });
+}
+
+// ---------------------------------------------------------------- photos over the map: the portrait in scene 3
+function photos(T, sc) {
+  if (sc === 3) {
+    const t0 = M.sardar + .15, t1 = M.k15 - .2, k = ap(T, t0, .45) * (1 - seg(T, t1 - .3, t1));
+    if (k > 0) { ctx.save(); ctx.translate((1 - easeOut(seg(T, t0, t0 + .5))) * 500, 0); photoCard(PHOTOS.portrait, [290, 700, 500, 640], k, seg(T, t0, t1), { title: L.pTitle, sub: L.pSub, badge: 'АРХИВ', rot: 4 }); ctx.restore(); }
+  }
+}
+
+// ---------------------------------------------------------------- scene 8: the ENT quiz over the blurred steppe of scene 4
+const QBG = (() => { const c = mk(); const x = c.getContext('2d'); if (HF4) { x.filter = 'blur(22px) brightness(.55) saturate(.8)'; const s = Math.max(W / HF4.width, H / HF4.height) * 1.08; x.drawImage(HF4, (W - HF4.width * s) / 2, (H - HF4.height * s) / 2, HF4.width * s, HF4.height * s); } return c; })();
+const GREEN = '#2fcf74';
+function quiz(T) {
+  ctx.drawImage(QBG, 0, 0); ctx.fillStyle = 'rgba(12,7,56,.35)'; ctx.fillRect(0, 0, W, H);
+  tag(L.quiz, 262, ap(T, M.S8 + .2, .35));
+  const qa = ap(T, M.S8 + .35, .4);
+  L.q.forEach((s, i) => txt(s, W / 2, 380 + i * 74 + (1 - qa) * 12, { size: 58, weight: 800, fam: 'IT', alpha: qa, sb: 18 }));
+  const ans = ap(T, M.ans + .55, .3), marks = [M.oA, M.oB, M.oC];
+  L.opts.forEach(([l, s], i) => {
+    const k = ap(T, marks[i] - .12, .3); if (k <= 0) return; const y = 640 + i * 150, x = 130 + (1 - k) * -40, w = W - 260, h = 116, ok = i === 1;
+    const dim = ok ? 1 : 1 - .6 * ans, col = ok && ans > 0 ? mixHex('#130B54', GREEN, ans) : BR.navy;
+    ctx.save(); ctx.globalAlpha = k * dim; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 26; rr(ctx, x, y, w, h, 24); ctx.fillStyle = ok && ans > 0 ? col : C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = ok && ans > 0 ? GREEN : C.line; ctx.lineWidth = ok && ans > 0 ? 4 : 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + 62, y + h / 2, 36, 0, 7); ctx.fillStyle = ok && ans > 0 ? '#fff' : C.acc; ctx.fill(); ctx.restore();
+    txt(l, x + 62, y + h / 2 + 15, { size: 40, weight: 800, fam: 'IT', color: ok && ans > 0 ? GREEN : BR.navy, alpha: k * dim, shadow: 0 });
+    txt(s, x + 130, y + h / 2 + 17, { size: 50, weight: 800, fam: 'IT', align: 'left', alpha: k * dim, shadow: 0 });
+    if (ok && ans > 0) { ctx.save(); ctx.globalAlpha = ans; ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = ctx.lineJoin = 'round'; const cx = x + w - 70, cy = y + h / 2;
+      ctx.beginPath(); ctx.moveTo(cx - 24, cy); ctx.lineTo(cx - 6, cy + 18); ctx.lineTo(cx + 26, cy - 20); ctx.stroke(); ctx.restore(); glowDot(x + w / 2, y + h / 2, 420, GREEN, .25 * ans); }
+  });
+  // the 3-2-1 timer in the pause
+  const p0 = M.ans - 3.0, tk = ap(T, p0 - .1, .25) * (1 - seg(T, M.ans + .3, M.ans + .6));
+  if (tk > 0) {
+    const u = clamp((T - p0) / 3), n = Math.max(1, 3 - Math.floor(u * 3 - 1e-6)), cx = W / 2, cy = 1170;
+    ctx.save(); ctx.globalAlpha = tk; ctx.beginPath(); ctx.arc(cx, cy, 72, 0, 7); ctx.fillStyle = C.card; ctx.fill();
+    ctx.lineWidth = 9; ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(cx, cy, 72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - u)); ctx.stroke(); ctx.restore();
+    if (u < 1) { const f = (u * 3) % 1; ctx.save(); ctx.translate(cx, cy + 26); const s = lerp(1.25, 1, easeOut(f * 3)); ctx.scale(s, s); txt(String(n), 0, 0, { size: 76, weight: 800, fam: 'IT', color: C.acc, alpha: tk, shadow: 0 }); ctx.restore(); }
+  }
+  L.chips.forEach((s, i) => { const k = ap(T, (i ? M.keyki : M.ans + 1.2) - .1, .35); if (k > 0) plate(s, W / 2, 1150 + i * 96, 34, k, { ls: 1, fill: C.card, color: '#fff' }); });
+}
+
+// ---------------------------------------------------------------- scene 9: the engraving of Amangeldi, the ENT plate, then the profile card with the link
+const ENGR = await loadImg('photos/engrave.png');
+function s9(T) {
+  const dim = ease(seg(T, M.S9 - .1, M.S9 + .5)); ctx.fillStyle = rgba('#0c0738', .94 * dim); ctx.fillRect(0, 0, W, H);
+  const X = W / 2, ek = ap(T, M.S9 + .1, .6) * (1 - seg(T, M.link - .4, M.link + .1));
+  if (ENGR && ek > 0) {                                        // drawn in from the top like a print being pulled
+    const w = 720, h = w * ENGR.height / ENGR.width, x = X - w / 2, y = 330, rv = easeOut(seg(T, M.S9 + .1, M.S9 + 1.6));
+    ctx.save(); ctx.globalAlpha = ek; ctx.beginPath(); ctx.rect(x, y, w, h * rv); ctx.clip(); ctx.drawImage(ENGR, x, y, w, h);
+    const g = ctx.createLinearGradient(0, y + h * .7, 0, y + h); g.addColorStop(0, 'rgba(12,7,56,0)'); g.addColorStop(1, 'rgba(12,7,56,1)'); ctx.fillStyle = g; ctx.fillRect(x, y + h * .7, w, h * .3 + 2); ctx.restore();
+  }
+  const pk = ap(T, M.S9 + .5, .4) * (1 - seg(T, M.link - .4, M.link + .1));
+  if (pk > 0) { ctx.save(); ctx.globalAlpha = pk; line(L.plate.map(p => [p[0], p[1] ? C.acc : '#fff']), X, 270, { size: 40, sb: 12 }); ctx.restore(); }
+  // arrow up to the profile header
+  const m = ap(T, M.link - .1, .5);
+  if (m > 0) {
+    const ay = 1080 + 14 * Math.sin(T * 6.5) * seg(T, M.link + .4, M.link + .8), hh = 150;
+    ctx.save(); ctx.globalAlpha = m; ctx.strokeStyle = C.acc; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.moveTo(X, ay + hh * .7); ctx.lineTo(X, ay - hh * .55); ctx.moveTo(X - 62, ay - hh * .05); ctx.lineTo(X, ay - hh * .6); ctx.lineTo(X + 62, ay - hh * .05); ctx.stroke(); ctx.restore();
+  }
+  const l = ap(T, M.link - .12, .4), hi = ap(T, M.bio - .25, .3);
+  if (l > 0) {
+    const cw = 840, ch = 206, cx = X - cw / 2, cyc = 740 + (1 - l) * 40;
+    ctx.save(); ctx.globalAlpha = l;
+    line(L.go.map(p => [p[0], p[1] ? C.acc : '#fff']), X, cyc - ch / 2 - 46, { size: 56, sb: 14 });
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cyc - ch / 2, cw, ch, 24); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 62, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 51, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
+    ctx.drawImage(LOGO_AV, cx + 106 - LOGO_AV.width / 2, cyc - LOGO_AV.height / 2);
+    txt('JAS EDUCATION', cx + 206, cyc - 43, { size: 36, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 206, cyc - 24, 504, 17, 8.5); ctx.fill();
+    const lx = cx + 199, ly = cyc + 14, lw = 360, lh = 60, my = ly + lh / 2;
+    rr(ctx, lx, ly, lw, lh, 30); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineWidth = 5.4; ctx.lineCap = 'round';
+    ctx.save(); ctx.translate(lx + 43, my); ctx.rotate(-.7); rr(ctx, -23, -8.5, 26.5, 17, 8.5); ctx.stroke(); rr(ctx, -3.5, -8.5, 26.5, 17, 8.5); ctx.stroke(); ctx.restore();
+    txt(L.linkword, lx + 82, my + 12, { size: 35, weight: 700, align: 'left', color: C.acc, shadow: 0 });
+    ctx.restore();
+    for (const dl of [0, .16]) { const u = (T - M.go - dl) / .6; if (u <= 0 || u >= 1) continue;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .75 * (1 - u) ** 2); ctx.lineWidth = 5 - 3 * u;
+      const g = 6 + 74 * easeOut(u); rr(ctx, lx - g, ly - g, lw + 2 * g, lh + 2 * g, 30 + g); ctx.stroke(); ctx.restore(); }
+    if (hi > 0) { glowDot(lx + lw / 2, my, 230, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6))); txt(L.where.toUpperCase(), X, 1330 + (1 - hi) * 10, { size: 40, weight: 700, ls: 5, alpha: hi, sb: 12 }); }
+  }
+}
+
+// ---------------------------------------------------------------- the brand in the frame
+const END0 = M.last - .1;
+function logo() { ctx.save(); ctx.globalAlpha = .82; ctx.drawImage(LOGO, W - 48 - LOGO.width, 48); ctx.restore(); }
+function credit(T, sc) {                                     // small print: map sources on the map scenes, the photo source while a photo is shown
+  let s = null;
+  if (sc === 3 && T > M.sardar && T < M.k15 - .2) s = PHOTOS.portrait && PHOTOS.portrait.credit;
+  else if (sc === 7 && T > M.S8 - 2.9) s = PHOTOS.monument && PHOTOS.monument.credit;
+  else if (sc === 2 || sc === 3 || sc === 5 || sc === 7) s = L.credit;
+  else if (sc === 1) s = PHOTOS.portrait && PHOTOS.portrait.credit;
+  if (s) txt(s, W / 2, 1880, { size: 19, weight: 500, color: 'rgba(255,255,255,.42)', shadow: 0 });
+}
+function endCard(T) {
+  const k = ease(seg(T, END0, END0 + .5)); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
+  const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
+}
+
+// ---------------------------------------------------------------- captions: the chunk being spoken, word by word
+const CAPCOL = { w: '#ffffff', t: C.acc, n: C.acc, r: C.warn, g: C.acc, b: C.acc };
+const CHUNKS = []; B.words.forEach(w => { if (!/[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(w.w)) return; (CHUNKS[w.k] ||= { ws: [], t0: w.t }).ws.push(w); CHUNKS[w.k].t1 = w.e; });
+const CH = CHUNKS.filter(Boolean);
+function captions(T, y) {
+  let i = -1; for (let k = 0; k < CH.length; k++) if (T >= CH[k].t0 - .07) i = k;
+  if (i < 0) return; const c = CH[i], tEnd = Math.min(i + 1 < CH.length ? CH[i + 1].t0 - .07 : 1e9, c.t1 + .5);
+  if (T > tEnd) return;
+  const its = c.ws.map(w => { const key = w.c !== 'w', size = key ? 60 : 54, weight = key ? 800 : 700, s = w.w.replace(/[.,:;!?]+$/, ''); font(ctx, size, weight); return { w, s, size, weight, wd: ctx.measureText(s).width }; });
+  let tot = 0; its.forEach((it, k) => { tot += it.wd + (k < its.length - 1 && !it.w.g ? 17 : 0); });
+  const sc = Math.min(1, 960 / tot), a = seg(T, c.t0 - .07, c.t0 + .03) * (1 - seg(T, tEnd - .06, tEnd));
+  ctx.save(); ctx.translate(W / 2, y + (1 - seg(T, c.t0 - .07, c.t0 + .05)) * 10); ctx.scale(sc, sc); let x = -tot / 2;
+  for (const it of its) {
+    const on = seg(T, it.w.t - .04, it.w.t + .05), pop = 1 + .07 * Math.sin(Math.PI * seg(T, it.w.t - .02, it.w.t + .2));
+    ctx.save(); ctx.translate(x + it.wd / 2, 0); ctx.scale(pop, pop); font(ctx, it.size, it.weight); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3; ctx.globalAlpha = a * lerp(.4, 1, on); ctx.fillStyle = CAPCOL[it.w.c] || '#fff';
+    ctx.fillText(it.s, 0, 0); ctx.shadowBlur = 5; ctx.fillText(it.s, 0, 0); ctx.restore();
+    x += it.wd + (it.w.g ? 0 : 17);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- frame
+// transitions: 1->2 a dip from the black-and-white photo into warm colour, 6->7 and 7->8 dips to black, the other cuts are hard with a soft white flash
+const DIPS = [[M.S2, '#c99a5b', .45], [M.S7, '#000000', .5], [M.S8, '#000000', .45]];
+const FLASH = [M.S3, M.S4, M.S5, M.S6, M.S9];
+async function render(T) {
+  T = clamp(T, 0, END);
+  const sc = T < M.S2 ? 1 : T < M.S3 ? 2 : T < M.S4 ? 3 : T < M.S5 ? 4 : T < M.S6 ? 5 : T < M.S7 ? 6 : T < M.S8 ? 7 : T < M.S9 ? 8 : 9;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (sc === 1 || sc === 4 || sc === 6) {
+    await film(sc, T);
+    if (sc === 1) oldFilm(T);
+    if (sc === 4) { ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = 'rgba(200,150,80,.18)'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+    vignette(.85);
+  } else if (sc === 8 || sc === 9) {
+    quiz(sc === 8 ? T : M.S9 - .01);
+  } else {
+    const cam = window.CAMQ || camAt(sc, T); setCam(cam);
+    globeMat.uniforms.expo.value = sc === 7 ? lerp(.7, .5, ease(seg(T, M.S8 - 2.9, M.S8 - 2.3))) : .7;
+    globeMat.uniforms.sat.value = .9; globeMat.uniforms.haze.value = .7; atmo.material.uniforms.k.value = .5;
+    stars(sc === 2 ? .6 : .3);
+    renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+    borders(.16);
+    if (sc === 2) mapS2(T); else if (sc === 3) mapS3(T); else if (sc === 5) mapS5(T); else mapS7(T);
+    vignette(1);
+  }
+  if (sc === 9) s9(T); else if (sc === 8) {} else hud(T, sc);
+  photos(T, sc);
+  captions(T, 1450);
+  credit(T, sc); logo(); if (sc === 9) endCard(T);
+  for (const [t0, col, d] of DIPS) { const u = Math.abs(T - t0) / d; if (u < 1) { ctx.fillStyle = rgba(col, (1 - u) ** 1.6 * (col === '#000000' ? 1 : .85)); ctx.fillRect(0, 0, W, H); } }
+  for (const tc of FLASH) if (T >= tc && T < tc + .16) { ctx.fillStyle = `rgba(255,255,255,${.2 * (1 - (T - tc) / .16) ** 2})`; ctx.fillRect(0, 0, W, H); }
+}
+window.render = render; window.setCamQ = c => { window.CAMQ = c; }; window.END = END; window.M = M;
+window.ready = true;
+</script>
+</body></html>
