@@ -1,0 +1,287 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Точка Немо: ближайшие люди — в космосе» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 45;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'world', l0: -540, l1: -180, b0: -90, b1: 90 });
+TEX.push({ k: 'pac', l0: -150, l1: -78, b0: -78, b1: -14, minppd: 18 });
+const GOLD = BR.acc, RED = BR.red, TURQ = '#4FD1C5', SKY = '#9fe8ff';
+const NEMO = [-123.39, -48.88];
+const ISL = [{ p: [-124.79, -24.68], k: 'ducie' }, { p: [-109.45, -27.2], k: 'motu' }, { p: [-90.33, -72.97], k: 'maher' }];
+const TXT = {
+  ru: { nemo: 'Точка Немо', h1: 'Ближайшие люди —', h2: 'в космосе', astro: 'космонавты', f3: '3 факта', creepy: 'последний — жутковатый',
+    ducie: 'о. Дюси', motu: 'Моту-Нуи (о. Пасхи)', maher: 'о. Махер (Антарктида)', km: '≈ 2700 км', cmp: 'Алматы → Актау', cmpk: '≈ 2100 км', water: 'вокруг только вода',
+    iss: 'МКС ≈ 400 км', closer: 'ближе любого острова', ent: 'ЕНТ', pac: 'Тихий — №1', pac2: 'самый большой и самый глубокий', grave: 'Кладбище кораблей',
+    mir: '«Мир», 2001', iss2: 'МКС · ~2030', cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Источники: NOAA, NASA, Britannica · карта: NASA Blue Marble' },
+  kk: { nemo: 'Немо нүктесі', h1: 'Ең жақын адамдар —', h2: 'ғарышта', astro: 'ғарышкерлер', f3: '3 дерек', creepy: 'соңғысы — қорқынышты',
+    ducie: 'Дюси аралы', motu: 'Моту-Нуи (Пасха аралы)', maher: 'Махер аралы (Антарктида)', km: '≈ 2700 км', cmp: 'Алматы → Ақтау', cmpk: '≈ 2100 км', water: 'айнала тек су',
+    iss: 'ХҒС ≈ 400 км', closer: 'кез келген аралдан жақын', ent: 'ҰБТ', pac: 'Тынық — №1', pac2: 'ең үлкен әрі ең терең', grave: 'Кемелер зираты',
+    mir: '«Мир», 2001', iss2: 'ХҒС · ~2030', cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Дереккөздер: NOAA, NASA, Britannica · карта: NASA Blue Marble' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {   // circle drawn on (the "обведённая точка")
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function nemoMark(a, r = 70, p = 1) {
+  if (a <= 0) return; glowSpot(...NEMO, a, GOLD, 46); const [x, y] = P(...NEMO); ring(x, y, r, p, a); dot(...NEMO, a);
+}
+function head2(l1, l2, a, y = H * .15) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(66, 66 * 960 / tw(l1, 66, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, 96, Math.min(108, 108 * 960 / tw(l2, 108, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function dashLine(x0, y0, x1, y1, p, a, col = '#fff', lw = 6) {
+  if (a <= 0 || p <= 0) return; const x = lerp(x0, x1, clamp(p)), y = lerp(y0, y1, clamp(p));
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.setLineDash([20, 16]); ctx.lineDashOffset = -TT * 50;
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
+}
+function counter(n, a) {   // "1 / 3" pill under the top edge
+  if (a <= 0) return; const s = `${n} / 3`; pill(s, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) });
+}
+// ---------- icons ----------
+function iss(x, y, s, a, rot = 0, ghost = 0) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  if (!ghost) { ctx.shadowColor = 'rgba(160,220,255,.9)'; ctx.shadowBlur = 24; }
+  const panel = (px, py) => { ctx.fillStyle = ghost ? 'rgba(255,255,255,.08)' : '#1f3f8f'; ctx.fillRect(px - 9, py, 18, 46); ctx.strokeStyle = ghost ? 'rgba(255,255,255,.8)' : GOLD; ctx.lineWidth = 2.5; ctx.strokeRect(px - 9, py, 18, 46); };
+  if (ghost) ctx.setLineDash([6, 5]);
+  ctx.fillStyle = ghost ? 'rgba(255,255,255,.1)' : '#dfe6ee'; ctx.strokeStyle = ghost ? 'rgba(255,255,255,.85)' : '#fff'; ctx.lineWidth = 3;
+  ctx.fillRect(-92, -4, 184, 8); ctx.strokeRect(-92, -4, 184, 8);                     // truss
+  for (const px of [-78, -56, 56, 78]) { panel(px, -52); panel(px, 6); }               // solar wings
+  rr(-14, -26, 28, 52, 8); ctx.fill(); ctx.stroke(); rr(-34, -10, 68, 20, 8); ctx.fill(); ctx.stroke();   // modules
+  ctx.restore();
+}
+function sat(x, y, s, a, rot = 0) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.fillStyle = '#1f3f8f'; ctx.strokeStyle = GOLD; ctx.lineWidth = 2.5;
+  for (const sx of [-1, 1]) { ctx.fillRect(sx * 18 - (sx < 0 ? 30 : 0), -9, 30, 18); ctx.strokeRect(sx * 18 - (sx < 0 ? 30 : 0), -9, 30, 18); }
+  ctx.fillStyle = '#e8e8e8'; ctx.strokeStyle = '#fff'; rr(-14, -14, 28, 28, 5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c9a54a'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill(); ctx.restore();
+}
+function mirIcon(x, y, s, a, rot = 0, dark = 0) {   // Mir: core + radial modules + panels
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  const body = dark ? '#2b3440' : '#e4e8ee', edge = dark ? 'rgba(254,179,0,.9)' : '#fff', pan = dark ? '#1b2533' : '#1f3f8f';
+  if (dark) { ctx.shadowColor = 'rgba(254,179,0,.45)'; ctx.shadowBlur = 18; }
+  ctx.lineWidth = 3; ctx.strokeStyle = edge;
+  const mod = (x0, y0, w, h) => { ctx.fillStyle = body; rr(x0, y0, w, h, Math.min(w, h) / 2.5); ctx.fill(); ctx.stroke(); };
+  const pnl = (x0, y0, w, h) => { ctx.fillStyle = pan; ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0, y0, w, h); };
+  pnl(-30, -128, 22, 70); pnl(8, -128, 22, 70); pnl(-150, -14, 60, 22); pnl(90, -14, 60, 22); pnl(-30, 62, 22, 60); pnl(8, 62, 22, 60);
+  mod(-90, -12, 180, 26); mod(-14, -60, 28, 120); mod(-120, -9, 32, 20); mod(88, -9, 34, 20); mod(-8, -80, 16, 22);
+  ctx.restore();
+}
+// ---------- cutaway panel (scenes 6-7) ----------
+const SURF = H * .36, BED = H * .79;
+function seabedY(x) { return BED + Math.sin(x * .011) * 16 + Math.sin(x * .031 + 1) * 8; }
+const STARS = (() => { const r = rng(7), a = []; for (let i = 0; i < 90; i++) a.push([r() * W, r() * SURF * .95, r() * 2 + .6, r()]); return a; })();
+const FALL = (() => { const r = rng(11), a = []; for (let i = 0; i < 7; i++) a.push({ dt: i * .42 + r() * .2, x0: 120 + r() * 840, x1: 140 + r() * 800, rot: r() * 6, s: .9 + r() * .7 }); return a; })();
+function fallPos(t0, x0, x1, xs, tSplash, tLand, t) {   // sky fall (fast, with trail) -> splash -> slow sink -> seabed
+  if (t < t0) return null;
+  if (t < tSplash) { const k = (t - t0) / (tSplash - t0); return { x: lerp(x0, xs, k), y: lerp(-60, SURF, k * k), ph: 0, k }; }
+  const k = clamp((t - tSplash) / (tLand - tSplash)), e = 1 - Math.pow(1 - k, 1.6);
+  return { x: lerp(xs, x1, e) + Math.sin(t * 2 + x0) * 6 * (1 - k), y: lerp(SURF, seabedY(x1) - 18, e), ph: k >= 1 ? 2 : 1, k };
+}
+function trail(x, y, x0, a) {
+  const an = Math.atan2(y + 60, x - x0) + Math.PI; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(x, y, x + Math.cos(an) * 160, y + Math.sin(an) * 160); g.addColorStop(0, 'rgba(255,200,80,.95)'); g.addColorStop(.3, 'rgba(232,80,47,.7)'); g.addColorStop(1, 'rgba(232,80,47,0)');
+  ctx.strokeStyle = g; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(an) * 160, y + Math.sin(an) * 160); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,220,120,.9)'; ctx.shadowColor = '#ffb030'; ctx.shadowBlur = 30; ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fill(); ctx.restore();
+}
+function splash(x, dt, a) { if (dt < 0 || dt > .8 || a <= 0) return; const k = dt / .8; ctx.save(); ctx.globalAlpha = a * (1 - k); ctx.strokeStyle = '#dff6ff'; ctx.lineWidth = 4;
+  for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.ellipse(x, SURF, 30 + k * 110 * (1 + i * .5), 8 + k * 14, 0, 0, 7); ctx.stroke(); }
+  ctx.fillStyle = '#dff6ff'; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.arc(x + i * 18 * (1 + k * 2), SURF - Math.sin(k * Math.PI) * (50 - Math.abs(i) * 12), 5, 0, 7); ctx.fill(); } ctx.restore(); }
+function bubbles(x, y, k, a) { if (a <= 0 || k >= 1) return; ctx.save(); ctx.globalAlpha = a * .6 * (1 - k); ctx.strokeStyle = '#cfefff'; ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) { const ph = (TT * 1.3 + i * .23) % 1; ctx.beginPath(); ctx.arc(x + Math.sin(i * 3 + TT * 3) * 14, y - ph * 120, 4 + i % 3 * 2, 0, 7); ctx.stroke(); } ctx.restore(); }
+function cutaway(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  let g = ctx.createLinearGradient(0, 0, 0, SURF); g.addColorStop(0, '#02030d'); g.addColorStop(1, '#14204a'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, SURF);
+  for (const [x, y, r, p] of STARS) { ctx.globalAlpha = a * (.4 + .6 * Math.abs(Math.sin(t * 1.5 + p * 9))); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = a;
+  g = ctx.createLinearGradient(0, SURF, 0, BED + 40); g.addColorStop(0, '#2c7f97'); g.addColorStop(.35, '#124760'); g.addColorStop(1, '#030d18'); ctx.fillStyle = g; ctx.fillRect(0, SURF, W, H - SURF);
+  // light rays
+  ctx.save(); ctx.globalAlpha = a * .08; ctx.fillStyle = '#bff'; for (let i = 0; i < 5; i++) { const x = 100 + i * 220 + Math.sin(t * .5 + i) * 30; ctx.beginPath(); ctx.moveTo(x - 30, SURF); ctx.lineTo(x + 30, SURF); ctx.lineTo(x + 140, BED); ctx.lineTo(x + 20, BED); ctx.fill(); } ctx.restore();
+  // seabed
+  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 12) ctx.lineTo(x, seabedY(x)); ctx.lineTo(W, H); ctx.closePath();
+  g = ctx.createLinearGradient(0, BED - 20, 0, H); g.addColorStop(0, '#3a3a40'); g.addColorStop(1, '#121216'); ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(254,179,0,.35)'; ctx.lineWidth = 3; ctx.beginPath(); for (let x = 0; x <= W; x += 12) x ? ctx.lineTo(x, seabedY(x)) : ctx.moveTo(x, seabedY(x)); ctx.stroke();
+  // surface line + buoy marker
+  ctx.strokeStyle = 'rgba(220,250,255,.85)'; ctx.lineWidth = 4; ctx.beginPath(); for (let x = 0; x <= W; x += 8) { const y = SURF + Math.sin(x * .03 + t * 3) * 4; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  ctx.restore();
+  const mx = W / 2; ctx.save(); ctx.globalAlpha = a; const g2 = ctx.createRadialGradient(mx, SURF, 0, mx, SURF, 110); g2.addColorStop(0, GOLD + 'aa'); g2.addColorStop(1, GOLD + '00'); ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(mx, SURF, 110, 0, 7); ctx.fill(); ctx.restore();
+  // depth guide
+  ctx.save(); ctx.globalAlpha = a * .7; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([8, 10]); ctx.beginPath(); ctx.moveTo(mx, SURF + 16); ctx.lineTo(mx, seabedY(mx) - 6); ctx.stroke(); ctx.restore();
+  pill(TXT.nemo, mx, SURF - 62, 36, a, { line: GOLD });
+  ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(mx, SURF, 11, 0, 7); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 18; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+  // falling spacecraft
+  const t0 = V('drop') + .2;
+  FALL.forEach((f, i) => {
+    const ts = t0 + f.dt, tsp = ts + .9, tl = tsp + 2.4, q = fallPos(ts, f.x0, f.x1, lerp(f.x0, f.x1, .6), tsp, tl, t); if (!q) return;
+    if (q.ph === 0) trail(q.x, q.y, f.x0, a);
+    splash(lerp(f.x0, f.x1, .6), t - tsp, a);
+    if (q.ph === 1) bubbles(q.x, q.y, q.k, a);
+    sat(q.x, q.y, f.s, a * (q.ph === 2 ? .85 : 1), f.rot + (q.ph === 0 ? t * 3 : q.ph === 1 ? t * .6 * (1 - q.k) + 3 : 3));
+  });
+  // Mir: big, lands centre
+  { const ts = V('mir') - .1, tsp = ts + 1.0, tl = V('mir2001') + 1.2, q = fallPos(ts, 300, 560, 470, tsp, tl, t);
+    if (q) { if (q.ph === 0) trail(q.x, q.y, 300, a); splash(470, t - tsp, a); if (q.ph === 1) bubbles(q.x, q.y - 40, q.k, a);
+      const yy = q.ph === 2 ? seabedY(560) - 64 : q.y;
+      mirIcon(q.x, yy, .95, a, q.ph === 0 ? .4 + t * .4 : q.ph === 1 ? lerp(.4 + tsp * .4, .12, q.k) : .12, q.ph >= 1 ? clamp(q.k * 2) : 0);
+      const pa = a * ap(t, V('mir2001') - .2, .35); if (pa > 0) pill(TXT.mir, 560, seabedY(560) - 200, 48, pa, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('mir2001') - .2, .4))) }); } }
+  // ISS (future): ghost descending
+  { const p = ap(t, V('iss2'), 2.2), pa = a * ap(t, V('iss2'), .3); if (pa > 0) {
+      const x = lerp(860, 840, p), y = lerp(SURF - 380, SURF + 240 * eout(p), 1);
+      iss(x, y, .95, pa * (.55 + .45 * Math.abs(Math.sin(t * 3))), -.2, 1);
+      pill(TXT.iss2, x, y + 110, 40, pa, { line: '#fff', scale: back(clamp(ap(t, V('iss2') + .2, .4))) }); } }
+  // title
+  head(TXT.grave, a * A('grave', 'cta', .3), RED, H * .17, 92);
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  const open = [-110, 0, 10.8], nm = [NEMO[0], NEMO[1] + 2, 44], wideI = [-112, -47.5, 30];
+  CK = [[0, ...open], [.4, ...open, 'l'], [2.0, ...nm, 'o'], [V('f3'), NEMO[0], NEMO[1] + 1.5, 48, 'l'], [V('s1') - .1, NEMO[0], NEMO[1] + 1.2, 50, 'l'],
+    [V('s1') + 1.1, ...wideI], [V('almaty') + .2, -114, -46, 31, 'l'], [V('water') + .4, -114, -45, 32, 'l'],
+    [V('s2') + .9, NEMO[0], NEMO[1] + 4, 42], [V('ent') - .2, NEMO[0], NEMO[1] + 3.5, 44, 'l'],
+    [V('ent') + 1.0, -158, -2, 11.2], [V('s3') - .45, -152, -6, 12, 'l'], [V('s3') - .02, ...NEMO, 220],
+    [V('s3'), ...NEMO, 220, 'l'], [V('cta') - .01, ...NEMO, 220, 'l'], [V('cta'), -110, 0, 10.8, 'l'], [V('vend') + 1, ...open, 'l']];
+}
+const CUTS = () => [V('s3'), V('cta')];
+function render(t) {
+  TT = t; CAM = camAt(CK, t); drawMap(.18);
+  const inCut = t >= V('s3') && t < V('cta');
+  // ---- S1 hook + S8 loop: world -> Nemo
+  { const a = Math.max(win(t, 0, V('s1') + .3, .3), t >= V('cta') ? 1 : 0);
+    if (a > 0) {
+      const s8 = t >= V('cta');
+      if (!s8) { const pa = Math.max(win(t, 0, V('s1') + .3, .3) * 0, 0); }
+      glowFill([], GOLD, 0);
+      const ma = s8 ? ap(t, V('cta') + .1, .4) : a * ap(t, 1.4, .4);
+      nemoMark(ma, s8 ? 46 : 74, s8 ? 1 : ap(t, 1.6, .7));
+      const [x, y] = P(...NEMO);
+      pill(TXT.nemo, x, y + (s8 ? 90 : 120), s8 ? 40 : 50, s8 ? ma : a * ap(t, 2.0, .3), { line: GOLD, scale: back(clamp(ap(t, s8 ? V('cta') : 2.0, .35))) });
+      if (!s8) {
+        head2(TXT.h1, TXT.h2, ap(t, .1, .35) * win(t, 0, V('nemo') + .2, .3), H * .14);
+        // teaser: station above the point at "космонавты"
+        const ia = a * ap(t, 2.25, .3) * (1 - ap(t, V('f3') - .2, .3)); if (ia > 0) { const k = eout(ap(t, 2.25, .6));
+          iss(lerp(W + 160, x, k), y - 330, .85, ia, -.08); pill(TXT.astro, lerp(W + 160, x, k), y - 230, 40, ia, { line: SKY });
+          dashLine(x, y - 270, x, y - 80, ap(t, 2.6, .4), ia * .8, SKY, 5); }
+        // S2: 3 facts
+        const fa = A('f3', 's1', .25); if (fa > 0) {
+          head(TXT.f3, fa, GOLD, H * .17, 108);
+          [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .25, fa * back(clamp(ap(t, V('f3') + .25 + n * .18, .35))), n === 3 ? RED : GOLD));
+          const ca = fa * ap(t, V('f3') + 1.0, .3); if (ca > 0) pill(TXT.creepy, W / 2, H * .31, 36, ca, { line: RED });
+        }
+      }
+      if (s8) ctaEnd(t);
+    } }
+  // ---- S3: three nearest islands, ≈2700 km, Almaty-Aktau bar
+  { const a = Math.max(A('s1', 'ent', .3), 0);
+    if (a > 0) {
+      const dim = 1 - .55 * ap(t, V('s2') + .2, .5);
+      nemoMark(a, 50);
+      const [nx, ny] = P(...NEMO);
+      ISL.forEach((I, i) => { const t0 = V('s1') + .5 + i * .35, p = ease(ap(t, t0, .9)); const [x, y] = P(...I.p);
+        dashLine(nx, ny, x, y, p, a * dim, '#fff', 6);
+        if (p >= 1) { dot(...I.p, a * dim, TURQ); pill(TXT[I.k], x + (i === 2 ? -10 : (i === 1 ? -40 : 0)), y + (i === 2 ? 70 : -60), 32, a * dim * ap(t, t0 + .9, .3), { line: TURQ }); }
+        const mx = (nx + x) / 2, my = (ny + y) / 2; pill(TXT.km, mx + (i === 0 ? -110 : i === 1 ? 150 : 60), my, 38, a * dim * ap(t, V('km') + i * .15, .3), { bg: 'rgba(19,11,84,.9)', line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('km') + i * .15, .35))) }); });
+      // Almaty -> Aktau, same scale (≈2100 km ≈ 18.9° of latitude), next to the Ducie line
+      { const ca = a * dim * ap(t, V('almaty'), .3); if (ca > 0) { const [, yt] = P(NEMO[0], NEMO[1] + 18.9); const bx = nx + 120, p = ease(ap(t, V('almaty'), .8)), yy = lerp(ny, yt, p);
+        ctx.save(); ctx.globalAlpha = ca; ctx.strokeStyle = GOLD; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.shadowColor = GOLD; ctx.shadowBlur = 20; ctx.beginPath(); ctx.moveTo(bx, ny); ctx.lineTo(bx, yy); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.globalAlpha = ca; for (const yv of [ny, yy]) { ctx.beginPath(); ctx.arc(bx, yv, 12, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); } ctx.restore();
+        pill(TXT.cmp, bx + 175, ny - 270, 34, ca * ap(t, V('almaty') + .5, .3), { line: GOLD }); pill(TXT.cmpk, bx + 175, ny - 200, 34, ca * ap(t, V('almaty') + .6, .3), { line: GOLD, col: GOLD }); } }
+      { const wa = A('water', 's2', .25); if (wa > 0) pill(TXT.water, W / 2, H * .2, 46, wa, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('water'), .4))) }); }
+      // S4: ISS orbit, 400 km straight up
+      const sa = A('s2', 'ent', .3);
+      if (sa > 0) {
+        const alt = 3.6 * CAM.ppd, ox = nx, oy = ny - Math.max(alt, 150);
+        // orbit arc across the screen through the station point
+        ctx.save(); ctx.globalAlpha = sa * .75; ctx.strokeStyle = SKY; ctx.lineWidth = 4; ctx.setLineDash([14, 12]); ctx.lineDashOffset = -t * 40; ctx.shadowColor = SKY; ctx.shadowBlur = 14;
+        ctx.beginPath(); for (let x = -40; x <= W + 40; x += 10) { const y = oy + Math.pow((x - ox) / 620, 2) * 260; x === -40 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); ctx.restore();
+        const k = ease(ap(t, V('iss') - .2, (V('iss400') + .2) - (V('iss') - .2))), ix = lerp(-120, ox, k) + 30 * ap(t, V('iss400') + .2, 4), iy = oy + Math.pow((ix - ox) / 620, 2) * 260;
+        dashLine(ox, oy + 24, ox, ny - 12, ap(t, V('iss400') - .1, .5), sa, SKY, 6);
+        iss(ix, iy, .8, sa, Math.atan(2 * (ix - ox) / 620 / 620 * 260));
+        pill(TXT.iss, ox + 210, oy + 40, 42, sa * ap(t, V('iss400'), .3), { line: SKY, col: '#fff', scale: back(clamp(ap(t, V('iss400'), .4))) });
+        const cl = A('closer', 'ent', .25); if (cl > 0) pill(TXT.closer, W / 2, H * .2, 46, cl, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('closer'), .4))) });
+      }
+      counter(t < V('s2') ? 1 : 2, a * (t < V('s2') ? win(t, V('s1'), V('s2') + .1, .2) : 1));
+    } }
+  // ---- S5: ENT, the Pacific
+  { const a = A('ent', 's3', .3);
+    if (a > 0) {
+      const ga = a * ap(t, V('pac') - .3, .6) * (.3 + .1 * Math.sin(t * 4));
+      if (IM.pacmask && ga > 0) { ctx.save(); ctx.globalAlpha = ga; for (const l0 of [0, -360]) { const T = { k: 'pacmask', l0, l1: l0 + 360, b0: -90, b1: 90 }; drawTex(T); } ctx.restore(); }
+      nemoMark(a * .9, 26);
+      // stamp
+      const sp = ap(t, V('ent') + .1, .35); if (sp > 0) { const s = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(W / 2 + 230, H * .27); ctx.rotate(-.18); ctx.scale(s, s);
+        rr(-130, -64, 260, 128, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+        txt(TXT.ent, 0, 5, 76, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+      head(TXT.pac, a * ap(t, V('pac'), .35), GOLD, H * .16, 112);
+      { const q = a * ap(t, V('deep') - .3, .3); if (q > 0) pill(TXT.pac2, W / 2, H * .36, 40, q, { line: GOLD }); }
+      counter(2, a * (1 - ap(t, V('s3') - .4, .3)));
+    } }
+  // map source line
+  { const q = Math.min(win(t, 1.0, V('s3'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src, W / 2, H * .965, 22, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  if (!inCut) vignette(.55);
+  // ---- S6 + S7: cutaway
+  if (inCut) { cutaway(t, 1); counter(3, ap(t, V('s3') + .2, .3) * (1 - ap(t, V('cta') - .3, .3))); vignette(.35); }
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function ctaEnd(t) {
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = 58, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('pac', 'tex/pac.jpg'), loadImg('pacmask', 'tex/pacmask.png'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
