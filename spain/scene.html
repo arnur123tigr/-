@@ -1,0 +1,224 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «У Испании самые странные границы» — remake, RU, voice Egor energetic. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 90;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'iberia', l0: -14, l1: 8, b0: 26, b1: 48, minppd: 30 });
+const ESP = '#ef7f2a', FRA = '#3f6fe8', PRT = '#3fbf5a', AND = '#36d07a', GBR = '#e8413a', MAR = '#2fae6a', SEA = '#36c9e0';
+</script>
+<script src="helpers.js"></script>
+<script>
+// ---------- small drawings ----------
+function flag(kind, x, y, w, a = 1) {
+  if (a <= 0) return; const h = w * 2 / 3, s = back(clamp(a * 1.3));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-w / 2, -h / 2);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.shadowBlur = 0;
+  if (kind === 'es') { ctx.fillStyle = '#c60b1e'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#ffc400'; ctx.fillRect(0, h / 4, w, h / 2); }
+  else if (kind === 'fr') { ctx.fillStyle = '#0055a4'; ctx.fillRect(0, 0, w / 3, h); ctx.fillStyle = '#ef4135'; ctx.fillRect(w * 2 / 3, 0, w / 3, h); }
+  else if (kind === 'gb') {
+    ctx.fillStyle = '#012169'; ctx.fillRect(0, 0, w, h); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = h * .2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, h); ctx.moveTo(w, 0); ctx.lineTo(0, h); ctx.stroke();
+    ctx.strokeStyle = '#c8102e'; ctx.lineWidth = h * .07; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillRect(w / 2 - h * .17, 0, h * .34, h); ctx.fillRect(0, h / 2 - h * .17, w, h * .34);
+    ctx.fillStyle = '#c8102e'; ctx.fillRect(w / 2 - h * .1, 0, h * .2, h); ctx.fillRect(0, h / 2 - h * .1, w, h * .2); ctx.restore();
+  } else if (kind === 'ma') {
+    ctx.fillStyle = '#c1272d'; ctx.fillRect(0, 0, w, h); ctx.strokeStyle = '#006233'; ctx.lineWidth = h * .05; ctx.beginPath();
+    for (let i = 0; i <= 5; i++) { const an = -Math.PI / 2 + i * 4 * Math.PI / 5; const px = w / 2 + Math.cos(an) * h * .28, py = h / 2 + Math.sin(an) * h * .28; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, w, h); ctx.restore();
+}
+function qmark(x, y, a) { if (a <= 0) return; const s = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); txt('?', 0, 0, 84, BR.acc, 'MB', { stroke: 10, sc: 'rgba(0,0,0,.6)', shadow: BR.acc, blur: 20, dy: 0 }); ctx.restore(); }
+function at(lon, lat) { return P(lon, lat); }
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+function counter(t) {   // «Соседей: N» pops at each new neighbour
+  const ev = [['dva', '2'], ['more', '2 → ?'], ['andn', '3'], ['ukn', '4'], ['morocco', '5']];
+  for (let i = 0; i < ev.length; i++) {
+    const t0 = V(ev[i][0]), t1 = i < ev.length - 1 ? Math.min(t0 + 2.8, V(ev[i + 1][0])) : t0 + 2.8;
+    const a = win(t, t0, t1, .2); if (a <= 0) continue;
+    pill('Соседей: ' + ev[i][1], W / 2, H * .735, 62, a, { scale: back(clamp(ap(t, t0, .35))), line: BR.acc });
+  }
+}
+// ---------- Pheasant Island panel (schematic aerial view of the Bidasoa) ----------
+function riverY(x) { return H * .5 + (x - W / 2) * -.28 + Math.sin(x / 170) * 26; }
+function pheasantPanel(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const sc = 1 + .05 * clamp((t - V('pheasant')) / 12);
+  ctx.translate(W / 2, H / 2); ctx.scale(sc, sc); ctx.translate(-W / 2, -H / 2);
+  ctx.fillStyle = '#5d6b4c'; ctx.fillRect(-60, -60, W + 120, H + 120);
+  const r = rng(11);       // town blocks
+  for (let i = 0; i < 520; i++) { const x = r() * (W + 100) - 50, y = r() * (H + 100) - 50, w = 20 + r() * 60, h = 14 + r() * 40; if (Math.abs(y - riverY(x)) < 150) continue;
+    ctx.fillStyle = ['#8a8478', '#a39b8c', '#6f7a5a', '#b7aa92', '#7c6f62'][i % 5]; ctx.fillRect(x, y, w, h); }
+  ctx.globalAlpha = a * .38; ctx.fillStyle = FRA; ctx.beginPath(); ctx.moveTo(-60, -60); ctx.lineTo(W + 60, -60);
+  for (let x = W + 60; x >= -60; x -= 20) ctx.lineTo(x, riverY(x)); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = ESP; ctx.beginPath(); ctx.moveTo(-60, H + 60); ctx.lineTo(W + 60, H + 60);
+  for (let x = W + 60; x >= -60; x -= 20) ctx.lineTo(x, riverY(x)); ctx.closePath(); ctx.fill(); ctx.globalAlpha = a;
+  ctx.beginPath(); for (let x = -60; x <= W + 60; x += 20) ctx.lineTo(x, riverY(x) - 120); for (let x = W + 60; x >= -60; x -= 20) ctx.lineTo(x, riverY(x) + 120); ctx.closePath();
+  const g = ctx.createLinearGradient(0, H * .35, 0, H * .65); g.addColorStop(0, '#1f5a6a'); g.addColorStop(.5, '#2b7183'); g.addColorStop(1, '#1f5a6a'); ctx.fillStyle = g; ctx.fill();
+  // island
+  const ix = W / 2, iy = riverY(ix), an = Math.atan(-.28);
+  const own = t < V('feb') ? 0 : (t < V('aug') ? 1 : 2), sw = own ? clamp(ap(t, own === 1 ? V('feb') : V('aug'), .4)) : 0;
+  ctx.save(); ctx.translate(ix, iy); ctx.rotate(an);
+  ctx.beginPath(); ctx.ellipse(0, 0, 230, 46, 0, 0, 7); ctx.fillStyle = '#2f6b32'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+  const tr = rng(5); for (let i = 0; i < 46; i++) { const u = tr() * 2 - 1, v = (tr() * 2 - 1) * Math.sqrt(1 - u * u) * .85; ctx.beginPath(); ctx.arc(u * 210, v * 40, 9 + tr() * 8, 0, 7); ctx.fillStyle = ['#3c8a3e', '#27592a', '#4a9a48'][i % 3]; ctx.fill(); }
+  if (own) { ctx.globalAlpha = a * .62 * sw; ctx.beginPath(); ctx.ellipse(0, 0, 232, 48, 0, 0, 7); ctx.fillStyle = own === 1 ? ESP : FRA; ctx.fill(); ctx.globalAlpha = a; }
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 232, 48, 0, 0, 7); ctx.stroke();
+  ctx.restore();
+  // border line along the river centre, through the island
+  const bp = ap(t, V('divide') - .2, 1.6);
+  if (bp > 0) { ctx.save(); ctx.setLineDash([26, 18]); ctx.lineDashOffset = -t * 40; const pts = []; for (let x = -60; x <= W + 60; x += 20) pts.push([x, riverY(x)]);
+    const n = Math.max(2, Math.round(pts.length * bp)); ctx.beginPath(); pts.slice(0, n).forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    const mid = ap(t, V('mid'), .3) * (1 - ap(t, V('turns'), .5)); ctx.strokeStyle = mid > 0 ? BR.acc : '#fff'; ctx.lineWidth = 7 + 5 * mid; ctx.shadowColor = BR.acc; ctx.shadowBlur = 12 + 20 * mid; ctx.stroke(); ctx.restore(); }
+  ctx.restore();
+  const la = a * ap(t, V('pheasant') + .2, .4);
+  if (la > 0) { ctx.save(); ctx.globalAlpha = la; txt('ФРАНЦИЯ', W * .3, H * .3, 70, '#fff', 'MB', { shadow: FRA, blur: 24, dy: 0, stroke: 8, sc: 'rgba(0,0,0,.5)' });
+    txt('ИСПАНИЯ', W * .7, H * .7, 70, '#fff', 'MB', { shadow: ESP, blur: 24, dy: 0, stroke: 8, sc: 'rgba(0,0,0,.5)' });
+    flag('fr', W * .3, H * .3 + 95, 96, la); flag('es', W * .7, H * .7 + 95, 96, la); ctx.restore(); }
+  pill('Остров Фазанов', W / 2, riverY(W / 2) - 120, 46, a * win(t, V('pheasant'), V('turns'), .3), { line: BR.acc });
+  if (own) { const s = own === 1 ? 'февраль – июль' : 'август – январь'; const fa = a * win(t, own === 1 ? V('feb') : V('aug'), own === 1 ? V('aug') : V('andorra'), .25);
+    flag(own === 1 ? 'es' : 'fr', W / 2, riverY(W / 2) - 150, 120, fa); pill(s, W / 2, riverY(W / 2) + 135, 52, fa, { line: own === 1 ? ESP : FRA }); }
+}
+// ---------- Andorra vs Almaty ----------
+function comparePanel(t, a) {
+  if (a <= 0) return; panel(a);
+  const k = 17.5, sA = k * Math.sqrt(468), sB = k * Math.sqrt(682), base = H * .6, gap = 70, x0 = (W - sA - sB - gap) / 2;
+  const pa = eout(ap(t, V('almaty') + .1, .5)), pb = eout(ap(t, V('almaty') + .5, .5));
+  ctx.save(); ctx.globalAlpha = a;
+  const sq = (x, s, col, p, name, val) => { if (p <= 0) return; ctx.save(); ctx.globalAlpha = a * p; rr(x, base - s * p, s, s * p, 18); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke();
+    txt(name, x + s / 2, base - s - 60, 54, '#fff', 'MB', { blur: 0 }); txt(val, x + s / 2, base + 60, 48, col === BR.acc ? BR.acc : '#bff5d4', 'MX', { blur: 0 }); ctx.restore(); };
+  sq(x0, sA, AND, pa, 'Андорра', '468 км²'); sq(x0 + sA + gap, sB, BR.acc, pb, 'Алматы', '682 км²');
+  ctx.restore();
+  head('Меньше Алматы', a * ap(t, V('almaty') + .2, .3), BR.acc, H * .2, 96);
+}
+// ---------- Peñón de Vélez de la Gomera ----------
+function penonPanel(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  let g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1d6f86'); g.addColorStop(1, '#0f4a63'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 3; for (let i = 0; i < 26; i++) { const y = (i * 83 + t * 18) % H; ctx.beginPath(); for (let x = 0; x <= W; x += 30) ctx.lineTo(x, y + Math.sin(x / 70 + t + i) * 8); ctx.stroke(); }
+  // mainland (Morocco) at the bottom
+  const coast = x => H * .7 + Math.sin(x / 140) * 22;
+  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 20) ctx.lineTo(x, coast(x)); ctx.lineTo(W, H); ctx.closePath(); g = ctx.createLinearGradient(0, H * .68, 0, H); g.addColorStop(0, '#c9b07a'); g.addColorStop(.15, '#8a7a4c'); g.addColorStop(1, '#5d5a36'); ctx.fillStyle = g; ctx.fill();
+  ctx.globalAlpha = a * .35; ctx.fillStyle = MAR; ctx.fill(); ctx.globalAlpha = a;
+  // sand spit
+  const sp = eout(ap(t, V('sand') + .2, 1.6)), cx = W / 2, rockY = H * .44, rockB = rockY + 110;
+  if (sp > 0) { const top = lerp(coast(cx) - 4, rockB - 10, sp); ctx.beginPath(); ctx.moveTo(cx - 70, coast(cx - 70) + 6); ctx.quadraticCurveTo(cx - 40, (top + coast(cx)) / 2, cx - 34, top); ctx.lineTo(cx + 34, top); ctx.quadraticCurveTo(cx + 40, (top + coast(cx)) / 2, cx + 70, coast(cx + 70) + 6); ctx.closePath();
+    ctx.fillStyle = '#e3cf98'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3; ctx.stroke(); }
+  // the rock
+  const rp = back(clamp(ap(t, V('penon') - .2, .6)));
+  if (rp > 0) { ctx.save(); ctx.translate(cx, rockY + 40); ctx.scale(rp, rp); ctx.beginPath(); ctx.moveTo(-170, 70); ctx.lineTo(-150, 10); ctx.lineTo(-90, -60); ctx.lineTo(-30, -110); ctx.lineTo(40, -90); ctx.lineTo(110, -40); ctx.lineTo(160, 20); ctx.lineTo(175, 70); ctx.closePath();
+    g = ctx.createLinearGradient(0, -110, 0, 70); g.addColorStop(0, '#b9a58a'); g.addColorStop(1, '#6e5a46'); ctx.fillStyle = g; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#efe6d6'; for (const [x, y, w, h] of [[-60, -40, 50, 40], [0, -70, 60, 50], [60, -30, 50, 40], [-110, 0, 60, 34]]) ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = .45 * ap(t, V('island'), .4); ctx.fillStyle = ESP; ctx.beginPath(); ctx.moveTo(-170, 70); ctx.lineTo(-150, 10); ctx.lineTo(-90, -60); ctx.lineTo(-30, -110); ctx.lineTo(40, -90); ctx.lineTo(110, -40); ctx.lineTo(160, 20); ctx.lineTo(175, 70); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  flag('es', cx + 230, rockY - 60, 110, a * ap(t, V('island'), .4)); flag('ma', W * .8, H * .77, 110, a * ap(t, V('short') - .2, .4));
+  pill('Пеньон-де-Велес', cx, rockY - 190, 50, a * win(t, V('penon'), V('short'), .3), { line: ESP });
+  pill('остров', cx - 250, rockY + 40, 44, a * win(t, V('island'), V('sand'), .3));
+  pill('полоска песка', cx + 260, (rockB + coast(cx)) / 2, 44, a * win(t, V('sand') + .6, V('short'), .3), { line: BR.acc });
+  // the 85 m border
+  const bp = ap(t, V('short') + .2, .6);
+  if (bp > 0) { const y = lerp(rockB, coast(cx), .5); ctx.save(); ctx.strokeStyle = '#ff4a3d'; ctx.lineWidth = 9; ctx.shadowColor = '#ff4a3d'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.moveTo(cx - 60 - 40 * (1 - bp), y); ctx.lineTo(cx - 60 + 120 * bp, y); ctx.stroke(); ctx.restore();
+    const ba = ap(t, V('m85') - .1, .3); if (ba > 0) { ctx.save(); ctx.globalAlpha = a * ba; ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(cx - 60, y + 40); ctx.lineTo(cx - 60, y + 60); ctx.lineTo(cx + 60, y + 60); ctx.lineTo(cx + 60, y + 40); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.translate(cx, y + 150); const s = back(clamp(ba)); ctx.scale(s, s); txt('85 м', 0, 0, 130, BR.acc, 'MB', { stroke: 12, sc: 'rgba(0,0,0,.6)', shadow: BR.acc, blur: 26, dy: 0 }); ctx.restore(); } }
+  ctx.restore();
+  head('Был островом', a * win(t, V('island'), V('short'), .25), '#7fd8ff', H * .17, 96);
+  head('Самая короткая граница', a * ap(t, V('short') + .1, .3), BR.acc, H * .17, 80);
+}
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const SP = [-3.7, 40.2, 74], LL = [1.968, 42.458, 2400], GIB = [-5.36, 36.14, 2300], AN = [1.56, 42.55, 900];
+  CAMK = [
+    [0, -3, 41, 24], [V('q') + 2, ...SP], [V('two') - .1, -3.7, 40.2, 76, 'l'], [V('two') + 1, -1.2, 43.2, 46], [V('border') - .1, -1.2, 43.2, 48, 'l'],
+    [V('border') + 1.2, .3, 42.75, 170], [V('llivia') - .2, .5, 42.7, 180, 'l'], [V('llivia') + 1.4, ...LL], [V('km') - .1, 1.968, 42.458, 2500, 'l'],
+    [V('km') + .9, 1.955, 42.445, 1700], [V('west') - .1, 1.955, 42.445, 1800, 'l'], [V('west') + 1.1, .2, 42.9, 240], [V('pheasant') + .2, -1.765, 43.34, 1500],
+    [V('andorra') - .01, -1.765, 43.34, 1500, 'l'], [V('andorra') + .7, ...AN], [V('small') - .1, 1.56, 42.55, 950, 'l'], [V('small') + 1, 1.2, 42.3, 280],
+    [V('uk') - .01, 1.2, 42.3, 290, 'l'], [V('uk') + 1.2, -3, 46.5, 40], [V('far') + 1.2, -3.5, 45, 38, 'l'], [V('gib') + 1.4, ...GIB], [V('med') - .1, -5.36, 36.14, 2400, 'l'],
+    [V('med') + 1.1, -4.3, 36.3, 150], [V('strait') - .1, -4.5, 36.2, 155, 'l'], [V('strait') + .9, -5.6, 35.98, 300], [V('only') - .1, -5.6, 35.98, 310, 'l'],
+    [V('only') + 1, -3.6, 36.6, 115], [V('ceuta') - .1, -3.6, 36.6, 118, 'l'], [V('ceuta') + 1, -4.1, 35.6, 330], [V('third') - .1, -4.1, 35.6, 340, 'l'],
+    [V('third') + 1, -4.3, 35.18, 1100], [V('cta') - .01, -4.3, 35.18, 1300, 'l'], [V('cta') + .01, -3.7, 40.2, 60], [V('vend') + 4, -3.7, 40.2, 66, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // 1. hook
+  { const a = A('q', 'border', .3); fill(SH.esp, ESP, a * pulse, { fill: .55, lw: 5, blur: 26 }); SH.esp_isl.forEach(r => fill([r], ESP, a * .9, { lw: 2, blur: 8 }));
+    label2(['ИСПАНИЯ'], -3.8, 40.0, A('q', 'two', .3), ESP, 80);
+    head('Самые странные', A('q', 'two', .25), BR.acc, H * .14, 92); head('границы в мире', A('q', 'two', .25), BR.acc, H * .14 + 100, 92); }
+  // 2. two neighbours... or more
+  { const fa = A('fra', 'enclave', .3), pa = A('por', 'border', .3);
+    fill(SH.fra, FRA, fa * .9, { fill: .45 }); fill(SH.prt, PRT, pa * .9, { fill: .5 });
+    label2(['ФРАНЦИЯ'], 2.3, 46.8, A('fra', 'border', .25), FRA, 70); label2(['ПОРТУГАЛИЯ'], -8.1, 39.6, A('por', 'border', .25), PRT, 46);
+    label2(['ИСПАНИЯ'], -3.6, 40.0, A('two', 'border', .3), ESP, 64);
+    head('Всего 2 соседа?', A('two', 'more', .25), '#ffffff', H * .14, 92); head('На самом деле больше', A('more', 'border', .25), BR.acc, H * .14, 84); }
+  // 3. the French border: oddities
+  { const a = A('border', 'llivia', .3); [[-1.6, 43.15], [-.6, 42.9], [.4, 42.8], [1.3, 42.62], [2.4, 42.5]].forEach(([lon, lat], i) => { const [x, y] = at(lon, lat); qmark(x, y - 40, a * ap(t, V('odd') + i * .15, .3)); });
+    head('Граница с Францией', A('border', 'llivia', .25), FRA, H * .14, 84);
+    polyPartial(SH.esp[0].filter(([x, y]) => y > 42.3 && x > -1.8 && x < 3.2).sort((p, q) => p[0] - q[0]), ap(t, V('border') + .4, 1.2), { col: '#fff', lw: 6, a }); }
+  // 4. Llívia
+  { const a = A('llivia', 'west', .3); fill(SH.esp, ESP, a * .9, { fill: .55, blur: 10, lw: 4 }); fill(SH.fra, FRA, a * (.85 + .15 * Math.sin(t * 5) * ap(t, V('surround'), .3)), { fill: .5, blur: 10, lw: 4 });
+    fill(SH.llivia, ESP, a * pulse, { fill: .8, lw: 6, blur: 30 });
+    const [x, y] = at(1.969, 42.46);
+    label2(['Льивия'], 1.969, 42.46, a * ap(t, V('llivia') + .4, .3), ESP, 70, -150);
+    polyPartial(SH.ll_line, ap(t, V('km') + .3, .6), { col: BR.acc, lw: 8, glow: BR.acc, blur: 16, a });
+    { const m = [(SH.ll_line[0][0] + SH.ll_line[1][0]) / 2, (SH.ll_line[0][1] + SH.ll_line[1][1]) / 2]; const [mx, my] = at(...m); pill('≈ 2 км', mx - 150, my, 50, a * ap(t, V('km') + .7, .3), { line: BR.acc }); }
+    flag('fr', W * .5, H * .26, 120, a * ap(t, V('surround') + .3, .4) * (1 - ap(t, V('enclave'), .3)));
+    flag('es', x, y, 100, a * ap(t, V('isesp'), .4));
+    head('Окружён Францией', A('surround', 'isesp', .25), FRA, H * .14, 86); head('Но это Испания!', A('isesp', 'enclave', .25), ESP, H * .14, 92);
+    head('Анклав', A('enclave', 'west', .25), BR.acc, H * .14, 120);
+    pill('часть страны внутри чужой', W / 2, H * .14 + 115, 42, A('encl', 'west', .25)); }
+  // 5. Pheasant Island
+  { const a = A('west', 'pheasant', .3); fill(SH.fra, FRA, a * .8, { fill: .45, blur: 10 }); fill(SH.esp, ESP, a * .8, { fill: .5, blur: 10 }); head('А западнее…', a, '#ffffff', H * .14, 92); }
+  pheasantPanel(t, A('pheasant', 'andorra', .4));
+  { head('Остров Фазанов', A('pheasant', 'divide', .25), '#7fe08a', H * .14, 92); head('Не смогли поделить', A('divide', 'turns', .25), '#ffffff', H * .14, 86);
+    head('Владеют по очереди', A('turns', 'andorra', .25), BR.acc, H * .14, 86); }
+  // 6. Andorra
+  { const a = A('andorra', 'almaty', .3); fill(SH.esp, ESP, a * .7, { fill: .45, blur: 10 }); fill(SH.fra, FRA, a * .7, { fill: .4, blur: 10 });
+    fill(SH.and, AND, a * pulse, { fill: .65, lw: 6, blur: 30 }); label2(['АНДОРРА'], 1.56, 42.55, a * ap(t, V('andn') - .1, .3), AND, 70, -10);
+    head('Спрятанный сосед', A('andorra', 'small', .25), AND, H * .14, 90); head('Одна из самых маленьких', A('small', 'almaty', .25), '#ffffff', H * .14, 76);
+    pill('≈ 80 000 жителей', W / 2, H * .62, 54, A('pop', 'almaty', .25), { line: AND }); }
+  comparePanel(t, A('almaty', 'uk', .35));
+  // 7. United Kingdom + Gibraltar
+  { const a = A('uk', 'gib', .3); fill(SH.gbr, GBR, a * pulse, { fill: .5 }); fill(SH.esp, ESP, a * .7, { fill: .45 }); label2(['ВЕЛИКОБРИТАНИЯ'], -2.5, 54.3, a * ap(t, V('ukn') - .3, .3), GBR, 54);
+    polyPartial([[-1.5, 51.8], [-4.5, 48.5], [-8.2, 44], [-7.5, 39.5], [-5.35, 36.14]], ap(t, V('far') + .3, 1.4), { col: '#fff', lw: 7, a });
+    flag('gb', at(3.2, 53.2)[0], at(3.2, 53.2)[1], 110, a * ap(t, V('ukn'), .4));
+    head('Сосед покрупнее', A('uk', 'far', .25), GBR, H * .14, 92); head('Далеко на севере', A('far', 'gib', .25), '#ffffff', H * .14, 90); }
+  { const a = A('gib', 'med', .3); fill(SH.esp_gib, ESP, a * .85, { fill: .55, blur: 10 }); fill(SH.gib, GBR, a * pulse, { fill: .75, lw: 6, blur: 26 });
+    const [x, y] = at(-5.347, 36.13); label2(['Гибралтар'], -5.347, 36.13, a * ap(t, V('gib') + .6, .3), GBR, 64, -230);
+    flag('gb', x + 170, y + 40, 110, a * ap(t, V('gib') + .9, .4)); flag('es', x - 260, y - 300, 110, a * ap(t, V('gib') + 1.1, .4));
+    head('Гибралтар — британский', A('gib', 'dispute', .25), GBR, H * .14, 76); head('Спор — 300 лет', A('dispute', 'med', .25), BR.acc, H * .14, 92);
+    pill('с 1713 года', W / 2, H * .66, 54, A('y300', 'med', .25), { line: BR.acc }); }
+  // 8. Mediterranean + strait
+  { const a = A('med', 'only', .3); fill(SH.esp_gib, ESP, a * .6 * (1 - ap(t, V('med') + .6, .5)), { fill: .4, blur: 10 }); fill(SH.esp, ESP, a * .6 * ap(t, V('med') + .6, .5), { fill: .4, blur: 10 }); fill(SH.gib, GBR, a, { fill: .8, lw: 4, blur: 14 });
+    polyPartial([[-8.6, 36.0], [-6.5, 35.95], [-5.6, 35.97], [-4.6, 36.1], [-2.2, 36.4]], ap(t, V('med') + .3, 1.2), { col: '#7ff0ff', lw: 10, glow: SEA, blur: 20, a: A('med', 'strait', .3) });
+    label2(['Средиземное', 'море'], -3.9, 36.75, A('med', 'strait', .25), SEA, 56);
+    head('Вход в Средиземное', A('med', 'strait', .25), SEA, H * .14, 86);
+    pill('Гибралтарский пролив', W / 2, H * .7, 50, A('strait', 'only', .25), { line: SEA });
+    label2(['ЕВРОПА'], -5.2, 36.6, A('eur', 'only', .25), ESP, 84); label2(['АФРИКА'], -5.6, 35.45, A('afr', 'only', .25), MAR, 84); }
+  // 9. land border with Africa: Ceuta, Melilla, Morocco
+  { const a = A('only', 'third', .3); fill(SH.esp, ESP, a * .7, { fill: .45, blur: 12 }); fill(SH.mar, MAR, a * (.6 + .4 * ap(t, V('morocco'), .3)) * pulse, { fill: .45 });
+    head('Граница с Африкой', A('only', 'ceuta', .25), MAR, H * .14, 90);
+    [['ceuta', -5.32, 35.89, 'Сеута', 'ceutan'], ['melilla', -2.95, 35.29, 'Мелилья', 'melilla']].forEach(([k, lon, lat, n, b]) => { const q = a * ap(t, V(b) - .1, .35);
+      fill(SH[k], ESP, q, { fill: .9, lw: 6, blur: 26 }); dot(lon, lat, q, ESP); const [x, y] = at(lon, lat); pill(n, x, y - 80, 46, q, { line: ESP }); });
+    label2(['МАРОККО'], -5.2, 34.5, a * ap(t, V('morocco'), .3), MAR, 80);
+    { const [x, y] = at(-4.3, 35.172); dot(-4.3, 35.172, A('third', 'cta', .3) * pulse, BR.acc); } }
+  penonPanel(t, A('penon', 'cta', .4));
+  counter(t);
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('iberia', 'tex/iberia.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
