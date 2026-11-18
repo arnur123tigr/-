@@ -1,0 +1,276 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Самая большая страна без выхода к морю» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 45, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58, minppd: 14 });
+TEX.push({ k: 'eu', l0: 4, l1: 17, b0: 44, b1: 50, minppd: 40 });
+const GOLD = BR.acc, RED = BR.red, TURQ = '#4FD1C5', LIL = '#9F8CF0', ORA = '#F08A4B';
+const KZC = [67.3, 48.2], POLE = [86.67, 46.28], OB = [73.6, 67.6], ALM = [76.89, 43.24], ATY = [51.92, 47.11], PLUS = [45.3, 48.4];
+const UZC = [64.0, 41.6], LIEC = [9.55, 47.15];
+// Europe's five: target centroid in Kazakhstan, rotation (deg) and colour
+const EUT = { FRA: [54.9, 47.9, 0, TURQ], ESP: [64.4, 45.3, 0, LIL], DEU: [80.9, 47.7, 0, ORA], GBR: [63.4, 51.8, -90, '#7FB2FF'], ITA: [73.2, 49.8, 40, '#F2F2F2'] };
+const TXT = {
+  ru: { h1: 'Казахстан', rec: 'Рекорд', f3: '3 факта', last: 'последний удивит', area: '2,7 млн км²', n9: '№9 в мире по площади',
+    FRA: 'Франция', ESP: 'Испания', DEU: 'Германия', ITA: 'Италия', GBR: 'Британия', five: '5 стран Европы внутри',
+    noocean: 'Нет выхода к океану', N: 'Северный Ледовитый', E: 'Тихий', S: 'Индийский', Wt: 'Атлантика', casp: 'Каспий — озеро',
+    RUS: 'Россия', CHN: 'Китай', TKM: 'Туркмения', UZB: 'Узбекистан', AFG: 'Афганистан',
+    no1: '№1 без моря', MNG: 'Монголия', TCD: 'Чад', BOL: 'Боливия', KAZ: 'Казахстан', mln: 'млн км²',
+    pole: 'Полюс недоступности', poleS: 'дальше всего от океана', km: '≈ 2500 км', aa: 'Алматы → Атырау ≈ 2000 км', plus: '+ 500 км', sea: 'Карское море',
+    ent: 'ЕНТ', pos1: 'Внутриконтинентальное', pos2: 'положение',
+    dbl: 'Дважды без моря', LIE: 'Лихтенштейн', CHE: 'Швейцария', AUT: 'Австрия', KGZ: 'Киргизия', TJK: 'Таджикистан', two: 'таких стран всего 2',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Карта: NASA Blue Marble · границы: Natural Earth · полюс: Garcia-Castellanos & Lombardo, 2007' },
+  kk: { h1: 'Қазақстан', rec: 'Рекорд', f3: '3 дерек', last: 'соңғысы таң қалдырады', area: '2,7 млн км²', n9: 'аумағы бойынша №9',
+    FRA: 'Франция', ESP: 'Испания', DEU: 'Германия', ITA: 'Италия', GBR: 'Британия', five: 'Еуропаның 5 елі ішінде',
+    noocean: 'Мұхитқа шығатын жол жоқ', N: 'Солтүстік Мұзды', E: 'Тынық', S: 'Үнді', Wt: 'Атлант', casp: 'Каспий — көл',
+    RUS: 'Ресей', CHN: 'Қытай', TKM: 'Түрікменстан', UZB: 'Өзбекстан', AFG: 'Ауғанстан',
+    no1: 'Теңізсіз №1', MNG: 'Моңғолия', TCD: 'Чад', BOL: 'Боливия', KAZ: 'Қазақстан', mln: 'млн км²',
+    pole: 'Қолжетімсіздік полюсі', poleS: 'мұхиттан ең алыс', km: '≈ 2500 км', aa: 'Алматы → Атырау ≈ 2000 км', plus: '+ 500 км', sea: 'Кар теңізі',
+    ent: 'ҰБТ', pos1: 'Құрлықішілік', pos2: 'жағдай',
+    dbl: 'Екі есе теңізсіз', LIE: 'Лихтенштейн', CHE: 'Швейцария', AUT: 'Австрия', KGZ: 'Қырғызстан', TJK: 'Тәжікстан', two: 'мұндай ел небәрі 2',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Карта: NASA Blue Marble · шекаралар: Natural Earth · полюс: Garcia-Castellanos & Lombardo, 2007' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  rr(-140, -66, 280, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+// Europe's countries in km around their centroid -> lon/lat at a new centre (true size), rotated by r degrees
+function euRings(o, clon, clat, r = 0) {
+  const c = Math.cos(r * Math.PI / 180), s = Math.sin(r * Math.PI / 180);
+  return o.r.map(ring => ring.map(([dx, dy]) => { const x = dx * c - dy * s, y = dx * s + dy * c, lat = clat + y / 110.57; return [clon + x / (111.32 * Math.cos(lat * Math.PI / 180)), lat]; }));
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  const world = [55, 25, 4.2], kzv = [KZC[0], KZC[1] - 1.2, 25], eur = [72, 45, 11], wld = [26, 20, 5.8];
+  CK = [[0, ...world], [.5, ...world, 'l'], [2.6, ...kzv, 'o'], [V('area') - .2, KZC[0], KZC[1] - 1.4, 26.5, 'l'],
+    [V('area') + .6, KZC[0], KZC[1] - 1.2, 25], [V('ocean') - .1, KZC[0] - .5, KZC[1] - 1.2, 26.5, 'l'],
+    [V('ocean') + 1.0, ...eur], [V('rec') - .1, 72.5, 45, 11.6, 'l'],
+    [V('rec') + 1.1, ...wld], [V('pole') - .1, 26, 20, 6.1, 'l'],
+    [V('pole') + 1.4, POLE[0], POLE[1] + 1.2, 34], [V('far') - .1, POLE[0], POLE[1] + 1.2, 37, 'l'],
+    [V('far') + 1.0, 68, 52, 17], [V('ent') - .05, 67, 51.5, 18, 'l'],
+    [V('ent'), KZC[0], KZC[1] - 1.5, 26, 'l'], [V('uzb') - .05, KZC[0], KZC[1] - 1.5, 27.5, 'l'],
+    [V('uzb'), 66, 42, 30, 'l'], [V('two') - .02, 64.8, 41.6, 33, 'l'],
+    [V('two'), ...UZC, 34, 'l'], [V('two') + 1.4, UZC[0], UZC[1] - .3, 36, 'l'], [V('two') + 1.42, 10.9, 47.0, 115, 'l'], [V('cta') - .02, 10.4, 47.05, 135, 'l'],
+    [V('cta'), 66, 44, 13, 'l'], [V('vend') + 1, 66, 44.5, 14.5, 'l']];
+}
+const CUTS = () => [V('ent'), V('two') + 1.42, V('cta')];
+function poleFade() {   // above 84°N / below 84°S the map ends: fade it into black (space) instead of a hard edge
+  for (const [lat, dir] of [[84, -1], [-84, 1]]) { const y = P(0, lat)[1], e = y + dir * 220;
+    if (dir < 0 ? y <= 0 : y >= H) continue;
+    const g = ctx.createLinearGradient(0, y + dir * -160, 0, y); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y, y - dir * 160), W, 160); ctx.fillStyle = '#000'; dir < 0 ? ctx.fillRect(0, 0, W, y) : ctx.fillRect(0, y, W, H - y); }
+}
+function render(t) {
+  TT = t; CAM = camAt(CK, t); drawMap(.16); borders(.32); poleFade();
+  // ---- S1 hook + S2 three facts (+ S10 loop)
+  { const a = win(t, 0, V('area') + .2, .3);
+    if (a > 0) {
+      kz(a * ap(t, .9, .8));
+      head2(TXT.h1, TXT.rec, ap(t, .2, .4) * win(t, 0, V('f3') + .1, .25), H * .15, 150);
+      const fa = A('f3', 'area', .25); if (fa > 0) {
+        head(TXT.f3, fa, GOLD, H * .17, 108);
+        [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .25, fa * back(clamp(ap(t, V('f3') + .25 + n * .18, .35))), n === 3 ? RED : GOLD));
+        const ca = fa * ap(t, V('f3') + 1.0, .3); if (ca > 0) pill(TXT.last, W / 2, H * .31, 36, ca, { line: RED });
+      }
+    } }
+  // ---- S3 area + Europe inside
+  { const a = A('area', 'ocean', .3);
+    if (a > 0) {
+      kz(a, { pulse: .3, fill: .3 });
+      head2(TXT.n9, TXT.area, ap(t, V('area') + .1, .4) * a, H * .14, 120);
+      if (SH) { let i = 0;
+        for (const iso of ['FRA', 'ESP', 'DEU', 'GBR', 'ITA']) {
+          const o = SH.eu[iso], T = EUT[iso], t0 = V('eu') + .1 + i * .32, p = ease(ap(t, t0, .9)); i++;
+          if (t < t0) continue;
+          const lon = lerp(o.c[0], T[0], p), lat = lerp(o.c[1], T[1], p);
+          glowFill(euRings(o, lon, lat, T[2] * p), T[3], a, { fill: .55, blur: 16, lw: 3 });
+          if (p > .9) lab(TXT[iso], T[0], T[1], a * ap(t, t0 + .8, .25), { size: 24, line: T[3] });
+        }
+        const fa = a * ap(t, V('eu') + 1.9, .3); if (fa > 0) pill(TXT.five, W / 2, H * .72, 40, fa, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('eu') + 1.9, .4))) });
+      }
+      counter(1, a);
+    } }
+  // ---- S4 no ocean: arrows to the four oceans, each stopped by a neighbour
+  { const a = A('ocean', 'rec', .3);
+    if (a > 0) {
+      const RAY = [[[67, 52.5], [70, 74], [72, 55.6], 'RUS', 'N', [0, -60]], [[80, 46], [122, 34], [87, 46.4], 'CHN', 'E', [0, -60]],
+        [[63, 44], [64, 22], [62.6, 41.1], 'UZB', 'S', [0, 60]], [[54, 47.5], [33, 43], [46.6, 47.9], 'RUS', 'Wt', [0, -60]]];
+      for (const iso of ['RUS', 'CHN', 'UZB', 'TKM']) cty(iso, RED, a * .5 * ap(t, V('ocean') + 1.3, .5), { fill: .22, blur: 10, lw: 2 });
+      kz(a, { pulse: .4 });
+      RAY.forEach(([s, e, stop, iso, oc, d], i) => {
+        const t0 = V('ocean') + .9 + i * .25, p = ease(ap(t, t0, .7));
+        // faint path all the way to the ocean, solid amber up to the border
+        geoLine(s, e, ap(t, t0, .9), { col: 'rgba(255,255,255,.35)', lw: 4, blur: 0, a: a });
+        geoLine(s, stop, p, { col: GOLD, lw: 9, glow: GOLD, blur: 16, a });
+        const [ex, ey] = P(...e); pill(TXT[oc], ex, ey + (i === 0 ? 40 : i === 2 ? -40 : 0), 28, a * ap(t, t0 + .5, .3), { line: '#9fe8ff' });
+        if (p >= 1) { const [x, y] = P(...stop); xMark(x, y, 1, a * ap(t, t0 + .7, .3)); }
+      });
+      head(TXT.noocean, a * ap(t, V('ocean') + .1, .35), RED, H * .16, 76);
+      const ca = A('casp', 'rec', .25); if (ca > 0) { const [x, y] = P(50.5, 42); xMark(x, y, .9, ca); pill(TXT.casp, x, y + 70, 36, ca, { line: RED, scale: back(clamp(ap(t, V('casp'), .4))) }); }
+      counter(2, a);
+    } }
+  // ---- S5 world: the biggest landlocked countries, Kazakhstan #1
+  { const a = A('rec', 'pole', .3);
+    if (a > 0) {
+      const L = [['KAZ', 2.72, GOLD], ['MNG', 1.56, TURQ], ['TCD', 1.28, LIL], ['BOL', 1.10, ORA]];
+      L.forEach(([iso, , col], i) => { const q = a * ap(t, V('rec') + .5 + (i ? i * .25 : 0), .4); if (iso === 'KAZ') kz(a); else cty(iso, col, q, { fill: .55, blur: 14, lw: 3 }); });
+      const LP = { MNG: [103, 46.8, 0, -50], TCD: [18.7, 15.4, 0, -50], BOL: [-64.6, -16.7, 0, -50, 50] };
+      for (const k in LP) lab(TXT[k], LP[k][0], LP[k][1], a * ap(t, V('rec') + 1, .3), { size: 26, dy: LP[k][3], dx: LP[k][4] || 0 });
+      head(TXT.no1, a * ap(t, V('rec') + .1, .35), GOLD, H * .16, 120);
+      // bar chart
+      const ba = a * ap(t, V('rec') + 1.2, .35);
+      if (ba > 0) {
+        const x0 = 250, y0 = H * .6, bw = 430, bh = 58, g = 22;
+        ctx.save(); ctx.globalAlpha = ba; rr(x0 + 10, y0 - 50, bw + 330, 4 * (bh + g) + 70, 26); ctx.fillStyle = 'rgba(19,11,84,.82)'; ctx.fill(); ctx.strokeStyle = 'rgba(254,179,0,.35)'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+        L.forEach(([iso, v, col], i) => {
+          const y = y0 + i * (bh + g), grow = ease(ap(t, V('rec') + 1.4 + (iso === 'KAZ' ? .9 : i * .18), .7)), w = bw * v / 2.72 * grow;
+          ctx.save(); ctx.globalAlpha = ba; rr(x0 + 250, y, Math.max(w, 1), bh, 12); ctx.fillStyle = col; if (iso === 'KAZ') { ctx.shadowColor = GOLD; ctx.shadowBlur = 24; } ctx.fill(); ctx.restore();
+          ctx.save(); ctx.globalAlpha = ba; txt(TXT[iso], x0 + 236, y + bh / 2, 32, iso === 'KAZ' ? GOLD : '#fff', 'MX', { align: 'right', blur: 0 }); ctx.restore();
+          if (grow > .6) { ctx.save(); ctx.globalAlpha = ba * ap(grow, .6, .4); txt(v.toFixed(2).replace('.', ','), x0 + 250 + w - 14, y + bh / 2 + 2, 30, BR.navy, 'MB', { align: 'right', blur: 0, dy: 0 }); ctx.restore(); }
+        });
+        if (ap(t, V('rec') + 2.4, .01) > 0) { ctx.save(); ctx.globalAlpha = ba; txt(TXT.mln, x0 + bw + 240, y0 - 22, 24, 'rgba(255,255,255,.7)', 'MS', { align: 'right', blur: 0 }); ctx.restore();
+          star(x0 + 250 + bw + 40, y0 + bh / 2, 30, ba * back(clamp(ap(t, V('rec') + 2.4, .4)))); }
+      }
+    } }
+  // ---- S6 + S7 pole of inaccessibility, ≈2500 km, Almaty -> Atyrau + 500
+  { const a = A('pole', 'ent', .3);
+    if (a > 0) {
+      kz(a * .8, { pulse: .3, fill: .22 });
+      const [x, y] = P(...POLE), pa = a * ap(t, V('pole') + 1.0, .3);
+      glowSpot(...POLE, pa, GOLD, 40); ring(x, y, 60, ap(t, V('pole') + 1.1, .7), pa); dot(...POLE, pa);
+      head2(TXT.poleS, TXT.pole, a * ap(t, V('pole') + 1.2, .4) * (1 - ap(t, V('far') + .8, .3)), H * .14, 96);
+      // S7: line to the nearest sea
+      const lp = ease(ap(t, V('far') + .3, 1.1));
+      if (lp > 0) { geoLine(POLE, OB, lp, { col: '#fff', lw: 8, blur: 14, a });
+        const [ox, oy] = P(...OB); if (lp >= 1) { dot(...OB, a, '#9fe8ff'); pill(TXT.sea, ox, oy - 55, 30, a * ap(t, V('far') + 1.4, .3), { line: '#9fe8ff' }); }
+        const [mx, my] = P((POLE[0] + OB[0]) / 2, (POLE[1] + OB[1]) / 2); pill(TXT.km, mx + 150, my, 50, a * ap(t, V('far') + 1.0, .3), { col: GOLD, line: GOLD, scale: back(clamp(ap(t, V('far') + 1.0, .4))) }); }
+      const aa = ease(ap(t, V('alm') + .2, .9));
+      if (aa > 0) { geoLine(ALM, ATY, aa, { col: GOLD, lw: 10, glow: GOLD, blur: 18, a }); dot(...ALM, a); if (aa >= 1) dot(...ATY, a);
+        lab('Алматы', ...ALM, a * ap(t, V('alm') + .3, .3), { size: 26, dy: 44 }); lab('Атырау', ...ATY, a * ap(t, V('alm') + 1, .3), { size: 26, dy: 44, dx: 40 });
+        const [mx, my] = P(64.4, 45.2); pill(TXT.aa, W / 2, my + 200, 34, a * ap(t, V('alm') + .8, .3), { line: GOLD }); }
+      const pp = ease(ap(t, V('plus') + .2, .7));
+      if (pp > 0) { geoLine(ATY, PLUS, pp, { col: '#fff', lw: 8, blur: 12, a }); const [px, py] = P(...PLUS); if (pp >= 1) pill(TXT.plus, px + 10, py - 60, 40, a * ap(t, V('plus') + .8, .3), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('plus') + .8, .4))) }); }
+      counter(3, a);
+    } }
+  // ---- S8 ENT
+  { const a = A('ent', 'uzb', .25);
+    if (a > 0) { kz(a);
+      stamp(TXT.ent, W / 2 + 250, H * .3, a, ap(t, V('ent') + .1, .35));
+      head2(TXT.pos2, TXT.pos1, a * ap(t, V('pos'), .35), H * .14, 100); } }
+  // ---- S9 Uzbekistan, then Liechtenstein
+  { const a = Math.min(win(t, V('uzb'), V('two') + 1.42, .25), 1);
+    if (a > 0) {
+      const N = [['KAZ', [66, 46.2]], ['KGZ', [74.5, 41.4]], ['TJK', [71.2, 38.7]], ['AFG', [66, 35.6]], ['TKM', [59, 39]]];
+      N.forEach(([iso, p], i) => { const q = a * ap(t, V('two') + .3 + i * .15, .3); cty(iso, TURQ, q, { fill: .25, blur: 12, lw: 3 }); lab(TXT[iso] || TXT.KAZ, ...p, q, { size: 24, line: TURQ }); });
+      cty('UZB', GOLD, a * ap(t, V('uzb') + .2, .4), { fill: .55, blur: 26 + 12 * Math.sin(t * 5), lw: 6 });
+      lab(TXT.UZB, ...UZC, a * ap(t, V('uzb') + .4, .3), { size: 32, dy: 10 });
+      head(TXT.dbl, a * ap(t, V('uzb') + .3, .35), GOLD, H * .16, 104);
+    } }
+  { const a = Math.min(win(t, V('two') + 1.42, V('cta'), .25), 1);
+    if (a > 0) {
+      cty('CHE', TURQ, a * ap(t, V('two') + 1.5, .3), { fill: .25, blur: 12, lw: 3 }); cty('AUT', TURQ, a * ap(t, V('two') + 1.65, .3), { fill: .25, blur: 12, lw: 3 });
+      lab(TXT.CHE, 8.2, 46.75, a * ap(t, V('two') + 1.6, .3), { size: 26, line: TURQ }); lab(TXT.AUT, 14.2, 47.6, a * ap(t, V('two') + 1.75, .3), { size: 26, line: TURQ });
+      cty('LIE', GOLD, a, { fill: .8, blur: 20, lw: 4 }); const [x, y] = P(...LIEC); ring(x, y, 46, ap(t, V('two') + 1.6, .6), a);
+      lab(TXT.LIE, ...LIEC, a * ap(t, V('two') + 1.6, .3), { size: 32, dy: -90 });
+      head(TXT.dbl, a, GOLD, H * .16, 104);
+      const q = a * ap(t, V('two') + 2.2, .3); if (q > 0) pill(TXT.two, W / 2, H * .7, 42, q, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('two') + 2.2, .4))) });
+    } }
+  // ---- S10 CTA
+  if (t >= V('cta')) { kz(ap(t, V('cta'), .4)); cty('UZB', GOLD, .6, { fill: .4, blur: 14, lw: 3 }); ctaEnd(t); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function ctaEnd(t) {
+  const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = 58, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('ca', 'tex/ca.jpg'), loadImg('eu', 'tex/eu.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
