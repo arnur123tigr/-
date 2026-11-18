@@ -1,0 +1,322 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Огузы: от Сырдарьи до Анатолии» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json, pause already inserted) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, SH = null, CAPS = [], END = 60;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'eur', l0: 22, l1: 84, b0: 30, b1: 52, minppd: 22 });
+TEX.push({ k: 'syr', l0: 56, l1: 84, b0: 38, b1: 48, minppd: 55 });
+const TURQ = '#4FD1C5', GOLD = BR.acc, RED = BR.red;
+const PT = { kzo: [65.51, 44.85], jan: [61.95, 45.6], kaz: [62.1, 45.76], zh: [77.4, 44.6], buh: [64.42, 39.77], merv: [61.83, 37.66], manz: [42.54, 39.14],
+  tur: [35.0, 39.0], tkm: [59.0, 39.4], aze: [47.8, 40.4], iran: [55.0, 33.2] };
+const TXT = {
+  ru: { h1: 'ТУРЦИЯ ←', h2: 'КЫЗЫЛОРДА?', kzo: 'Кызылорда', tur: 'Турция', d8: 'VIII в. · ОГУЗЫ', oguz: 'огузы', karl: 'карлуки', zh: 'Жетысу', syr: 'Сырдарья',
+    dstate: 'IX–XI вв.', state: 'ГОСУДАРСТВО ОГУЗОВ', jan: 'Янгикент', kaz: 'Казалы', ent: 'Часто на ЕНТ', selj: 'СЕЛЬДЖУК', seljs: 'сельджуки', buh: 'Бухара', merv: 'Мерв',
+    y40: '1040 · Иран', y71: '1071 · Манцикерт', anat: 'АНАТОЛИЯ', nations: 'ТУРКИ · ТУРКМЕНЫ · АЗЕРБАЙДЖАНЦЫ', ctur: 'Турция', ctkm: 'Туркменистан', caze: 'Азербайджан',
+    lang: 'огузские языки', ancestors: 'одни из предков', qt: 'Вопрос с ЕНТ', q: ['Какой город был', 'столицей огузов?'], opts: [['А', 'Отрар'], ['Б', 'Янгикент'], ['В', 'Суяб']],
+    suyab: 'ставка Западно-Тюркского каганата', cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Границы примерные · источники: учебник, Britannica · карта: NASA Blue Marble',
+    photo: 'Городище Янгикент (Жанкент)' },
+  kk: { h1: 'ТҮРКИЯ ←', h2: 'ҚЫЗЫЛОРДА?', kzo: 'Қызылорда', tur: 'Түркия', d8: 'VIII ғ. · ОҒЫЗДАР', oguz: 'оғыздар', karl: 'қарлұқтар', zh: 'Жетісу', syr: 'Сырдария',
+    dstate: 'IX–XI ғғ.', state: 'ОҒЫЗ МЕМЛЕКЕТІ', jan: 'Жанкент', kaz: 'Қазалы', ent: 'ҰБТ-да жиі келеді', selj: 'СӘЛЖҮК', seljs: 'селжұқтар', buh: 'Бұхара', merv: 'Мерв',
+    y40: '1040 · Иран', y71: '1071 · Малазгирт', anat: 'АНАТОЛИЯ', nations: 'ТҮРІК · ТҮРІКМЕН · ӘЗЕРБАЙЖАН', ctur: 'Түркия', ctkm: 'Түрікменстан', caze: 'Әзербайжан',
+    lang: 'оғыз тілдері', ancestors: 'ата-бабаларының бірі', qt: 'ҰБТ сұрағы', q: ['Оғыздардың', 'астанасы?'], opts: [['А', 'Отырар'], ['Ә', 'Жанкент'], ['Б', 'Суяб']],
+    suyab: 'Батыс Түрік қағанатының ордасы', cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Шекаралар шамамен · дереккөз: оқулық, Britannica · карта: NASA Blue Marble',
+    photo: 'Жанкент қалашығы' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+// captions: 2-3 words, the word being spoken is amber
+captions = function (t) {
+  const vt = t - OFF; if (vt >= B.link - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+let TT = 0;
+function datePlate(s, a, y = H * .115) {   // navy plate with amber frame (dates)
+  if (a <= 0) return; const size = 46, w = tw(s, size, 'MB') + 70, h = 88, p = back(clamp(a * 1.4));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2 - 60, y); ctx.scale(p, p);
+  rr(-w / 2, -h / 2, w, h, 20); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = GOLD; ctx.stroke(); txt(s, 0, 3, size, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function place(lon, lat, name, a, o = {}) {    // amber dot + navy pill name
+  if (a <= 0) return; const [x, y] = P(lon, lat); const s = .8 + .2 * eout(clamp(a * 1.5));
+  if (o.glow) glowSpot(lon, lat, a, o.gcol || GOLD, o.gr || 60);
+  dot(lon, lat, a, o.col || GOLD);
+  pill(name, x + (o.dx || 0), y + (o.dy ?? -58), o.size || 36, clamp(a * 1.5), { scale: s, line: o.col || GOLD, col: o.tcol });
+}
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function borders(a = .32) {
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+}
+function rivers(a, p = 1) { if (a <= 0) return; SH.syr.forEach(r => polyPartial(r, p, { col: '#9fe8ff', lw: 5, glow: '#3fb6ff', blur: 12, a })); }
+function dashed(p0, p1, bend, prog, a, col = '#fff') {   // dashed curved line (moving dashes) between two lon/lat points, drawn up to prog
+  if (a <= 0 || prog <= 0) return; const [x0, y0] = P(...p0), [x1, y1] = P(...p1); const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - bend;
+  const N = 60, pts = []; for (let i = 0; i <= N * clamp(prog); i++) { const k = i / N; pts.push([(1 - k) ** 2 * x0 + 2 * (1 - k) * k * cx + k * k * x1, (1 - k) ** 2 * y0 + 2 * (1 - k) * k * cy + k * k * y1]); }
+  if (pts.length < 2) return pts[0];
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.setLineDash([22, 18]); ctx.lineDashOffset = -TT * 60;
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 10; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke(); ctx.restore();
+  return [(x0 + 2 * cx + x1) / 4, (y0 + 2 * cy + y1) / 4];
+}
+function routeScreen() { return SH.route.map(c => P(c[0], c[1])); }
+function routeDraw(p, a, col = GOLD) {   // the Seljuk route up to fraction p; returns head point
+  const S = routeScreen(); let L = 0; const d = [0];
+  for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  const lim = L * clamp(p); let head = S[0]; const pts = [S[0]];
+  for (let i = 1; i < S.length; i++) {
+    if (d[i] <= lim) { pts.push(S[i]); head = S[i]; }
+    else { const k = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1); head = [lerp(S[i - 1][0], S[i][0], k), lerp(S[i - 1][1], S[i][1], k)]; pts.push(head); break; }
+  }
+  if (a > 0 && pts.length > 1) {
+    ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    ctx.strokeStyle = col; ctx.lineWidth = 12; ctx.shadowColor = col; ctx.shadowBlur = 26; ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.5; ctx.setLineDash([18, 16]); ctx.lineDashOffset = -TT * 80; ctx.stroke(); ctx.restore();
+    if (pts.length > 1) { const [ex, ey] = head, [px, py] = pts[pts.length - 2]; const an = Math.atan2(ey - py, ex - px);
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20; ctx.beginPath();
+      ctx.moveTo(ex + Math.cos(an) * 34, ey + Math.sin(an) * 34); ctx.lineTo(ex + Math.cos(an + 2.5) * 30, ey + Math.sin(an + 2.5) * 30); ctx.lineTo(ex + Math.cos(an - 2.5) * 30, ey + Math.sin(an - 2.5) * 30); ctx.fill(); ctx.restore(); }
+  }
+  return head;
+}
+function routeFracAt(idx) { const S = routeScreen(); let L = 0, Li = 0; for (let i = 1; i < S.length; i++) { const s = Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); L += s; if (i <= idx) Li += s; } return Li / L; }
+function banner(x, y, s, r, a, col = GOLD) {   // tribal marker: glowing disc with a small tug (horse-tail standard) + name
+  if (a <= 0) return; const p = back(clamp(a * 1.3));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2); g.addColorStop(0, col + 'cc'); g.addColorStop(.45, col + '55'); g.addColorStop(1, col + '00');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 2, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, 0, r * .62, 0, 7); ctx.fillStyle = BR.navy; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = col; ctx.stroke();
+  // tug: pole + crescent top + tail
+  const k = r / 50; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * k; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 20 * k); ctx.lineTo(0, -22 * k); ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -12 * k); ctx.quadraticCurveTo(14 * k, -6 * k, 9 * k, 14 * k); ctx.quadraticCurveTo(5 * k, -2 * k, 0, -4 * k); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -26 * k, 6 * k, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.restore();
+  if (s) pill(s, x, y + r * 1.25 + 26, 34, clamp(a * 1.5), { line: col });
+}
+function check(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = col; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.beginPath(); ctx.moveTo(-28, 2); ctx.lineTo(-8, 22); ctx.lineTo(30, -22); ctx.stroke(); ctx.restore(); }
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function qmark(x, y, a, morph) {   // '?' disc -> check (morph 1) -> arrow up (morph 2)
+  if (a <= 0) return; const s = back(clamp(a));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 56, 0, 7); ctx.fillStyle = BR.navy; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 6; ctx.strokeStyle = GOLD; ctx.stroke();
+  const q = clamp(1 - morph * 2), c = morph < 1 ? clamp(morph * 2 - 1) : clamp(2 - morph * 1.0) * (morph < 1.5 ? 1 : clamp((2 - morph) * 2)), u = clamp((morph - 1.5) * 2);
+  if (q > 0) txt('?', 0, 4, 76, '#fff', 'MB', { blur: 0, dy: 0 });
+  ctx.restore();
+  if (morph > .5 && morph < 2) check(x, y, s * (morph < 1 ? clamp(morph * 2 - 1) : 1) * .95, clamp(a * 2) * (morph < 1.5 ? 1 : clamp((2 - morph) * 2)));
+  if (u > 0) upArrow(x, y + 3, s * back(u), clamp(a * 2) * u);
+}
+function photoReveal(t, t0, dur, lon, lat) {
+  const im = IM.photo; const a = win(t, t0, t0 + dur, .35); if (!im || a <= 0) return;
+  const [px, py] = P(lon, lat); const k = eout(ap(t, t0, .55)) * (1 - eout(ap(t, t0 + dur - .4, .4)) * .0);
+  const R = lerp(10, 330, k), cx = lerp(px, W / 2, k), cy = lerp(py, H * .43, k);
+  ctx.save(); ctx.globalAlpha = clamp(a * 1.6);
+  ctx.beginPath(); ctx.arc(cx, cy, R + 8, 0, 7); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 40; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.clip();
+  const F = PHOTO.focus || [.5, .5], z = (PHOTO.zoom || 1) * (1 + .06 * ap(t, t0, dur)); const sc = Math.max(2 * R / im.width, 2 * R / im.height) * z;
+  ctx.drawImage(im, cx - im.width * sc * F[0], cy - im.height * sc * F[1], im.width * sc, im.height * sc); ctx.restore();
+  // leader line to the map point
+  if (k > .3) { ctx.globalAlpha = clamp(a * 1.6) * .8; ctx.strokeStyle = GOLD; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx + (px - cx) * R / Math.hypot(px - cx, py - cy), cy + (py - cy) * R / Math.hypot(px - cx, py - cy)); ctx.stroke(); }
+  ctx.globalAlpha = clamp(a * 1.6) * clamp(k * 2 - 1);
+  pill(TXT.photo, cx, cy + R + 52, 34, 1, { line: GOLD });
+  if (PHOTO.credit) txt(PHOTO.credit, cx, cy + R + 108, 20, 'rgba(255,255,255,.8)', 'MS', { blur: 6 });
+  ctx.restore();
+}
+function quizCard(t) {
+  const a = A('quiz', 'cta', .3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .62; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const p = eout(ap(t, V('quiz'), .5)), cx = W / 2, top = H * .2;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(0, (1 - p) * 60);
+  rr(70, top, W - 140, 1080, 40); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(254,179,0,.55)'; ctx.stroke();
+  pill(TXT.qt, cx, top + 90, 44, 1, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB' });
+  const qa = ap(t, V('qq'), .35); ctx.globalAlpha = a * qa;
+  txt(TXT.q[0], cx, top + 230, 64, '#fff', 'MB'); txt(TXT.q[1], cx, top + 310, 64, '#fff', 'MB');
+  const ans = ap(t, V('ans'), .35), keys = ['opts', 'o2', 'o3'];
+  TXT.opts.forEach(([l, n], i) => {
+    const o = back(ap(t, V(keys[i]) - .1, .4)); if (o <= 0) return; const y = top + 470 + i * 170, right = i === 1;
+    ctx.save(); ctx.globalAlpha = a * clamp(o) * (right ? 1 : 1 - .55 * ans); ctx.translate(cx, y); ctx.scale(.9 + .1 * o, .9 + .1 * o);
+    rr(-380, -64, 760, 128, 30); ctx.fillStyle = right && ans > 0 ? `rgba(254,179,0,${.18 + .8 * ans})` : 'rgba(255,255,255,.08)'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = right && ans > 0 ? GOLD : 'rgba(255,255,255,.35)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(-300, 0, 42, 0, 7); ctx.fillStyle = right && ans > .5 ? BR.navy : GOLD; ctx.fill();
+    txt(l, -300, 3, 46, right && ans > .5 ? GOLD : BR.navy, 'MB', { blur: 0, dy: 0 });
+    txt(n, 30, 3, 58, right && ans > .5 ? BR.navy : '#fff', 'MB', { blur: 0, dy: 0 });
+    if (right) check(300, 2, .9 * back(ans), ans, BR.navy);
+    ctx.restore();
+    if (i === 2) { const s = ap(t, V('suyab') + .3, .4); if (s > 0) { ctx.save(); ctx.globalAlpha = a * s; txt(TXT.suyab, cx, y + 98, 30, GOLD, 'MX', { blur: 6 }); ctx.restore(); } }
+  });
+  // timer 3-2-1 during the pause
+  const tp = t - (B.pause + OFF + .15);
+  if (tp > -0.2 && tp < 3.2) { const n = Math.max(1, 3 - Math.floor(clamp(tp, 0, 2.99))), f = (clamp(tp, 0, 2.999) % 1);
+    ctx.save(); ctx.globalAlpha = a * clamp((tp + .2) * 4) * clamp((3.2 - tp) * 4); const y = top + 980;
+    ctx.beginPath(); ctx.arc(cx, y, 62, 0, 7); ctx.fillStyle = BR.navy; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, y, 62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - f)); ctx.strokeStyle = GOLD; ctx.lineWidth = 9; ctx.stroke();
+    txt(String(n), cx, y + 4, 70 * (1 + .15 * (1 - f) ** 3), '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+  ctx.restore();
+}
+function ctaEnd(t) {
+  const a = ap(t, V('link') - .1, .4); if (a <= 0) return;
+  const pk = back(ap(t, V('link') + .2, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = 58, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  const wide = [47.5, 41.3, 29];
+  CK = [[0, ...PT.kzo, 95], [1.3, ...wide, 'o'], [V('c8') - .35, 47.0, 41.4, 30.5, 'l'],
+    [V('c8') + .9, 76.2, 44.8, 78], [V('syr') - .1, 77.0, 44.7, 84, 'l'], [V('syr') + 2.3, 66.5, 44.6, 68], [V('state') - .2, 65.6, 44.8, 70, 'l'],
+    [V('state') + 1.0, 60.6, 45.3, 64], [V('cap') + .1, 61.2, 45.4, 72, 'l'], [V('jank') + .5, 62.0, 45.45, 150], [V('selj') - .2, 62.0, 45.45, 165, 'l'],
+    [V('selj') + .01, 62.6, 43.2, 72, 'l'], [V('seljname') + .2, 62.6, 43.0, 74, 'l'], [V('desc') + 1.3, 63.2, 39.8, 62], [V('y1040') - .1, 62.4, 38.6, 58, 'l'],
+    [V('y1040') + 1.6, 57.5, 36.2, 44], [V('y1071') + .6, 48.0, 37.0, 42], [V('anat') - .1, 41.0, 38.8, 42], [V('anat') + 1.0, 36.0, 39.1, 44],
+    [V('anc') + .2, 36.2, 39.2, 43, 'l'], [V('anc') + 1.8, 46.5, 40.5, 31], [V('quiz') - .1, 47.5, 40.8, 30, 'l'],
+    [V('quiz') + .01, 52.0, 42.0, 30, 'l'], [V('cta') - .01, 51.0, 42.0, 31, 'l'],
+    [V('cta'), ...wide, 'l'], [V('vend') + 1.0, 48.0, 41.5, 31, 'l']];
+}
+const CUTS = () => [V('selj'), V('quiz'), V('cta')];
+function render(t) {
+  TT = t; CAM = camAt(CK, t); drawMap(.2); borders(.3);
+  const inS = (k0, k1) => t >= V(k0) - .35 && t < V(k1) + .35;
+  // ---- S1 + S8: Turkey <- Kyzylorda?
+  { const a = Math.max(win(t, 0, V('c8') - .1, .3), A('cta', 'vend', .3));
+    if (a > 0) {
+      glowFill(SH.cty.TUR, TURQ, a * ap(t, .5, .5), { fill: .42 }); glowSpot(...PT.kzo, a, GOLD, 50);
+      const s8 = t >= V('cta') - .4, pr = s8 ? 1 : ap(t, 1.0, .9);
+      const mid = dashed(PT.kzo, PT.tur, 210, pr, a);
+      place(...PT.kzo, TXT.kzo, a * ap(t, .25, .3), { dy: 64 }); pill(TXT.tur, P(...PT.tur)[0], P(...PT.tur)[1] + 70, 38, a * ap(t, .7, .3), { line: TURQ });
+      if (mid) { const morph = s8 ? clamp((t - V('cta') - .6) / .6) + clamp((t - V('link')) / .5) : 0; qmark(mid[0], mid[1], a * ap(t, s8 ? V('cta') : 1.7, .4), morph); }
+      if (!s8) { const h = ap(t, .15, .35); head(TXT.h1, h * win(t, 0, V('c8') - .2, .3), TURQ, H * .14, 92); head(TXT.h2, ap(t, .4, .35) * win(t, 0, V('c8') - .2, .3), GOLD, H * .14 + 110, 108); }
+    } }
+  // ---- S2: Zhetysu, Karluks push the Oghuz to the Syr Darya
+  { const a = A('c8', 'state', .3);
+    if (a > 0) {
+      const zf = 1 - .6 * ap(t, V('syr') + .3, 1.2);
+      glowFill(SH.zhetysu, GOLD, a * ap(t, V('c8') + .4, .6) * zf, { fill: .3, lw: 4 });
+      label2([TXT.zh], 77.2, 45.9, a * ap(t, V('c8') + .6, .3) * zf, GOLD, 48);
+      rivers(a * ap(t, V('syr') - .3, .4), ap(t, V('syr') - .3, 1.6));
+      if (t > V('syr') + 1.2) label2([TXT.syr], 67.5, 43.4, a * ap(t, V('syr') + 1.2, .3), '#3fb6ff', 40);
+      // Karluk push from the east
+      const ka = a * ap(t, V('karluk'), .3); const kp = eout(ap(t, V('karluk'), 1.0));
+      if (ka > 0) { const [x0, y0] = P(84.5, 47.2), [x1, y1] = P(lerp(84.5, 79.6, kp), lerp(47.2, 45.4, kp));
+        ctx.save(); ctx.globalAlpha = ka; const g = ctx.createRadialGradient(x1, y1, 0, x1, y1, 150); g.addColorStop(0, RED + 'aa'); g.addColorStop(1, RED + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x1, y1, 150, 0, 7); ctx.fill(); ctx.restore();
+        arrowCol(x0 + 60, y0 - 30, x1, y1, (x0 + x1) / 2 + 20, (y0 + y1) / 2 - 60, kp, ka, RED);
+        pill(TXT.karl, x1 + 80, y1 - 90, 38, ka, { line: RED, col: '#fff' }); }
+      // Oghuz marker: in Zhetysu, then west along the river
+      const mp = ease(ap(t, V('syr') - .1, 2.3)); const path = [[77.0, 44.4], [74.6, 43.4], [71.2, 42.6], [68.8, 42.9], [66.8, 44.3], [65.2, 44.9]];
+      const q = mp * (path.length - 1), i = Math.min(path.length - 2, Math.floor(q)), f = q - i;
+      const lon = lerp(path[i][0], path[i + 1][0], f), lat = lerp(path[i][1], path[i + 1][1], f); const [x, y] = P(lon, lat);
+      if (mp > 0) polyPartial(path, mp, { col: GOLD, lw: 6, glow: GOLD, blur: 14, a: a * .7 });
+      banner(x, y, TXT.oguz, 48, a * ap(t, V('c8') + .3, .4));
+      datePlate(TXT.d8, a * ap(t, V('c8') + .1, .35));
+    } }
+  // ---- S3: Oghuz state on the lower Syr Darya, capital Jankent
+  { const a = A('state', 'selj', .3);
+    if (a > 0) {
+      rivers(a); if (SH.aral[0]) glowFill(SH.aral, '#3fb6ff', 0);   // (Aral drawn by the texture)
+      const sp = ap(t, V('state') + .2, .8); glowFill(SH.oguz, GOLD, a * sp, { fill: .2 * sp, lw: 5, blur: 30 });
+      datePlate(TXT.dstate, a * ap(t, V('state') + .1, .35)); head(TXT.state, a * ap(t, V('state') + .5, .35), GOLD, H * .2, 80);
+      place(...PT.kaz, TXT.kaz, a * ap(t, V('kazaly'), .3), { size: 30, dy: -48, dx: 90 });
+      place(...PT.jan, TXT.jan, a * ap(t, V('cap') + .2, .3), { glow: 1, size: 44, dy: 72 });
+      photoReveal(t, V('jank') + .3, 3.0, ...PT.jan);
+      const e = A('ent', 'selj', .2); if (e > 0) { const pk = back(ap(t, V('ent') + .2, .4)); ctx.save(); ctx.globalAlpha = e; ctx.translate(W / 2, H * .66); ctx.scale(pk, pk);
+        const s = TXT.ent, w = tw(s, 54, 'MB') + 80; rr(-w / 2, -54, w, 108, 32); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 36; ctx.fill(); txt(s, 0, 4, 54, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+    } }
+  // ---- S4 + S5: Seljuk leaves south, Iran 1040, Manzikert 1071, Anatolia
+  { const a = A('selj', 'anc', .3);
+    if (a > 0) {
+      rivers(a * .6); glowFill(SH.oguz, GOLD, a * (1 - .7 * ap(t, V('y1040'), 1)), { fill: .18, lw: 3, blur: 16 });
+      place(...PT.jan, TXT.jan, a * (1 - ap(t, V('y1040'), .5)), { size: 32, dy: -56 });
+      const fb = routeFracAt(3), fm = routeFracAt(5), fz = routeFracAt(12);
+      const p = t < V('y1040') ? fb * ease(ap(t, V('seljname'), V('desc') + 1.3 - V('seljname'))) : t < V('y1071') ? lerp(fb, routeFracAt(9), ease(ap(t, V('y1040') - .2, V('y1071') - V('y1040'))))
+        : lerp(routeFracAt(9), 1, ease(ap(t, V('y1071') - .2, V('anat') + .8 - V('y1071'))));
+      glowFill(SH.cty.IRN, GOLD, a * ap(t, V('iran') - .3, .5) * (1 - .5 * ap(t, V('y1071') + .5, 1)), { fill: .22, lw: 3, blur: 18 });
+      glowFill(SH.anatolia ? [SH.anatolia[0]] : [], GOLD, a * ap(t, V('anat'), .6), { fill: .45, lw: 5, blur: 30 });
+      const hd = routeDraw(p, a * ap(t, V('seljname'), .3));
+      if (p >= fb - .001) place(...PT.buh, TXT.buh, a * ap(t, V('desc') + .9, .3), { size: 30, dy: 50, dx: 80 });
+      if (p >= fm) place(...PT.merv, TXT.merv, a * 1, { size: 30, dy: 50 });
+      { const q = A('iran', 'anc', .3); if (q > 0) pill(TXT.y40, P(...PT.iran)[0], P(...PT.iran)[1], 44, q, { scale: back(clamp(ap(t, V('iran'), .4))), line: GOLD }); }
+      if (t > V('manz') - .2) { const q = a * ap(t, V('manz'), .3), [x, y] = P(...PT.manz); clash(x, y, q, t - V('manz'));
+        pill(TXT.y71, x, y - 110, 42, q, { line: RED }); }
+      const grow = 30 + 22 * ap(t, V('desc'), 1.2);
+      banner(hd[0], hd[1], t < V('y1040') ? (t > V('desc') ? TXT.seljs : TXT.selj) : '', grow, a * ap(t, V('seljname') - .1, .4));
+      head(TXT.selj, A('seljname', 'y1040', .25), GOLD, H * .17, 110);
+      { const y1 = A('y1040', 'y1071', .2), y2 = A('y1071', 'anc', .2); datePlate('1040', y1); datePlate('1071', y2); }
+      head(TXT.anat, A('anat', 'anc', .25), GOLD, H * .22, 104);
+    } }
+  // ---- S6: modern Turkey, Turkmenistan, Azerbaijan, Oghuz languages
+  { const a = A('anc', 'quiz', .3);
+    if (a > 0) {
+      const tp = ap(t, V('anc') + .2, .8);
+      glowFill([SH.anatolia[0]], GOLD, a * (1 - tp) * .9, { fill: .45 });
+      glowFill(SH.cty.TUR, GOLD, a * tp, { fill: .36 }); glowFill(SH.cty.TKM, GOLD, a * ap(t, V('tkm'), .4), { fill: .3 }); glowFill(SH.cty.AZE, GOLD, a * ap(t, V('aze'), .4), { fill: .36 });
+      glowSpot(...PT.jan, a, GOLD, 34); dot(...PT.jan, a);
+      [['turk', PT.tur, TXT.ctur, 160], ['tkm', PT.tkm, TXT.ctkm, 60], ['aze', PT.aze, TXT.caze, 120]].forEach(([k, pt, n, bend]) => {
+        const q = ap(t, V(k), .8); dashed(PT.jan, pt, bend, q, a * .9, GOLD);
+        pill(n, P(...pt)[0], P(...pt)[1] + (k === 'aze' ? -60 : 0), 36, a * ap(t, V(k) + .1, .3), { scale: back(clamp(ap(t, V(k) + .1, .35))) }); });
+      head(TXT.nations, A('anc', 'quiz', .25) * ap(t, V('turk') - .3, .3), GOLD, H * .17, 70);
+      { const q = A('anc', 'lang', .25); if (q > 0) pill(TXT.ancestors, W / 2, H * .245, 40, q, { line: GOLD }); }
+      { const q = A('lang', 'quiz', .25); if (q > 0) pill(TXT.lang, W / 2, H * .245, 46, q, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('lang'), .4))) }); }
+    } }
+  // source line on map scenes
+  { const q = Math.min(win(t, V('c8'), V('quiz'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src, W / 2, H * .965, 23, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  quizCard(t);
+  cutFade(t, CUTS());
+  captions(t);
+  ctaEnd(t);
+  logo(.9);
+  endCard(t, V('vend') + .6);
+}
+function arrowCol(x0, y0, x1, y1, cx, cy, p, a, col) {
+  if (p <= 0 || a <= 0) return; const N = 30, pts = []; for (let i = 0; i <= N * p; i++) { const k = i / N; pts.push([(1 - k) ** 2 * x0 + 2 * (1 - k) * k * cx + k * k * x1, (1 - k) ** 2 * y0 + 2 * (1 - k) * k * cy + k * k * y1]); }
+  if (pts.length < 2) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+  const [ex, ey] = pts[pts.length - 1], [px, py] = pts[Math.max(0, pts.length - 3)]; const an = Math.atan2(ey - py, ex - px); ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(ex + Math.cos(an) * 34, ey + Math.sin(an) * 34); ctx.lineTo(ex + Math.cos(an + 2.4) * 36, ey + Math.sin(an + 2.4) * 36); ctx.lineTo(ex + Math.cos(an - 2.4) * 36, ey + Math.sin(an - 2.4) * 36); ctx.fill(); ctx.restore();
+}
+function clash(x, y, a, dt) {   // battle burst: red glow + two crossed sabres
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const r = 70 + 30 * Math.exp(-Math.max(0, dt) * 3);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.8); g.addColorStop(0, RED + 'cc'); g.addColorStop(1, RED + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, 7); ctx.fill();
+  ctx.translate(x, y); ctx.strokeStyle = '#fff'; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+  for (const s of [1, -1]) { ctx.save(); ctx.scale(s, 1); ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-30, 30); ctx.quadraticCurveTo(0, 0, 34, -38); ctx.stroke(); ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(-36, 18); ctx.lineTo(-18, 36); ctx.stroke(); ctx.restore(); }
+  ctx.restore();
+}
+let PHOTO = {};
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  try { PHOTO = await (await fetch('photos/photo.json')).json(); await loadImg('photo', 'photos/' + PHOTO.file); } catch (e) { PHOTO = {}; }
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('eur', 'tex/eur.jpg'), loadImg('syr', 'tex/syr.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
