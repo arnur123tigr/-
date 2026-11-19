@@ -1,0 +1,11 @@
+"""Beat times (voice seconds, from whisper words_ru.json) -> beats.json."""
+import json
+B = dict(q=0, n48=.6, me=3.76, ca=4.96, s=8.14, e=8.88, se=9.66, go=11.22,
+         big=12.52, third=15.26, ppl=17.8, n5=18.68, half=20.28, south=21.76, ind=24.26, pak=24.98, afg=25.74, bgd=26.62, him=27.2, isl=29.06, lka=30.42, mdv=31.18,
+         stan=32.12, kaz=36.16, uzb=37.02, all=38.76, exc=39.64, cent=41.54,
+         mtn=42.94, east=45.78, chn=47.44, mng=48.08, kor=48.86, jpn=50.44, twn=51.2,
+         seh=51.98, vnm=54.72, tha=55.74, main=56.44, isl2=57.76, idn=58.86, phl=59.66,
+         rus=61.22, un=63.42, n77=65.72, nasia=69.38,
+         mid=72.56, fun=74.5, west=75.38, eur=78.4, far=81.14, near=83.7, irn=86.22, irq=86.84, sau=87.4, isr=88.66, pse=89.3,
+         wasia=91.18, said=93.36, egy=95.16, afr=96.92, know=99.36, cta=101.06, link=102.96, vend=104.8)
+json.dump({'ru': B}, open('beats.json', 'w'), indent=0)

@@ -1,0 +1,174 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему 13 колоний стали США» — remake, RU, voice Egor energetic (atempo 1.08). Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 130;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'am', l0: -105, l1: -52, b0: 22, b1: 56, minppd: 9 });
+TEX.push({ k: 'gb', l0: -12, l1: 6, b0: 48, b1: 61, minppd: 9 });
+TEX.push({ k: 'bos', l0: -72.2, l1: -69.6, b0: 41.6, b1: 43.2, minppd: 110 });
+const COLC = '#3f8cff', BRIT = '#e8413a', FRA = '#5a6cff', USAC = '#FEB300';
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+const KEYS = ['NH', 'MA', 'RI', 'CT', 'NY', 'NJ', 'PA', 'DE', 'MD', 'VA', 'NC', 'SC', 'GA'];
+const HUE = ['#4f8cff', '#3fc1c9', '#7f6bff', '#2fae6a', '#ff8f3f', '#e85fa8', '#ffd23f', '#9be15d', '#ff6b6b', '#5ad7ff', '#c08bff', '#ffa94d', '#63e6be'];
+function bigNum(s, y, size, a, col = BR.acc, sub) {
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 980 / tw(s, size, 'MB')), col, 'MB', { stroke: size * .1, sc: 'rgba(0,0,0,.6)', shadow: col, blur: 30, dy: 0 });
+  if (sub) { const ss = Math.min(size * .36, 46, 46 * 960 / tw(sub, 46, 'MX')); txt(sub, 0, size * .78, ss, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.6)' }); }
+  ctx.restore();
+}
+function emo(e, x, y, size, a = 1, sc = 1) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(sc, sc); ctx.font = `${size}px "Noto Color Emoji"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e, 0, 0); ctx.restore(); }
+function popE(e, x, y, size, t, t0, a = 1) { const k = ap(t, t0, .35); if (k <= 0) return; emo(e, x, y, size, a * clamp(k * 2), back(k)); }
+function card(lines, x, y, a, o = {}) {   // navy document card (brand) instead of parchment
+  if (a <= 0) return; const s = back(clamp(a * 1.3)), w = o.w || 640, h = o.h || 330;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(o.rot || 0);
+  rr(-w / 2, -h / 2, w, h, 30); ctx.fillStyle = 'rgba(19,11,84,.95)'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = o.line || BR.acc; ctx.lineWidth = 5; ctx.stroke();
+  const n = lines.length; lines.forEach(([s_, sz, col], i) => txt(s_, 0, (i - (n - 1) / 2) * (o.lh || 86), sz, col || '#fff', 'MB', { blur: 0, dy: 0 }));
+  if (o.cross > 0) { ctx.strokeStyle = BR.red; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-w / 2 + 40, -h / 2 + 40); ctx.lineTo(lerp(-w / 2 + 40, w / 2 - 40, o.cross), lerp(-h / 2 + 40, h / 2 - 40, o.cross)); ctx.stroke(); }
+  ctx.restore();
+}
+function flagGB(x, y, w, a = 1) {
+  if (a <= 0) return; const h = w / 2, s = back(clamp(a * 1.3)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-w / 2, -h / 2);
+  ctx.fillStyle = '#012169'; ctx.fillRect(0, 0, w, h); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = h * .2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, h); ctx.moveTo(w, 0); ctx.lineTo(0, h); ctx.stroke();
+  ctx.strokeStyle = '#c8102e'; ctx.lineWidth = h * .07; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.fillRect(w / 2 - h * .17, 0, h * .34, h); ctx.fillRect(0, h / 2 - h * .17, w, h * .34);
+  ctx.fillStyle = '#c8102e'; ctx.fillRect(w / 2 - h * .1, 0, h * .2, h); ctx.fillRect(0, h / 2 - h * .1, w, h * .2); ctx.restore();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, w, h); ctx.restore();
+}
+function flagUS13(x, y, w, a = 1) {   // 1777 flag: 13 stripes, 13 stars in a circle
+  if (a <= 0) return; const h = w * .53, s = back(clamp(a * 1.3)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-w / 2, -h / 2);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.shadowBlur = 0;
+  for (let i = 0; i < 13; i += 2) { ctx.fillStyle = '#b22234'; ctx.fillRect(0, i * h / 13, w, h / 13); }
+  const cw = w * .4, ch = h * 7 / 13; ctx.fillStyle = '#3c3b6e'; ctx.fillRect(0, 0, cw, ch);
+  for (let i = 0; i < 13; i++) { const an = i / 13 * Math.PI * 2; star(cw / 2 + Math.cos(an) * ch * .32, ch / 2 + Math.sin(an) * ch * .32, ch * .07, 1, '#fff'); }
+  ctx.restore();
+}
+function ship(x, y, s, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = '#5b3a24'; ctx.beginPath(); ctx.moveTo(-160, 0); ctx.lineTo(170, 0); ctx.lineTo(130, 60); ctx.lineTo(-130, 60); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3a2416'; ctx.fillRect(-160, -12, 330, 14);
+  ctx.strokeStyle = '#3a2416'; ctx.lineWidth = 9; [[-70, -230], [40, -270], [130, -180]].forEach(([mx, top]) => { ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, top); ctx.stroke();
+    ctx.fillStyle = '#efe6d2'; ctx.fillRect(mx - 55, top + 25, 110, 70); ctx.fillRect(mx - 45, top + 105, 90, 55); });
+  ctx.restore();
+}
+function shapesAll(a, colFn, o) { KEYS.forEach((k, i) => fill(SH.col[k], colFn(i), a, o)); }
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const COL = [-76, 38.5, 62], NAM = [-82, 41, 22], ATL = [-38, 45, 14], BOS = [-71.06, 42.36, 560], HAR = [-71.05, 42.355, 720], LEX = [-71.2, 42.4, 420];
+  CAMK = [
+    [0, -76, 39, 40], [V('q') + 2.4, ...COL], [V('war') - .1, -76, 38.5, 64, 'l'], [V('war') + 1.2, ...NAM], [V('debt') - .1, -82, 41, 23, 'l'],
+    [V('debt') + .6, -60, 44, 15], [V('look') + 1.2, ...ATL], [V('sugar') - .1, -38, 45, 14.5, 'l'], [V('sugar') + .8, ...COL], [V('angry2') - .1, -76, 38.5, 66, 'l'],
+    [V('boston') - .01, -76, 38.5, 66, 'l'], [V('boston') + 1.2, ...BOS], [V('tea') - .1, -71.06, 42.36, 600, 'l'], [V('tea') + 1, ...HAR], [V('fury') - .1, -71.05, 42.355, 760, 'l'],
+    [V('fury') + 1, -71.06, 42.36, 560], [V('cc1') - .1, -71.06, 42.36, 580, 'l'], [V('cc1') + 1, -75.17, 39.95, 140], [V('lex') - .1, -75, 40.5, 120, 'l'], [V('lex') + 1.2, ...LEX],
+    [V('wash') - .1, -71.2, 42.4, 440, 'l'], [V('wash') + 1, ...COL], [V('july') - .1, -76, 38.5, 66, 'l'], [V('july') + .01, -75.15, 39.95, 160], [V('usa') - .1, -75.15, 39.95, 170, 'l'],
+    [V('usa') + 1.4, ...COL], [V('vend') + 4, -76, 38.5, 60, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // 1. hook: 13 colonies, 250 years ago
+  { const a = A('q', 'war', .4); const sep = A('apart', 'war', .4);
+    fill(SH.colall, COLC, a * pulse * (1 - sep), { fill: .55, lw: 5, blur: 26 }); shapesAll(a * sep, i => HUE[i], { fill: .55, lw: 3, blur: 10 });
+    head('13 колоний', A('q', 'apart', .25), COLC, H * .14, 110); pill('250 лет назад · 1776', W / 2, H * .14 + 105, 50, A('y250', 'apart', .25), { line: BR.acc });
+    flagGB(W * .78, H * .3, 150, A('q', 'apart', .3));
+    head('Каждая сама по себе', A('apart', 'crown', .25), '#ffffff', H * .14, 84);
+    if (A('apart', 'crown', .3) > 0) [[-74, 42], [-78, 39.5], [-79, 35.5], [-71.5, 42.6]].forEach(([lo, la], i) => { const [x, y] = P(lo, la); emo('⚡', x, y, 70, A('apart', 'crown', .3) * (.6 + .4 * Math.sin(t * 10 + i))); });
+    head('Верны британской короне', A('crown', 'war', .25), BRIT, H * .14, 72); popE('👑', W / 2, H * .3, 150, t, V('crown') + .4, A('crown', 'war', .3)); }
+  // 2. Seven Years' War, Britain wins
+  { const a = A('war', 'debt', .35); const win_ = ap(t, V('beat') + .2, .8);
+    fill(SH.nf, FRA, a * (1 - win_), { fill: .45 }); fill(SH.nf_e, BRIT, a * win_, { fill: .45 }); fill(SH.colall, BRIT, a * .9, { fill: .5 });
+    head('Семилетняя война', A('war', 'beat', .25), '#ffffff', H * .14, 90); pill('1756–1763', W / 2, H * .14 + 100, 52, A('war', 'beat', .25), { line: BR.acc });
+    label2(['Новая', 'Франция'], -85, 46, a * (1 - win_), FRA, 60); label2(['Британия'], -76, 36, a * (1 - win_), BRIT, 54);
+    head('Британия побеждает', A('beat', 'debt', .25), BRIT, H * .14, 86); pill('новые огромные земли', W / 2, H * .14 + 100, 50, A('lands', 'debt', .25), { line: BRIT }); }
+  // 3. debt, look at the colonies, "pay up!"
+  { const a = A('debt', 'sugar', .35); fill(SH.gbr, BRIT, a * pulse, { fill: .5 }); fill(SH.colall, COLC, a * .9, { fill: .5 });
+    bigNum('£ ' + Math.round(130 * eout(ap(t, V('debt') + .2, 1.2))) + ' млн', H * .2, 140, A('debt', 'look', .3), BRIT, 'долга у Британии');
+    const [gx, gy] = P(-2, 53), [cx, cy] = P(-75, 40);
+    arrow(gx, gy + 40, cx + 40, cy - 40, (gx + cx) / 2, Math.min(gy, cy) - 260, ap(t, V('look') + .3, 1), A('look', 'sugar', .3));
+    head('Платите колонии!', A('look', 'pay', .25), '#ffffff', H * .14, 90);
+    bubble('Мы вас защитили!', gx - 120, gy - 120, A('prot', 'sugar', .25)); bubble('Теперь платите!', cx + 60, cy - 130, A('pay', 'sugar', .25)); }
+  // 4. Sugar Act, Stamp Act
+  { const a = A('sugar', 'boston', .35); fill(SH.colall, COLC, a * .85, { fill: .45 });
+    const anger = A('angry', 'stamp', .3) + A('angry2', 'boston', .3); if (anger > 0) fill(SH.colall, BRIT, anger * pulse * .8, { fill: .4 });
+    card([['Сахарный акт', 72, BR.acc], ['1764', 64]], W / 2, H * .24, A('sugar', 'stamp', .25), { h: 240, lh: 80 });
+    [['🍯', 'molasses'], ['🍬', 'sugarI'], ['☕', 'coffee'], ['🧵', 'cloth']].forEach(([e, k], i) => popE(e, W * (.2 + i * .2), H * .42, 110, t, V(k), A('sugar', 'stamp', .25)));
+    popE('😠', W * .5, H * .6, 150, t, V('angry'), A('angry', 'stamp', .25));
+    card([['Гербовый акт', 72, BR.acc], ['1765', 64]], W / 2, H * .24, A('stamp', 'congr', .25), { h: 240, lh: 80 });
+    [['📰', 'news'], ['📜', 'contr'], ['🪪', 'lic'], ['⚖️', 'court'], ['🃏', 'cards']].forEach(([e, k], i) => popE(e, W * (.14 + i * .18), H * .42, 100, t, V(k), A('stamp', 'congr', .25)));
+    head('Общий конгресс', A('congr', 'parl', .25), COLC, H * .14, 92); pill('1765', W / 2, H * .14 + 100, 50, A('congr', 'parl', .25), { line: BR.acc });
+    bigNum('0', H * .26, 220, A('parl', 'angry2', .3), BRIT, 'мест в британском парламенте');
+    pill('Нет налогов без представительства!', W / 2, H * .6, 44, A('taxes', 'angry2', .25), { line: BRIT });
+    head('Гнев растёт', A('angry2', 'boston', .25), BRIT, H * .14, 100); }
+  // 5. Boston Massacre
+  { const a = A('boston', 'tea', .35); dot(-71.06, 42.36, a * pulse, BRIT);
+    const [bx, by] = P(-71.06, 42.36); pill('Бостон · 5 марта 1770', bx, by - 90, 46, a, { line: BRIT });
+    for (let i = 0; i < 3; i++) { popE('💂', bx + 120 + i * 90, by + 130, 90, t, V('boston') + 1 + i * .12, A('boston', 'cancel', .3)); popE('🧍', bx - 300 + i * 80, by + 130, 90, t, V('boston') + 1.3 + i * .12, A('boston', 'cancel', .3)); }
+    for (let i = 0; i < 6; i++) popE('💥', bx - 200 + i * 80, by + 120 + (i % 2) * 40, 80, t, V('shoot') + i * .1, A('shoot', 'cancel', .25));
+    bigNum('5 погибших', H * .22, 120, A('dead', 'cancel', .25), BRIT); head('Бостонская бойня', A('massacre', 'cancel', .25), BRIT, H * .14, 90);
+    card([['Новые налоги', 64], ['отменены', 64, '#7fe08a']], W / 2, H * .28, A('cancel', 'teatax', .25), { h: 250, lh: 84, cross: ap(t, V('cancel') + .6, .5) });
+    card([['Налог на чай', 70, BR.acc], ['остаётся', 56]], W / 2, H * .28, A('teatax', 'tea', .25), { h: 250, lh: 84 }); popE('🍵', W / 2, H * .5, 150, t, V('teatax') + .5, A('teatax', 'tea', .25)); }
+  // 6. Boston Tea Party
+  { const a = A('tea', 'fury', .35); if (a > 0) { const [hx, hy] = P(-71.05, 42.355);
+      ship(hx - 40, hy + 30, 1.1, a); for (let i = 0; i < 9; i++) { const k = clamp((t - V('dump') - i * .3) / 1.1); if (k <= 0) continue;
+        emo('📦', hx - 120 + (i % 3) * 90 + k * 60, hy - 60 + k * k * 260, 70, a * (1 - ap(t, V('dump') + i * .3 + .9, .3)), 1); }
+      bigNum(Math.round(342 * eout(ap(t, V('n300') - .3, 1))) + ' ящика чая', H * .3, 110, A('n300', 'fury', .25), BR.acc);
+      head('Бостонское чаепитие', A('party', 'fury', .25), BR.acc, H * .14, 88); pill('декабрь 1773', W / 2, H * .14 + 100, 50, A('party', 'fury', .25), { line: BR.acc });
+      head('Колонисты переоделись', A('tea', 'n300', .25), '#ffffff', H * .14, 80); } }
+  // 7. Britain furious: port closed, troops
+  { const a = A('fury', 'cc1', .35); const [bx, by] = P(-71.06, 42.36); dot(-71.06, 42.36, a, BRIT);
+    head('Британия в ярости', A('fury', 'cc1', .25), BRIT, H * .14, 90);
+    pill('⛔ Порт закрыт', W / 2, H * .3, 56, A('port', 'cc1', .25), { line: BRIT }); pill('Самоуправление урезано', W / 2, H * .38, 50, A('self', 'cc1', .25), { line: BRIT });
+    for (let i = 0; i < 5; i++) popE('💂', W * (.2 + i * .15), H * .62, 100, t, V('troops') + i * .1, A('troops', 'cc1', .25)); }
+  // 8. First Continental Congress, Lexington
+  { const a = A('cc1', 'lex', .35); fill(SH.colall, COLC, a * pulse, { fill: .45 }); dot(-75.16, 39.95, a, BR.acc); const [px, py] = P(-75.16, 39.95);
+    pill('Филадельфия', px, py - 80, 46, a, { line: BR.acc }); head('Первый', a, COLC, H * .14, 90); head('Континентальный конгресс', a, COLC, H * .14 + 92, 70); pill('1774', W / 2, H * .14 + 190, 50, a, { line: BR.acc }); }
+  { const a = A('lex', 'wash', .35); dot(-71.23, 42.45, a * pulse, BRIT); const [lx, ly] = P(-71.23, 42.45);
+    pill('Лексингтон · апрель 1775', lx, ly - 90, 46, a, { line: BRIT });
+    popE('🪖', lx - 180, ly + 150, 110, t, V('lex') + .8, a); popE('💂', lx + 180, ly + 150, 110, t, V('lex') + 1.2, a);
+    popE('💥', lx, ly + 150, 160, t, V('shot'), A('shot', 'wash', .25));
+    head('Первый выстрел', A('shot', 'warb', .25), '#ffffff', H * .14, 90); head('Война!', A('warb', 'wash', .25), BRIT, H * .14, 130); }
+  // 9. Washington, the king says no
+  { const a = A('wash', 'july', .35); fill(SH.colall, COLC, a * .8, { fill: .45 });
+    if (a > 0) { panel(a * .0); }
+    pill('Армия колонистов', W / 2, H * .3, 52, A('wash', 'peace', .25), { line: COLC }); popE('🎖️', W / 2, H * .42, 140, t, V('washn') - .3, A('wash', 'peace', .25));
+    head('Джордж Вашингтон', A('washn', 'peace', .25), BR.acc, H * .14, 86);
+    head('Мир с королём?', A('peace', 'july', .25), '#ffffff', H * .14, 92); popE('✉️', W * .3, H * .4, 130, t, V('peace') + .3, A('peace', 'july', .25)); popE('👑', W * .7, H * .4, 130, t, V('peace') + .7, A('peace', 'july', .25));
+    popE('❌', W * .7, H * .4, 170, t, V('refuse'), A('refuse', 'july', .25)); pill('Отказ', W / 2, H * .58, 64, A('refuse', 'july', .25), { line: BRIT }); }
+  // 10. July 4, 1776, the Declaration
+  { const a = A('july', 'usa', .35); dot(-75.15, 39.95, a, BR.acc);
+    bigNum('4 июля 1776', H * .22, 130, A('july', 'equal', .3), BR.acc);
+    card([['Декларация', 70, BR.acc], ['независимости', 62], ['Томас Джефферсон', 40, '#bcd0ff']], W / 2, H * .46, A('decl', 'equal', .25), { w: 760, h: 330, lh: 84 });
+    card([['«Все люди', 64], ['созданы равными»', 64, BR.acc], ['жизнь · свобода · счастье', 40, '#bcd0ff']], W / 2, H * .4, A('equal', 'usa', .25), { w: 900, h: 340, lh: 88 }); }
+  // 11. USA
+  { const a = A('usa', 'cta', .35); fill(SH.colall, USAC, a * pulse, { fill: .55, lw: 6, blur: 30 });
+    head('Соединённые Штаты', a, USAC, H * .14, 90); head('Америки', a, '#ffffff', H * .14 + 96, 90); flagUS13(W * .74, H * .36, 220, a * ap(t, V('usa') + .6, .4)); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+function bubble(s, x, y, a, col = '#fff') {
+  if (a <= 0) return; const sc = back(clamp(a * 1.3)), w = tw(s, 46, 'MB') + 56; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(sc, sc);
+  rr(-w / 2, -46, w, 84, 28); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fill(); ctx.beginPath(); ctx.moveTo(-20, 34); ctx.lineTo(-34, 66); ctx.lineTo(4, 34); ctx.fill();
+  ctx.shadowBlur = 0; txt(s, 0, -4, 46, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all(['world', 'am', 'gb', 'bos'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

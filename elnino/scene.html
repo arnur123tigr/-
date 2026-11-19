@@ -1,0 +1,151 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Эль-Ниньо» — JAS re-make, RU, voice Egor (old take) + link CTA. Pacific-centred longitudes (west of -30° shifted by +360).
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 92;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'world', l0: 180, l1: 540, b0: -90, b1: 90 });
+TEX.push({ k: 'pac', l0: 90, l1: 330, b0: -50, b1: 66, minppd: 99 });
+TEX.push({ k: 'peru', l0: 268, l1: 292, b0: -22, b1: 6, minppd: 18 });
+const WARM = '#ff5a3a', COLD = '#3aa8ff', HOT = '#FEB300';
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+function bigNum(s, y, size, a, col = BR.acc, sub) {
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 980 / tw(s, size, 'MB')), col, 'MB', { stroke: size * .1, sc: 'rgba(0,0,0,.6)', shadow: col, blur: 30, dy: 0 });
+  if (sub) { const ss = Math.min(size * .36, 46, 46 * 960 / tw(sub, 46, 'MX')); txt(sub, 0, size * .78, ss, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.6)' }); }
+  ctx.restore();
+}
+function emo(e, x, y, size, a, s = 1) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s); ctx.font = `${size}px "Noto Color Emoji"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e, 0, 0); ctx.restore(); }
+// ---------- ocean temperature layer (warm pool / cold tongue), masked by land ----------
+const OC = document.createElement('canvas'); OC.width = W; OC.height = H; const oc = OC.getContext('2d');
+function blob(lon, lat, rlon, rlat, col, a) {
+  const [x, y] = P(lon, lat), rx = rlon * CAM.ppd * KX(), ry = rlat * CAM.ppd; if (a <= 0 || rx < 1) return;
+  oc.save(); oc.translate(x, y); oc.scale(1, ry / rx); const g = oc.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, col.replace('A', a)); g.addColorStop(.55, col.replace('A', a * .6)); g.addColorStop(1, col.replace('A', 0)); oc.fillStyle = g; oc.beginPath(); oc.arc(0, 0, rx, 0, 7); oc.fill(); oc.restore();
+}
+// k: 0 = normal (warm west, cold east), 1 = El Niño (warm spreads east), heat: extra strength
+function ocean(t, a, k, heat = 0) {
+  if (a <= 0) return; oc.clearRect(0, 0, W, H);
+  const wob = Math.sin(t * 1.3) * 1.5;
+  blob(150 + 35 * k, 0, 32 + 45 * k, 17 + 2 * k, 'rgba(255,70,40,A)', .75 + .2 * heat);
+  blob(135, -4, 22, 12, 'rgba(255,140,40,A)', .5 * (1 - k * .3));
+  blob(232 + 10 * k + wob, -1, 38 + 30 * k, 13 + 3 * k, 'rgba(255,90,40,A)', k * (.7 + .25 * heat));
+  blob(262 + wob, -3, 22, 12, 'rgba(255,60,30,A)', k * (.55 + .4 * heat));
+  blob(268, -6, 18, 14, 'rgba(50,150,255,A)', .8 * (1 - k));
+  blob(240, -2, 32, 6, 'rgba(70,170,255,A)', .55 * (1 - k));
+  oc.save(); oc.globalCompositeOperation = 'destination-out'; oc.beginPath();
+  for (const r of SH.land) r.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? oc.lineTo(x, y) : oc.moveTo(x, y); }); oc.fill(); oc.restore();
+  ctx.save(); ctx.globalAlpha = a * .85; ctx.drawImage(OC, 0, 0); ctx.restore();
+}
+// trade winds: white streaks flowing east -> west along the equator; s = strength 0..1
+function winds(t, a, s, dir = -1) {
+  if (a <= 0 || s <= 0) return; const r = rng(3);
+  ctx.save(); ctx.lineCap = 'round';
+  for (let i = 0; i < 46; i++) {
+    const lat = (r() - .5) * 34, sp = 9 + r() * 5, ph = r() * 200, len = (6 + r() * 6) * s;
+    const lo = 285 - ((t * sp * (.4 + .6 * s) + ph) % 150);
+    const [x0, y0] = P(lo, lat), [x1, y1] = P(lo + dir * len, lat + (lat > 0 ? -1 : 1) * len * .15);
+    const f = Math.min(1, Math.min((285 - lo) / 15, (lo - 135) / 15)); if (f <= 0) continue;
+    ctx.globalAlpha = a * f * (.45 + .4 * s); ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 + 3 * s; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    const an = Math.atan2(y1 - y0, x1 - x0); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - Math.cos(an - .5) * 14, y1 - Math.sin(an - .5) * 14); ctx.moveTo(x1, y1); ctx.lineTo(x1 - Math.cos(an + .5) * 14, y1 - Math.sin(an + .5) * 14); ctx.stroke();
+  }
+  ctx.restore();
+}
+function fan(x, y, r, rot, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.12, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.75)'; ctx.fill(); ctx.lineWidth = 6; ctx.strokeStyle = HOT; ctx.stroke();
+  ctx.rotate(rot); ctx.fillStyle = '#e9f4ff'; for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.ellipse(r * .5, 0, r * .48, r * .2, .35, 0, 7); ctx.fill(); }
+  ctx.beginPath(); ctx.arc(0, 0, r * .14, 0, 7); ctx.fillStyle = HOT; ctx.fill(); ctx.restore();
+}
+function lbl(lines, lon, lat, a, col, size = 54) { label2(lines, lon, lat, a, col, size); }
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const PAC = [205, 0, 7.2], PAC2 = [205, 0, 7.6], WORLD = [215, 18, 4.6];
+  CAMK = [
+    [0, 245, -2, 11], [V('name') - .1, 230, -1, 9, 'l'], [V('trade') + .5, ...PAC], [V('warm') - .1, 205, 0, 6.8, 'l'],
+    [V('warm') + 1, 160, -8, 9], [V('peru') - .1, 160, -8, 9.4, 'l'], [V('peru') + 1.1, 279, -8, 22], [V('but') - .1, 279, -8, 23, 'l'],
+    [V('but') + 1, ...PAC2], [V('crazy') - .1, 200, 2, 8, 'l'], [V('crazy') + 1, 262, 12, 7], [V('drought') - .3, 268, 10, 7.2, 'l'], [V('drought') + .8, 135, -10, 9], [V('y1870') - .1, 135, -10, 9.3, 'l'],
+    [V('y1870') + .8, 98, 26, 9], [V('now2') - .1, 98, 26, 9.4, 'l'], [V('now2') + 1, ...PAC2], [V('air') - .1, 205, 2, 8.2, 'l'],
+    [V('air') + 1.2, 210, 10, 4.6], [V('cta') + .5, 210, 10, 4.4, 'l'], [V('vend') + 4, 210, 10, 4.3, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap();
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // ocean state over time
+  const nino = ap(t, V('weak') + .3, 2.2) * (1 - ap(t, V('crazy'), .6)) + ap(t, V('now2') + .3, 1.5) * (1 - ap(t, V('cta'), .6));
+  const oa = win(t, V('q') - 1, V('crazy') + .2, .5) + win(t, V('now2'), V('cta'), .5);
+  ocean(t, oa, clamp(nino), ap(t, V('east2'), 1.5));
+  vignette(.4);
+  // 1. the «fan» that cools the eastern Pacific
+  { const a = A('q', 'trade', .35); const [x, y] = P(258, 6); const spin = t < V('stop') ? t * 9 : V('stop') * 9 + 3 * (1 - Math.exp(-(t - V('stop')) * 1.5));
+    fan(x, y, 120, spin, a * ap(t, V('fan') - .1, .4)); cross_(x, y, A('stop', 'name', .2) * ap(t, V('stop') + .5, .4));
+    head('Гигантский вентилятор', A('fan', 'stop', .25), COLD, H * .15, 84); head('…перестал работать', A('stop', 'now', .25), WARM, H * .15, 84);
+    head('ПРЯМО СЕЙЧАС', A('now', 'name', .25), HOT, H * .15, 110);
+    head('Эль-Ниньо', A('name', 'trade', .25), WARM, H * .15, 130); pill('супер-Эль-Ниньо', W / 2, H * .15 + 125, 56, A('super', 'trade', .25), { line: WARM }); }
+  // 2. trade winds east -> west, ships, warm water to Indonesia
+  { const a = A('trade', 'but', .4); winds(t, a * ap(t, V('pas') - .3, .6), 1);
+    head('Пассаты', A('trade', 'ships', .25), '#ffffff', H * .15, 110); pill('с востока на запад', W / 2, H * .15 + 110, 50, A('ew', 'ships', .25), { line: '#ffffff' });
+    const sh = A('ships', 'warm', .3); for (let i = 0; i < 3; i++) { const lon = 265 - ((t - V('ships')) * 9 + i * 38) % 120, [x, y] = P(lon, 8 - i * 7); emo('⛵', x, y, 80, sh); }
+    head('Веками помогали кораблям', sh, '#ffffff', H * .15, 76);
+    const wa = A('warm', 'peru', .3); fill(SH.idn, WARM, wa * ap(t, V('idn'), .3) * pulse, { fill: .35, lw: 3, blur: 14 }); fill(SH.aus.slice(0, 1), WARM, wa * ap(t, V('aus'), .3) * .6, { fill: .2, lw: 3, blur: 10 });
+    head('Тёплая вода → на запад', wa, WARM, H * .15, 80); lbl(['Индонезия'], 117, 4, wa * ap(t, V('idn'), .3), WARM, 52); lbl(['Австралия'], 134, -23, wa * ap(t, V('aus'), .3), WARM, 52);
+    const ra = wa * ap(t, V('rain') - .1, .4); if (ra > 0) for (let i = 0; i < 5; i++) { const [x, y] = P(108 + i * 8, -6 + (i % 2) * 6); emo('🌧️', x, y + Math.sin(t * 3 + i) * 8, 76, ra); }
+    pill('тропические ливни', W / 2, H * .7, 48, ra, { line: WARM });
+    const pa = A('peru', 'but', .3); fill(SH.peru, HOT, pa * .7, { fill: .25, lw: 4, blur: 14 });
+    lbl(['ПЕРУ'], 285.5, -9.5, pa * ap(t, V('peru') + .3, .3), HOT, 60); lbl(['ЭКВАДОР'], 281.5, -1.4, pa * ap(t, V('peru') + .8, .3), HOT, 46);
+    head('Вода холодная', A('cold', 'but', .25), COLD, H * .15, 96); pill('климат сухой', W / 2, H * .15 + 105, 50, A('dry', 'but', .25), { line: HOT });
+    const da = A('dry', 'but', .3); { const [x, y] = P(283.5, -13.5); emo('🌵', x, y, 96, da, back(clamp(ap(t, V('dry'), .35)))); emo('☀️', x + 150, y - 120, 90, da); } }
+  // 3. every 2-7 years the winds weaken -> El Niño
+  { const a = A('but', 'crazy', .4); winds(t, a, 1 - .8 * ap(t, V('weak'), 1.2));
+    head('Раз в 2–7 лет', A('but', 'weak', .25), '#ffffff', H * .15, 100); head('пассаты слабеют', A('weak', 'back', .25), '#ffffff', H * .15, 90);
+    head('тёплая вода → на восток', A('back', 'plus', .25), WARM, H * .15, 80);
+    bigNum('+1–2 °C', H * .15, 140, A('plus', 'crazy', .25) * ap(t, V('n12') - .3, .3), WARM, 'теплее нормы'); }
+  // 4. weather goes crazy around the world
+  { const a = A('crazy', 'y1870', .4);
+    head('Погода сходит с ума', A('crazy', 'can', .25), WARM, H * .15, 86);
+    const c = A('can', 'y1870', .3); fill(SH.can, HOT, c * pulse, { fill: .35, lw: 3, blur: 12 }); pill('Канада: тёплые зимы', ...P(258, 60), 40, c * ap(t, V('can'), .3), { line: HOT });
+    const u = A('usa', 'y1870', .3); fill(SH.usa_s, COLD, u * pulse, { fill: .45, lw: 3, blur: 12 }); pill('юг США: ливни', ...P(262, 27), 40, u * ap(t, V('usa'), .3), { line: COLD });
+    const s = A('sam', 'y1870', .3); fill(SH.flood, COLD, s * pulse, { fill: .45, lw: 3, blur: 12 }); pill('наводнения', ...P(296, -14), 40, s * ap(t, V('sam'), .3), { line: COLD });
+    const d = A('drought', 'y1870', .3); fill(SH.idn, WARM, d * pulse, { fill: .45, lw: 3, blur: 12 }); fill(SH.aus, WARM, d * pulse, { fill: .45, lw: 3, blur: 12 }); pill('засуха', ...P(134, -24), 50, d, { line: WARM });
+    if (u > 0) for (let i = 0; i < 3; i++) { const [x, y] = P(250 + i * 10, 33); emo('🌧️', x, y, 56, u); } }
+  // 5. 1870s famine
+  { const a = A('y1870', 'now2', .4); fill(SH.ind, WARM, a * pulse, { fill: .45 }); fill(SH.chn, WARM, a * pulse, { fill: .35 });
+    bigNum('1870-е', H * .15, 130, A('y1870', 'pct3', .25), HOT, 'Великий голод'); lbl(['Индия'], 79, 22, a, WARM, 60); lbl(['Китай'], 104, 34, a, WARM, 60);
+    bigNum('≈ 3%', H * .15, 140, A('pct3', 'now2', .25), WARM, 'населения Земли'); }
+  // 6. now: the strongest ever, +3 °C, heat to the atmosphere, 2027
+  { const a = A('now2', 'cta', .4);
+    head('Самый сильный', A('now2', 'east2', .25), WARM, H * .15, 100); pill('за всю историю наблюдений', W / 2, H * .15 + 105, 44, A('strong', 'east2', .25), { line: WARM });
+    bigNum('> +3 °C', H * .15, 150, A('east2', 'air', .25) * ap(t, V('n3') - .3, .3), WARM, 'восток Тихого океана');
+    const hz = A('air', 'cta', .4); if (hz > 0) { ctx.save(); ctx.globalAlpha = hz * (.18 + .08 * ap(t, V('planet'), 1)); ctx.fillStyle = '#ff4a1a'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      const r = rng(11); for (let i = 0; i < 26; i++) { const x = r() * W, sp = 60 + r() * 80, y = H - ((t * sp + r() * H) % H); emo('🔥', x, y, 40, hz * .5 * Math.sin(Math.PI * (1 - y / H))); } }
+    head('Тепло уходит в атмосферу', A('air', 'y2027', .25), HOT, H * .15, 76);
+    bigNum('2027', H * .15, 170, A('y2027', 'cta', .25), HOT, 'самый жаркий год в истории?'); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+function cross_(x, y, a, r = 90) {
+  if (a <= 0) return; const p = eout(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.strokeStyle = BR.red; ctx.lineWidth = 18; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x - r + 2 * r * p, y - r + 2 * r * p); ctx.moveTo(x + r, y - r); ctx.lineTo(x + r - 2 * r * p, y - r + 2 * r * p); ctx.stroke(); ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('pac', 'tex/pac.jpg'), loadImg('peru', 'tex/peru.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
