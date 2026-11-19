@@ -1,0 +1,150 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Регионы Азии» — JAS re-make, RU, voice Egor energetic (old take) + link CTA. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 110;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'asia', l0: 20, l1: 180, b0: -14, b1: 82, minppd: 10 });
+const C = { south: '#FEB300', central: '#3ad0c0', east: '#ff5a4e', se: '#7fe08a', me: '#c27bff', north: '#4f8cff', egy: '#ff8a3a' };
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+function bigNum(s, y, size, a, col = BR.acc, sub) {
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 980 / tw(s, size, 'MB')), col, 'MB', { stroke: size * .1, sc: 'rgba(0,0,0,.6)', shadow: col, blur: 30, dy: 0 });
+  if (sub) { const ss = Math.min(size * .36, 46, 46 * 960 / tw(sub, 46, 'MX')); txt(sub, 0, size * .78, ss, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.6)' }); }
+  ctx.restore();
+}
+// country pill that pops in at beat b and stays until beat e
+function cp(t, name, lon, lat, b, e, col, size = 44) {
+  const [x, y] = P(lon, lat); pill(name, x, y, size, win(t, V(b) - .05, V(e), .25), { scale: back(clamp(ap(t, V(b) - .05, .3))), line: col });
+}
+// pin: dot on the real place, pill offset (dx, dy px)
+function pin(t, name, lon, lat, dx, dy, b, e, col) {
+  const a = win(t, V(b) - .05, V(e), .25); if (a <= 0) return; const [x, y] = P(lon, lat);
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx, y + dy); ctx.stroke(); ctx.restore();
+  dot(lon, lat, a, col); pill(name, x + dx, y + dy, 42, a, { scale: back(clamp(ap(t, V(b) - .05, .3))), line: col });
+}
+function qmark(lon, lat, a, col, t) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const s = back(clamp(a * 1.3)) * (1 + .06 * Math.sin(t * 7));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); txt('?', 0, 0, 120, '#fff', 'MB', { shadow: col, blur: 30, dy: 0, stroke: 12, sc: 'rgba(0,0,0,.55)' }); ctx.restore();
+}
+function cross(lon, lat, a, r = 46) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const p = eout(clamp(a));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.strokeStyle = BR.red; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x - r + 2 * r * p, y - r + 2 * r * p); ctx.moveTo(x + r, y - r); ctx.lineTo(x + r - 2 * r * clamp(p * 1.4 - .4), y - r + 2 * r * clamp(p * 1.4 - .4)); ctx.stroke(); ctx.restore();
+}
+function mountain(lon, lat, name, a) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const s = back(clamp(a * 1.3));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = '#e9eef5'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.moveTo(-60, 26); ctx.lineTo(-18, -40); ctx.lineTo(4, -8); ctx.lineTo(22, -28); ctx.lineTo(60, 26); ctx.closePath(); ctx.fill();
+  ctx.restore(); pill(name, x, y + 70, 40, a, { line: '#ffffff' });
+}
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const OV = [88, 33, 10.5];
+  CAMK = [
+    [0, 88, 34, 8.2], [V('go') + .6, 90, 36, 8.8, 'l'], [V('half') - .1, 92, 37, 8.6],
+    [V('south') + .6, 78, 20, 24], [V('mdv') + 1.0, 77.5, 20, 25, 'l'],
+    [V('stan') + 1.2, 66, 40, 22], [V('mtn') - .1, 65, 41, 23, 'l'],
+    [V('east') + .4, 108, 36, 13], [V('seh') - .1, 112, 36, 13.5, 'l'],
+    [V('seh') + .9, 113, 6, 14], [V('rus') - .1, 113, 6, 14.5, 'l'],
+    [V('rus') + 1.1, 105, 57, 12.5], [V('mid') - .1, 105, 57, 13, 'l'],
+    [V('mid') + 1.1, 46, 28, 18], [V('eur') - .1, 46, 28, 19, 'l'],
+    [V('eur') + .9, 64, 42, 8.6], [V('irn') - .3, 64, 42, 8.9, 'l'],
+    [V('irn') + .5, 44, 29, 18], [V('wasia') - .1, 44, 29, 18.5, 'l'],
+    [V('wasia') + .8, 39, 27, 15.5], [V('know') - .1, 39, 27, 15.8, 'l'],
+    [V('know') + 1.3, ...OV], [V('vend') + 4, 88, 33, 10.2, 'l'],
+  ];
+}
+const REG = [['south', ['Южная', 'Азия'], 78, 22], ['central', ['Центральная', 'Азия'], 66, 44], ['east', ['Восточная', 'Азия'], 105, 36],
+  ['se', ['Юго-Восточная', 'Азия'], 112, 8], ['me', ['Ближний', 'Восток'], 46, 28], ['north', ['Северная', 'Азия'], 108, 64]];
+
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // 1. intro: 48 countries + questions
+  { const a = A('q', 'big', .4); fill(SH.all, '#ffffff', a * .5, { fill: .12, lw: 3, blur: 12 });
+    bigNum('48 стран', H * .16, 120, A('q', 'me', .25) * ap(t, V('n48') - .1, .3), BR.acc);
+    const qs = [['me', 'me', 'ca', 46, 28], ['central', 'ca', 's', 66, 44], ['south', 's', 'go', 78, 22], ['east', 'e', 'go', 105, 36], ['se', 'se', 'go', 112, 8]];
+    qs.forEach(([r, b, e, lon, lat]) => { const q = A(b, e, .2); fill(SH[r], C[r], q * pulse, { fill: .55 }); qmark(lon, lat, q, C[r], t); });
+    head('Где Ближний Восток?', A('me', 'ca', .2), C.me, H * .16, 84); head('Что такое Центральная Азия?', A('ca', 's', .2), C.central, H * .16, 80);
+    head('Южная · Восточная · Юго-Восточная', A('s', 'go', .2), '#ffffff', H * .16, 70); head('Давай разберёмся!', A('go', 'big', .2), BR.acc, H * .16, 90); }
+  // 2. the biggest continent
+  { const a = A('big', 'half', .35); fill(SH.all, BR.acc, a * pulse, { fill: .35, lw: 5, blur: 26 });
+    head('Самый большой континент', A('big', 'third', .25), BR.acc, H * .16, 84);
+    bigNum('≈ 1/3', H * .16, 140, A('third', 'ppl', .25), BR.acc, 'всей суши планеты');
+    bigNum('≈ 5 млрд', H * .16, 130, A('ppl', 'half', .25) * ap(t, V('n5') - .1, .3), '#ffffff', 'человек'); }
+  // 3. South Asia
+  { const a = A('half', 'stan', .4); fill(SH.south, C.south, a * pulse, { fill: .5, lw: 5, blur: 24 });
+    head('Южная Азия', A('half', 'stan', .25), C.south, H * .14, 100); pill('≈ половина населения Азии', W / 2, H * .14 + 105, 42, A('south', 'ind', .25), { line: C.south });
+    [['Индия', 79, 22, 'ind'], ['Пакистан', 69.5, 29.5, 'pak'], ['Афганистан', 65.5, 34.5, 'afg'], ['Бангладеш', 90.3, 23.8, 'bgd'], ['Непал · Бутан', 86, 28.6, 'him'], ['Шри-Ланка', 80.7, 7.4, 'lka'], ['Мальдивы', 73.3, 3.4, 'mdv']]
+      .forEach(([n, lon, lat, b]) => { const c = SH['c_' + { ind: 'IND', pak: 'PAK', afg: 'AFG', bgd: 'BGD', him: 'NPL', lka: 'LKA', mdv: 'MDV' }[b]]; fill(c, '#ffffff', A(b, 'stan', .2) * .6, { fill: .2, lw: 3, blur: 10 }); if (b === 'him') fill(SH.c_BTN, '#ffffff', A(b, 'stan', .2) * .6, { fill: .2, lw: 3, blur: 10 }); cp(t, n, lon, lat, b, 'stan', C.south); }); }
+  // 4. Central Asia: the «-stans»
+  { const a = A('stan', 'mtn', .4);
+    const st = A('stan', 'cent', .3); fill(SH.c_AFG, C.central, st * (1 - .7 * ap(t, V('exc') + .4, .4)), { fill: .45 }); fill(SH.c_PAK, C.central, st * (1 - .7 * ap(t, V('exc') + .4, .4)), { fill: .45 });
+    fill(SH.central, C.central, a * (A('stan', 'mtn') * .7 + .3 * ap(t, V('cent'), .3)) * pulse, { fill: .5, lw: 5, blur: 22 });
+    head('…СТАН', A('stan', 'cent', .25), C.central, H * .14, 110);
+    cp(t, 'Казахстан', 67, 48, 'kaz', 'mtn', BR.acc, 50); cp(t, 'Узбекистан', 64, 42.6, 'uzb', 'mtn', C.central);
+    cp(t, 'Туркменистан', 57.3, 37.0, 'all', 'mtn', C.central, 38); cp(t, 'Кыргызстан', 74.5, 41.6, 'all', 'mtn', C.central, 38); cp(t, 'Таджикистан', 70.5, 37.7, 'all', 'mtn', C.central, 38);
+    cp(t, 'Афганистан', 65.5, 33.5, 'all', 'cent', '#ffffff', 38); cp(t, 'Пакистан', 69.5, 29, 'all', 'cent', '#ffffff', 38);
+    cross(65.5, 33.5, A('exc', 'cent', .2) * ap(t, V('exc') + .1, .4)); cross(69.5, 29, A('exc', 'cent', .2) * ap(t, V('exc') + .5, .4));
+    head('Центральная Азия', A('cent', 'mtn', .25), C.central, H * .14, 96); }
+  // 5. East Asia behind the mountains
+  { mountain(84, 28.3, 'Гималаи', A('mtn', 'seh', .3)); mountain(80, 42.3, 'Тянь-Шань', A('mtn', 'seh', .3) * ap(t, V('mtn') + 1.6, .3));
+    fill(SH.east, C.east, A('east', 'seh', .4) * pulse, { fill: .5, lw: 5, blur: 22 }); head('Восточная Азия', A('east', 'seh', .25), C.east, H * .14, 96);
+    cp(t, 'Китай', 104, 34, 'chn', 'seh', C.east, 50); cp(t, 'Монголия', 103, 46.8, 'mng', 'seh', C.east); cp(t, 'КНДР · Корея', 125.5, 41, 'kor', 'seh', C.east, 40);
+    cp(t, 'Япония', 141, 35.3, 'jpn', 'seh', C.east); cp(t, 'Тайвань', 121, 23.6, 'twn', 'seh', C.east, 40); }
+  // 6. South-East Asia
+  { fill(SH.se, C.se, A('seh', 'rus', .4) * pulse, { fill: .5, lw: 4, blur: 20 }); head('Юго-Восточная Азия', A('seh', 'rus', .25), C.se, H * .14, 90);
+    cp(t, 'Вьетнам', 108.5, 10, 'vnm', 'rus', C.se); cp(t, 'Таиланд', 100.5, 16.5, 'tha', 'rus', C.se); cp(t, 'Мьянма · Лаос · Камбоджа', 99, 23.8, 'main', 'rus', C.se, 34);
+    cp(t, 'Индонезия', 115, -1.5, 'idn', 'rus', C.se, 48); cp(t, 'Филиппины', 123, 12, 'phl', 'rus', C.se); cp(t, 'Малайзия', 102.5, 4, 'isl2', 'rus', C.se, 36); }
+  // 7. Russia / North Asia
+  { const a = A('rus', 'mid', .4); const un = A('un', 'n77', .3);
+    fill(SH.north, un > 0 ? C.north : C.north, a * (1 - .0) * (.7 + .3 * pulse), { fill: .4 + .25 * ap(t, V('nasia'), .3), lw: 4, blur: 18 });
+    fill(SH.russia_eu, C.north, (A('rus', 'n77', .3)) * .9, { fill: .4, lw: 4, blur: 18 });
+    head('Россия', A('rus', 'un', .25), C.north, H * .12, 100); pill('ООН: Восточная Европа', W / 2, H * .12, 56, un, { line: C.north });
+    bigNum('≈ 77%', H * .12, 130, A('n77', 'nasia', .25), BR.acc, 'территории — в Азии');
+    if (A('n77', 'mid') > 0) fill(SH.north, BR.acc, A('n77', 'mid', .3) * pulse, { fill: .35, lw: 5, blur: 24 });
+    head('Северная Азия', A('nasia', 'mid', .25), BR.acc, H * .12, 100); }
+  // 8. Middle East: why «East»?
+  { const a = A('mid', 'wasia', .4); fill(SH.me, C.me, a * pulse, { fill: .5, lw: 5, blur: 22 });
+    head('Ближний Восток', A('mid', 'fun', .25), C.me, H * .14, 96); head('Самый запад Азии —', A('fun', 'eur', .25), '#ffffff', H * .12, 76); head('«Восток»?!', A('fun', 'eur', .25) * ap(t, V('west') + 1, .3), C.me, H * .12 + 100, 110);
+    const e = A('eur', 'irn', .3); fill(SH.east, C.east, e * pulse, { fill: .45 });
+    label2(['Европа'], 8, 57, e, '#ffffff', 60); dot(10, 50, e, '#ffffff');
+    head('Названия дали европейцы', A('eur', 'irn', .25), '#ffffff', H * .12, 76);
+    const [x0, y0] = P(12, 48), [xf, yf] = P(118, 38), [xn, yn] = P(43, 31);
+    arrow(x0, y0, xf, yf, (x0 + xf) / 2, y0 - 260, ap(t, V('far') - .2, .9), e); arrow(x0, y0 + 20, xn, yn, (x0 + xn) / 2, yn + 60, ap(t, V('near') - .2, .6), e);
+    label2(['Дальний', 'Восток'], 118, 28, e * ap(t, V('far') + .3, .3), C.east, 52); label2(['Ближний', 'Восток'], 46, 22, e * ap(t, V('near') + .2, .3), C.me, 52);
+    cp(t, 'Иран', 56.5, 31, 'irn', 'wasia', C.me, 46); cp(t, 'Ирак', 42.5, 34.2, 'irq', 'wasia', C.me); cp(t, 'Саудовская Аравия', 45, 23.5, 'sau', 'wasia', C.me, 40);
+    pin(t, 'Израиль', 34.9, 31.6, -190, -110, 'isr', 'wasia', C.me); pin(t, 'Палестина', 35.25, 31.9, -230, 10, 'pse', 'wasia', C.me); }
+  // 9. Western Asia and Egypt
+  { const a = A('wasia', 'know', .4); fill(SH.me, C.me, a * pulse, { fill: .5, lw: 5, blur: 22 });
+    head('Западная Азия', A('wasia', 'egy', .25), C.me, H * .14, 96); pill('по географии', W / 2, H * .14 + 100, 44, A('wasia', 'egy', .25), { line: C.me });
+    const eg = A('egy', 'know', .3); fill(SH.egy, C.egy, eg * pulse, { fill: .5, lw: 5, blur: 22 }); cp(t, 'Египет', 29.5, 26.5, 'egy', 'know', C.egy, 48);
+    head('+ Египет', A('egy', 'know', .25), C.egy, H * .14, 100); pill('почти весь — в Африке', W / 2, H * .14 + 100, 44, A('afr', 'know', .25), { line: C.egy });
+    label2(['АФРИКА'], 22, 14, A('afr', 'know', .3), '#ffffff', 64); }
+  // 10. finale: all regions
+  { const a = A('know', 'cta', .4); REG.forEach(([k, n, lon, lat], i) => { const q = a * ap(t, V('know') + .6 + i * .12, .3); fill(SH[k], C[k], q * pulse, { fill: .5, lw: 4, blur: 18 }); label2(n, lon, lat, q, C[k], 44); });
+    head('Теперь ты знаешь!', a, BR.acc, H * .14, 96); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('asia', 'tex/asia.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

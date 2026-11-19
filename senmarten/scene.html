@@ -1,0 +1,191 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Граница Франции и Нидерландов в Карибах: остров Сен-Мартен» — remake, RU, voice Egor energetic. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 85;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'eu', l0: -8, l1: 12, b0: 40, b1: 56, minppd: 12 });
+TEX.push({ k: 'car', l0: -72, l1: -56, b0: 10, b1: 24, minppd: 12 });
+TEX.push({ k: 'smt', l0: -63.3, l1: -62.75, b0: 17.82, b1: 18.3, minppd: 300 });
+const FR = '#3f6fe8', NL = '#ff7a1a', ES = '#e8413a';
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+function bigNum(s, y, size, a, col = BR.acc, sub) {
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 980 / tw(s, size, 'MB')), col, 'MB', { stroke: size * .1, sc: 'rgba(0,0,0,.6)', shadow: col, blur: 30, dy: 0 });
+  if (sub) { const ss = Math.min(size * .36, 46, 46 * 960 / tw(sub, 46, 'MX')); txt(sub, 0, size * .78, ss, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.6)' }); }
+  ctx.restore();
+}
+function emo(e, x, y, size, a = 1, sc = 1) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc, sc); ctx.font = `${size}px "Noto Color Emoji"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e, 0, 0); ctx.restore(); }
+function flag(kind, x, y, w, a = 1) {
+  if (a <= 0) return; const h = w * 2 / 3, s = back(clamp(a * 1.3));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-w / 2, -h / 2);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.shadowBlur = 0;
+  if (kind === 'es') { ctx.fillStyle = '#c60b1e'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#ffc400'; ctx.fillRect(0, h / 4, w, h / 2); }
+  else if (kind === 'fr') { ctx.fillStyle = '#0055a4'; ctx.fillRect(0, 0, w / 3, h); ctx.fillStyle = '#ef4135'; ctx.fillRect(w * 2 / 3, 0, w / 3, h); }
+  else if (kind === 'nl') { ctx.fillStyle = '#ae1c28'; ctx.fillRect(0, 0, w, h / 3); ctx.fillStyle = '#21468b'; ctx.fillRect(0, h * 2 / 3, w, h / 3); }
+  else if (kind === 'pt') { ctx.fillStyle = '#006600'; ctx.fillRect(0, 0, w * .4, h); ctx.fillStyle = '#ff0000'; ctx.fillRect(w * .4, 0, w * .6, h); ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(w * .4, h / 2, h * .2, 0, 7); ctx.fill(); }
+  else if (kind === 'gb') {
+    ctx.fillStyle = '#012169'; ctx.fillRect(0, 0, w, h); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = h * .2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, h); ctx.moveTo(w, 0); ctx.lineTo(0, h); ctx.stroke();
+    ctx.strokeStyle = '#c8102e'; ctx.lineWidth = h * .07; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillRect(w / 2 - h * .17, 0, h * .34, h); ctx.fillRect(0, h / 2 - h * .17, w, h * .34);
+    ctx.fillStyle = '#c8102e'; ctx.fillRect(w / 2 - h * .1, 0, h * .2, h); ctx.fillRect(0, h / 2 - h * .1, w, h * .2); ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, w, h); ctx.restore();
+}
+function bubble(s, x, y, a, col = '#fff') {   // speech bubble
+  if (a <= 0) return; const sc = back(clamp(a * 1.3)), w = tw(s, 54, 'MB') + 60; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(sc, sc);
+  rr(-w / 2, -50, w, 90, 30); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fill(); ctx.beginPath(); ctx.moveTo(-20, 38); ctx.lineTo(-34, 70); ctx.lineTo(4, 38); ctx.fill();
+  ctx.shadowBlur = 0; txt(s, 0, -4, 54, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+// ---------- Saint Martin texture (built once on an offscreen canvas, lon/lat plate carrée) ----------
+function buildIsland() {
+  const T = TEX.find(x => x.k === 'smt'), ppd = 4000, w = Math.round((T.l1 - T.l0) * ppd), h = Math.round((T.b1 - T.b0) * ppd);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+  const X = lon => (lon - T.l0) * ppd, Y = lat => (T.b1 - lat) * ppd;
+  const isl = [...SH.aia, ...SH.blm, ...SH.smt];
+  const path = rs => { g.beginPath(); rs.forEach(r => { r.forEach(([lo, la], i) => i ? g.lineTo(X(lo), Y(la)) : g.moveTo(X(lo), Y(la))); g.closePath(); }); };
+  // reef / shallow water halo
+  path(isl); g.save(); g.shadowColor = 'rgba(70,220,210,.9)'; g.shadowBlur = 40; g.strokeStyle = 'rgba(80,200,200,.55)'; g.lineWidth = 22; g.stroke(); g.restore();
+  path(isl); g.save(); g.strokeStyle = '#e8dcb0'; g.lineWidth = 5; g.stroke(); g.restore();   // beaches
+  path(isl); g.fillStyle = '#4f6d3c'; g.fill();
+  g.save(); path(isl); g.clip(); const r = rng(17);
+  for (let i = 0; i < 1600; i++) { const x = r() * w, y = r() * h, rad = 10 + r() * 70; g.fillStyle = r() > .5 ? 'rgba(30,55,25,.28)' : 'rgba(140,150,90,.22)'; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill(); }
+  for (let i = 0; i < 900; i++) { const x = r() * w, y = r() * h; g.fillStyle = 'rgba(210,205,195,.55)'; g.fillRect(x, y, 3 + r() * 5, 3 + r() * 5); }   // houses
+  g.restore();
+  IM.smt = c;
+}
+// coastline walk for the legend
+let WALK = null;
+function buildWalk() {
+  const R = SH.walk, near = (lo, la) => { let bi = 0, bd = 1e9; R.forEach(([x, y], i) => { const d = (x - lo) ** 2 + (y - la) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
+  const s = near(-63.0191, 18.056), m = near(-63.1388, 18.0529), n = R.length;   // start east (Oyster Pond area), meet west
+  const fwd = [], bwd = []; for (let i = s; ; i = (i + 1) % n) { fwd.push(R[i]); if (i === m) break; } for (let i = s; ; i = (i - 1 + n) % n) { bwd.push(R[i]); if (i === m) break; }
+  const northFirst = fwd.reduce((a, p) => a + p[1], 0) / fwd.length > bwd.reduce((a, p) => a + p[1], 0) / bwd.length;
+  WALK = northFirst ? { fr: fwd, nl: bwd } : { fr: bwd, nl: fwd };
+}
+function along(pts, k) {
+  const S = pts.map(c => P(c[0], c[1])); let L = 0; const d = [0]; for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  const lim = L * clamp(k); for (let i = 1; i < S.length; i++) if (d[i] >= lim) { const f = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1); return [lerp(S[i - 1][0], S[i][0], f), lerp(S[i - 1][1], S[i][1], f)]; }
+  return S[S.length - 1];
+}
+function islandSplit(aFr, aNl, pFr = 1) {   // colour the two halves: north of the border = France, south = Netherlands
+  if (aFr <= 0 && aNl <= 0) return;
+  const bd = SH.border, b0 = bd[0], b1 = bd[bd.length - 1];
+  const core = [[b0[0], 17.9], ...bd, [-62.9, b1[1]]];
+  const isl = () => pathRings(SH.smt);
+  [[aFr, FR, [[-62.9, 18.4], [-63.4, 18.4], [-63.4, 17.9]]], [aNl, NL, [[-62.9, 17.9]]]].forEach(([a, col, rest]) => {
+    if (a <= 0) return; ctx.save(); isl(); ctx.clip();
+    ctx.beginPath(); [...core, ...rest].forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath();
+    ctx.globalAlpha = a * .62; ctx.fillStyle = col; ctx.fill(); ctx.restore();
+  });
+  ctx.save(); ctx.globalAlpha = Math.max(aFr, aNl); isl(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+}
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const EU = [2.5, 49.5, 95], SM = [-63.075, 18.06, 6200], CAR = [-63.5, 17.5, 150];
+  CAMK = [
+    [0, 5.3, 52.2, 160], [V('fra') - .2, 5, 52, 170, 'l'], [V('fra') + 1, ...EU], [V('only') - .1, 2.5, 49.5, 100, 'l'], [V('only') + 1.8, -30, 35, 10],
+    [V('only') + 3.6, -63, 18, 120], [V('isl') + .1, -63.07, 18.07, 1500], [V('north') - .3, ...SM], [V('legend') - .1, -63.075, 18.06, 6400, 'l'], [V('legend') + .8, -63.075, 18.065, 5600],
+    [V('col') - .1, -63.075, 18.065, 5800, 'l'], [V('col') + 1.4, -30, 30, 9], [V('mine') - .2, -15, 35, 11, 'l'], [V('mine') + .3, -2, 45, 30], [V('war') - .1, -2, 45, 32, 'l'],
+    [V('war') + 1.2, ...CAR], [V('spain') - .1, -63.2, 17.6, 160, 'l'], [V('spain') + 1, -63.075, 18.06, 4200], [V('lg2') - .2, -63.075, 18.06, 4400, 'l'], [V('lg2') + .8, -63.075, 18.065, 6300],
+    [V('tour') - .1, -63.075, 18.065, 6500, 'l'], [V('tour') + .6, -63.075, 18.07, 5000], [V('alm') - .1, -63.075, 18.07, 5200, 'l'], [V('alm') + .01, -63.075, 18.07, 5200, 'l'], [V('vend') + 4, -63.075, 18.07, 5300, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t); drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // 1. Netherlands, France: a land border?
+  { const a = A('q', 'only', .3); fill(SH.nld, NL, a * pulse, { fill: .55 }); fill(SH.fra, FR, a * ap(t, V('fra') - .1, .3), { fill: .5 });
+    const [nx, ny] = P(5.4, 52.3), [fx, fy] = P(2.4, 46.8); pill('Нидерланды', nx, ny - 20, 52, A('q', 'only', .25), { bg: 'rgba(255,122,26,.9)', line: '#fff' });
+    pill('Франция', fx, fy, 56, a * ap(t, V('fra'), .3), { bg: 'rgba(63,111,232,.92)', line: '#fff' });
+    head('Общая граница?', A('land', 'only', .25), '#ffffff', H * .14, 96);
+    const [bx, by] = P(4.2, 50.6); if (A('land', 'only', .25) > 0) { ctx.save(); ctx.globalAlpha = A('land', 'only', .25); txt('?', bx, by, 120, BR.acc, 'MB', { stroke: 10, sc: 'rgba(0,0,0,.6)' }); ctx.restore(); } }
+  { const a = A('only', 'isl', .3); head('Не в Европе…', A('only', 'car', .25), '#ffffff', H * .14, 92); head('а в Карибском море!', A('car', 'isl', .25), '#5ad7ff', H * .14, 82); }
+  // 2. the island split
+  { const a = A('isl', 'legend', .35); islandSplit(a * ap(t, V('north') - .2, .4), a * ap(t, V('south') - .2, .4));
+    const [mx, my] = P(-63.065, 18.085), [sx, sy] = P(-63.06, 18.03);
+    pill('Сен-Мартен', W / 2, H * .25, 60, a * ap(t, V('isl') + .2, .3) * (1 - ap(t, V('north') - .2, .3)), { line: BR.acc });
+    pill('Saint-Martin · Франция', mx, my - 30, 46, a * ap(t, V('north'), .3), { bg: 'rgba(63,111,232,.92)', line: '#fff' });
+    pill('Sint Maarten · Нидерланды', sx, sy + 60, 46, a * ap(t, V('south'), .3), { bg: 'rgba(255,122,26,.92)', line: '#fff' });
+    flag('fr', mx, my - 130, 90, a * ap(t, V('north') + .2, .3)); flag('nl', sx, sy + 160, 90, a * ap(t, V('south') + .2, .3)); }
+  // 3. the legend title
+  { const a = A('legend', 'col', .3); islandSplit(a * .6, a * .6); if (a > 0) { ctx.save(); ctx.globalAlpha = a * .45; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+    head('Легенда', a, BR.acc, H * .38, 130); head('Сен-Мартена', a, '#ffffff', H * .38 + 130, 96); }
+  // 4. Columbus 1493, Europe: "Mine!"
+  { const a = A('col', 'war', .35); bigNum('1493', H * .2, 150, A('col', 'mine', .3), BR.acc, 'Колумб вернулся');
+    const k = clamp((t - V('col') - .6) / 3.2), [x, y] = (() => { const p0 = P(-70, 20), p1 = P(-6.5, 37); return [lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k) - Math.sin(k * Math.PI) * 120]; })();
+    emo('⛵', x, y, 110, A('col', 'mine', .3));
+    const q = A('mine', 'war', .3); fill(SH.esp, ES, q * .8, { fill: .45 }); fill(SH.fra, FR, q * .8, { fill: .45 }); fill(SH.nld, NL, q * .8, { fill: .5 }); fill(SH.gbr, '#c8102e', q * .8, { fill: .45 }); fill(SH.prt, '#2fae6a', q * .8, { fill: .5 });
+    [['es', -3.7, 40], ['fr', 2.5, 46.8], ['nl', 5.5, 52.4], ['gb', -1.8, 53], ['pt', -8.2, 39.6]].forEach(([f, lo, la], i) => { const [fx, fy] = P(lo, la); const qq = q * ap(t, V('mine') + .2 + i * .12, .3); flag(f, fx, fy, 90, qq); bubble('Моё!', fx + 60, fy - 90, qq); }); }
+  // 5. wars over the Caribbean, Spain takes the island
+  { const a = A('war', 'lg2', .35); const isl = [[-66.1, 18.2], [-61.6, 16.2], [-61.0, 14.6], [-59.5, 13.1], [-70.5, 19], [-77.3, 18.1], [-62.7, 17.3], [-64.7, 18.3]];
+    const fl = ['es', 'gb', 'fr', 'nl', 'es', 'gb', 'fr', 'nl'];
+    isl.forEach(([lo, la], i) => { const [x, y] = P(lo, la); flag(fl[(i + Math.floor((t - V('war')) * 1.4)) % 4], x, y - 40, 70, A('war', 'spain', .25) * ap(t, V('war') + .3 + i * .1, .3)); });
+    emo('⚔️', W / 2, H * .62, 130, A('war', 'spain', .25) * (.8 + .2 * Math.sin(t * 9)));
+    head('150 лет войн', A('war', 'spain', .25), ES, H * .14, 96);
+    const sp = A('spain', 'leave', .3); if (sp > 0) { ctx.save(); pathRings(SH.smt); ctx.globalAlpha = sp * .6; ctx.fillStyle = '#ffc400'; ctx.fill(); ctx.globalAlpha = sp; ctx.strokeStyle = ES; ctx.lineWidth = 6; ctx.stroke(); ctx.restore(); }
+    const [cx, cy] = P(-63.07, 18.07); flag('es', cx, cy - 260, 120, sp); head('Испания захватила всё', sp, '#ffc400', H * .14, 80); bigNum('1633', H * .74, 110, sp, '#ffc400');
+    const lv = A('leave', 'lg2', .3); flag('es', cx + 400 * ap(t, V('leave'), 1.2), cy - 260, 120, lv * (1 - ap(t, V('leave') + .6, .6)));
+    flag('nl', cx + 150, cy + 220, 100, lv * ap(t, V('back'), .3)); flag('fr', cx - 150, cy - 220, 100, lv * ap(t, V('back') + .2, .3));
+    head('Испанцы ушли', A('leave', 'split', .25), '#ffffff', H * .14, 92); head('Решили поделить', A('split', 'lg2', .25), BR.acc, H * .14, 92);
+    if (A('split', 'lg2', .25) > 0) { ctx.save(); ctx.globalAlpha = A('split', 'lg2', .25); ctx.setLineDash([22, 16]); ctx.lineDashOffset = -t * 60; ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.beginPath(); SH.border.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore(); } }
+  // 6. the walk: wine vs gin
+  { const a = A('lg2', 'tour', .35); if (a > 0) {
+      head('Вот здесь легенда', A('lg2', 'walk', .25), BR.acc, H * .14, 90);
+      const k0 = V('walk') + .3, tf = clamp((t - k0) / (V('tour') - .6 - k0)), kfr = Math.pow(tf, .8), knl = Math.pow(tf, 1.25) * .9;
+      const paint = (pts, k, col) => polyPartial(pts, k, { col, lw: 10, glow: col, blur: 18, a });
+      paint(WALK.fr, kfr, FR); paint(WALK.nl, knl * (WALK.fr.length / WALK.nl.length > 0 ? 1 : 1), NL);
+      const pf = along(WALK.fr, kfr), pn = along(WALK.nl, knl);
+      const s0 = P(WALK.fr[0][0], WALK.fr[0][1]); ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(s0[0], s0[1], 16, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+      emo('🚶', pf[0], pf[1] - 50, 90, a, 1); flag('fr', pf[0], pf[1] - 120, 60, a); emo('🚶', pn[0], pn[1] - 50, 90, a, 1); flag('nl', pn[0], pn[1] - 120, 60, a);
+      emo('🍷', pf[0] + 70, pf[1] - 60, 70, a * ap(t, V('wine'), .3)); emo('🍸', pn[0] + 70, pn[1] - 60, 70, a * ap(t, V('gin'), .3));
+      pill('вино', W * .3, H * .76, 54, A('wine', 'tour', .25), { bg: 'rgba(63,111,232,.92)', line: '#fff' }); pill('джин', W * .7, H * .76, 54, A('gin', 'tour', .25), { bg: 'rgba(255,122,26,.92)', line: '#fff' });
+      head('Француз шёл быстрее', A('fast', 'tour', .25), FR, H * .14, 84);
+      islandSplit(A('fast', 'tour', .3) * ap(t, V('bigger'), .4), A('fast', 'tour', .3) * ap(t, V('bigger'), .4));
+      const [mx, my] = P(-63.07, 18.09); pill('Франции — больше', mx, my - 120, 50, A('bigger', 'tour', .25), { bg: 'rgba(63,111,232,.92)', line: '#fff' }); } }
+  // 7. tourist tale? the treaty, disputes, 2023
+  { const a = A('tour', 'alm', .35); islandSplit(a, a);
+    head('Байка для туристов?', A('tour', 'treaty', .25), '#ffffff', H * .14, 84); emo('🤔', W / 2, H * .7, 150, A('tour', 'treaty', .25));
+    const q = A('treaty', 'border', .3); if (q > 0) { const s = back(clamp(ap(t, V('treaty'), .4))); ctx.save(); ctx.globalAlpha = q; ctx.translate(W / 2, H * .3); ctx.scale(s, s);
+      rr(-300, -170, 600, 340, 30); ctx.fillStyle = 'rgba(19,11,84,.94)'; ctx.fill(); ctx.strokeStyle = BR.acc; ctx.lineWidth = 5; ctx.stroke();
+      txt('Договор', 0, -90, 54, '#fff', 'MX', { blur: 0 }); txt('Конкордия', 0, -20, 74, BR.acc, 'MB', { blur: 0 }); txt('1648', 0, 70, 90, '#fff', 'MB', { blur: 0 }); ctx.restore(); }
+    const bq = A('border', 'deal', .3);
+    if (bq > 0) { ctx.save(); ctx.globalAlpha = bq; ctx.setLineDash([18, 14]); ctx.strokeStyle = BR.red; ctx.lineWidth = 8; ctx.shadowColor = BR.red; ctx.shadowBlur = 16 * (.6 + .4 * Math.sin(t * 8)); ctx.beginPath(); SH.border.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
+      SH.border.forEach((c, i) => { if (i % 2) return; const [x, y] = P(c[0], c[1]); ctx.save(); ctx.globalAlpha = bq * ap(t, V('border') + .3 + i * .15, .3); txt('?', x, y - 50, 80, BR.acc, 'MB', { stroke: 8, sc: 'rgba(0,0,0,.6)' }); ctx.restore(); });
+      head('Граница не прописана', A('border', 'y300', .25), BR.red, H * .14, 80); bigNum('300+ лет споров', H * .2, 96, A('y300', 'deal', .25), BR.red); }
+    const dq = A('deal', 'alm', .3); if (dq > 0) { polyPartial(SH.border, ap(t, V('deal'), .8), { col: BR.acc, lw: 9, glow: BR.acc, blur: 20, a: dq }); bigNum('2023', H * .2, 150, dq, BR.acc, 'новое соглашение'); emo('🤝', W / 2, H * .72, 150, dq * ap(t, V('deal') + .5, .3)); } }
+  // 8. 8 times smaller than Almaty
+  { const a = A('alm', 'cta', .35); if (a > 0) { panel(a);
+      const s1 = Math.sqrt(87) * 22, s2 = Math.sqrt(683) * 22, y = H * .55;
+      ctx.save(); ctx.globalAlpha = a; const k = eout(ap(t, V('alm') + .2, .8));
+      ctx.fillStyle = 'rgba(254,179,0,.25)'; ctx.strokeStyle = BR.acc; ctx.lineWidth = 6; ctx.fillRect(W / 2 - s2 / 2 * k, y - s2 / 2 * k, s2 * k, s2 * k); ctx.strokeRect(W / 2 - s2 / 2 * k, y - s2 / 2 * k, s2 * k, s2 * k);
+      txt('Алматы ≈ 683 км²', W / 2, y - s2 / 2 - 50, 50, BR.acc, 'MB'); const q = ap(t, V('alm8') - .3, .4);
+      ctx.globalAlpha = a * q; ctx.fillStyle = 'rgba(63,111,232,.7)'; ctx.fillRect(W / 2 - s1 / 2, y - s1 / 2, s1, s1 / 2); ctx.fillStyle = 'rgba(255,122,26,.75)'; ctx.fillRect(W / 2 - s1 / 2, y, s1, s1 / 2);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(W / 2 - s1 / 2, y - s1 / 2, s1, s1);
+      txt('Сен-Мартен ≈ 87 км²', W / 2, y + s1 / 2 + 50, 44, '#fff', 'MX'); ctx.restore();
+      head('В 8 раз меньше Алматы', a * ap(t, V('alm8') - .2, .3), BR.acc, H * .16, 80); } }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all(['world', 'eu', 'car'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  buildIsland(); buildWalk();
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

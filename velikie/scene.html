@@ -1,0 +1,173 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Что великого в Великих озёрах?» — remake, RU, voice Egor energetic. Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 80;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'na', l0: -140, l1: -48, b0: 12, b1: 66, minppd: 9 });
+TEX.push({ k: 'gl', l0: -93.5, l1: -73, b0: 40, b1: 50, minppd: 34 });
+const LAKE = '#FEB300', USA = '#3f6fe8', CAN = '#e8413a', WATER = '#38b6ff', CMP = '#7fd0ff';
+</script>
+<script src="helpers.js"></script>
+<script>
+const LK = ['sup', 'mic', 'hur', 'eri', 'ont'];
+const LN = { sup: ['Верхнее', -87.6, 47.7], mic: ['Мичиган', -87.0, 43.9], hur: ['Гурон', -82.3, 44.9], eri: ['Эри', -81.2, 42.2], ont: ['Онтарио', -77.9, 43.65] };
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .5, lw: 4, blur: 20 }, o || {}));
+function bigNum(s, y, size, a, col = BR.acc, sub) {
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(s, 0, 0, Math.min(size, size * 980 / tw(s, size, 'MB')), col, 'MB', { stroke: size * .1, sc: 'rgba(0,0,0,.6)', shadow: col, blur: 30, dy: 0 });
+  if (sub) { const ss = Math.min(size * .36, 46, 46 * 960 / tw(sub, 46, 'MX')); txt(sub, 0, size * .78, ss, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.6)' }); }
+  ctx.restore();
+}
+function fmt(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+// ---------- small drawings ----------
+function person(x, y, h, col = '#fff', a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y - h * .87, h * .12, 0, 7); ctx.fill();
+  rr(x - h * .17, y - h * .72, h * .34, h * .42, h * .1); ctx.fill(); rr(x - h * .15, y - h * .36, h * .13, h * .36, h * .05); ctx.fill(); rr(x + h * .02, y - h * .36, h * .13, h * .36, h * .05); ctx.fill(); ctx.restore();
+}
+function ship(x, y, s, rot = 0, a = 1, col = '#e9eef5') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.fillStyle = '#b8322a'; ctx.beginPath(); ctx.moveTo(-50, 0); ctx.lineTo(50, 0); ctx.lineTo(40, 14); ctx.lineTo(-44, 14); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2b2f3a'; ctx.fillRect(-50, -6, 100, 7);
+  ctx.fillStyle = col; ctx.fillRect(28, -24, 16, 18); ctx.fillRect(-46, -18, 12, 12); ctx.fillStyle = '#2b2f3a'; ctx.fillRect(31, -21, 10, 4); ctx.restore();
+}
+function cmPanel(t, a) {      // 15 cm of water over all the land: a person standing in it
+  if (a <= 0) return; panel(a); ctx.save(); ctx.globalAlpha = a;
+  const gy = H * .66, ph = 640, x = W * .44;
+  ctx.fillStyle = '#6b5a3d'; ctx.fillRect(0, gy, W, H - gy);
+  const lvl = ph * 15 / 175 * eout(ap(t, V('cm') + .3, 1.6));
+  person(x, gy, ph, '#e8ecf5');
+  const g = ctx.createLinearGradient(0, gy - lvl, 0, gy); g.addColorStop(0, 'rgba(80,190,255,.85)'); g.addColorStop(1, 'rgba(30,110,200,.9)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, gy); for (let X = 0; X <= W; X += 20) ctx.lineTo(X, gy - lvl + Math.sin(X / 40 + t * 4) * 4); ctx.lineTo(W, gy); ctx.closePath(); ctx.fill();
+  // ruler
+  const rx = W * .7; ctx.strokeStyle = BR.acc; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(rx, gy); ctx.lineTo(rx, gy - lvl); ctx.moveTo(rx - 22, gy - lvl); ctx.lineTo(rx + 22, gy - lvl); ctx.moveTo(rx - 22, gy); ctx.lineTo(rx + 22, gy); ctx.stroke();
+  ctx.restore();
+  bigNum('15 см', H * .56 - 120, 150, a * ap(t, V('n15') - .1, .4), BR.acc);
+  head('Слой воды на всей суше', a, WATER, H * .2, 72);
+}
+function horizonPanel(t, a) {   // from the shore it looks like the open ocean
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const hy = H * .47, g = ctx.createLinearGradient(0, 0, 0, hy); g.addColorStop(0, '#5a8fc8'); g.addColorStop(1, '#cfe3f2'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, hy);
+  const s = ctx.createLinearGradient(0, hy, 0, H); s.addColorStop(0, '#2b6e9e'); s.addColorStop(1, '#123a5c'); ctx.fillStyle = s; ctx.fillRect(0, hy, W, H - hy);
+  for (let i = 0; i < 70; i++) { const yy = hy + Math.pow(i / 70, 2) * (H - hy), ww = 30 + i * 4, xx = ((i * 137 + t * (20 + i * 3)) % (W + 200)) - 100;
+    ctx.fillStyle = `rgba(255,255,255,${.12 + i / 70 * .25})`; ctx.fillRect(xx, yy, ww, 2 + i / 18); }
+  ctx.fillStyle = '#d9c9a2'; ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, H * .9); ctx.quadraticCurveTo(W * .4, H * .87, W, H * .95); ctx.lineTo(W, H); ctx.fill();   // beach
+  ctx.restore();
+  head('Внутренние моря', a * ap(t, V('sea') + .1, .3), CMP, H * .2, 92);
+  pill('берега не видно', W / 2, H * .42, 54, a * ap(t, V('shore') + .3, .3), { line: BR.acc });
+}
+function stormPanel(t, a) {     // waves up to 9 m
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1b2230'); g.addColorStop(.5, '#3b4656'); g.addColorStop(1, '#0f2433'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const base = H * .74, px9 = 560 * ap(t, V('storm') + .2, 1.2);   // 9 m = 560 px
+  // house for scale (3 floors ≈ 9 m)
+  const hx = W * .76, hw = 190; ctx.fillStyle = '#c9b79c'; ctx.fillRect(hx - hw / 2, base - 500, hw, 500); ctx.fillStyle = '#7a3b2e'; ctx.beginPath(); ctx.moveTo(hx - hw / 2 - 20, base - 500); ctx.lineTo(hx, base - 560); ctx.lineTo(hx + hw / 2 + 20, base - 500); ctx.fill();
+  ctx.fillStyle = '#5b7da3'; for (let f = 0; f < 3; f++) for (let w = 0; w < 2; w++) ctx.fillRect(hx - 60 + w * 80, base - 470 + f * 160, 40, 70);
+  // wave
+  ctx.fillStyle = 'rgba(40,110,150,.95)'; ctx.beginPath(); ctx.moveTo(0, H);
+  for (let X = 0; X <= W; X += 10) { const crest = Math.exp(-Math.pow((X - W * .34) / 190, 2)); ctx.lineTo(X, base - px9 * crest - Math.sin(X / 50 + t * 3) * 12); }
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 6; ctx.beginPath(); for (let X = 0; X <= W; X += 10) { const crest = Math.exp(-Math.pow((X - W * .34) / 190, 2)); ctx.lineTo(X, base - px9 * crest - Math.sin(X / 50 + t * 3) * 12); } ctx.stroke();
+  // rain
+  ctx.strokeStyle = 'rgba(200,220,255,.25)'; ctx.lineWidth = 2; const r = rng(5); for (let i = 0; i < 160; i++) { const x0 = r() * W, y0 = (r() * H + t * 900) % H; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 - 10, y0 + 34); ctx.stroke(); }
+  ctx.restore();
+  head('Настоящие штормы', a, '#9fd6ff', H * .17, 90);
+  bigNum('до 9 м', H * .3, 130, a * ap(t, V('wave') - .1, .4), BR.acc);
+}
+function region(rings, col, a) { fill(rings, col, a, { fill: .55, lw: 3, blur: 14 }); }
+
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  const GL = [-84.3, 45.0, 64], SUP = [-87.4, 47.4, 118];
+  CAMK = [
+    [0, -95, 46, 12], [V('gl') + .3, -84, 45, 40], [V('five'), ...GL], [V('pct') - .1, -84.3, 45.0, 66, 'l'], [V('pct') + 1.4, -45, 12, 6.4],
+    [V('spread') - .2, -45, 12, 6.4, 'l'], [V('am') - .3, -70, 12, 6.4], [V('au') + .3, 95, 12, 6.4], [V('cm') - .01, 100, 12, 6.4, 'l'],
+    [V('cm') + .01, -87.4, 47.4, 60], [V('big') - .01, -87.4, 47.4, 62, 'l'], [V('big') + 1.2, ...SUP], [V('oth') - .2, -87.4, 47.4, 122, 'l'], [V('oth') + 1, -87.6, 49.7, 92],
+    [V('sea') - .1, -87.6, 49.8, 94, 'l'], [V('ships') - .01, -87.3, 47.5, 110], [V('conn') - .1, -87.2, 47.4, 118, 'l'], [V('conn') + 1.2, -82.5, 45.0, 52],
+    [V('law') + .2, -80, 45, 44], [V('atl') + .8, -66, 47.5, 26], [V('ppl') - .1, -64, 47.5, 26, 'l'], [V('ppl') + 1.2, -83.5, 44.6, 58],
+    [V('great') - .1, -83.5, 44.6, 60, 'l'], [V('great') + 2.4, -84, 45, 46], [V('cta') + .5, -84, 45, 40], [V('vend') + 4, -84, 45, 38, 'l'],
+  ];
+}
+
+function render(t) {
+  CAM = camAt(CAMK, t);
+  const flood = win(t, V('spread') + .2, V('cm') + .3, .6);
+  drawMap(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .8 + .2 * Math.sin(t * 5);
+  // 1. USA / Canada / the lakes
+  { const a = A('q', 'five', .4); fill(SH.usa, USA, a * .75, { fill: .35, blur: 10 }); SH.can.forEach(r => fill([r], CAN, a * .75, { fill: .35, blur: 8, lw: 2 }));
+    const la = A('q', 'gl', .3); label2(['США'], -98, 39, la * ap(t, V('usa'), .3), USA, 80); label2(['КАНАДА'], -100, 56, la * ap(t, V('can'), .3), CAN, 80);
+    SH.border.forEach(l => polyPartial(l, ap(t, V('can') + .2, 1), { col: '#fff', lw: 6, a })); }
+  { const a = A('gl', 'pct', .3); LK.forEach(k => fill(SH[k], LAKE, a * pulse, { fill: .5, lw: 5, blur: 24 }));
+    head('Великие озёра', A('gl', 'what', .25), LAKE, H * .15, 96); head('Что в них великого?', A('what', 'five', .25), '#ffffff', H * .15, 84);
+    head('5 озёр', A('five', 'pct', .25), LAKE, H * .15, 110);
+    LK.forEach((k, i) => { const [n, lon, lat] = LN[k]; const [x, y] = P(lon, lat); pill(n, x, y, 44, A(k, 'pct', .25), { scale: back(clamp(ap(t, V(k), .3))), line: LAKE }); }); }
+  // 2. 20 % of the world's surface fresh water, 23 000 km³
+  { const a = A('pct', 'spread', .4); LK.forEach(k => fill(SH[k], LAKE, a * pulse, { fill: .9, lw: 6, blur: 34 }));
+    bigNum('≈ 20%', H * .3, 190, A('pct', 'vol', .3) * ap(t, V('n20') - .1, .4), BR.acc, 'пресной воды на поверхности Земли');
+    const k = eout(ap(t, V('n23') - .3, 1.3)); bigNum(fmt(23000 * k) + ' км³', H * .3, 150, A('vol', 'spread', .3), BR.acc, 'воды');
+    head('Сложно представить?', A('hard', 'spread', .25), '#ffffff', H * .72, 80); }
+  // 3. spread it over all the land
+  { const a = A('spread', 'cm', .4);
+    [['am', 'am', ['Америки'], -95, 25], ['af', 'af', ['Африка'], 20, 5], ['eu', 'eu', ['Евразия'], 75, 50], ['au', 'au', ['Австралия'], 134, -25], ['an', 'an', ['Антарктида'], 60, -78]].forEach(([s, b, n, lon, lat]) => {
+      const q = a * ap(t, V(b) - .1, .35); region(SH['c_' + s], WATER, q * (.75 + .25 * Math.sin(t * 4))); label2(n, lon, lat, q, WATER, 58); });
+    head('Разлить по всей суше', A('spread', 'cm', .25), WATER, H * .15, 80); }
+  cmPanel(t, A('cm', 'big', .35));
+  // 4. Lake Superior, the biggest
+  { const a = A('big', 'conn', .4); fill(SH.sup, LAKE, a * pulse * (1 - A('sea', 'ships', .3)), { fill: .55, lw: 6, blur: 28 });
+    head('Самое большое', A('big', 'oth', .25), LAKE, H * .15, 96); head('пресное озеро мира', A('big', 'oth', .25), '#ffffff', H * .15 + 100, 76);
+    pill('Верхнее · 82 100 км²', W / 2, H * .7, 52, A('big', 'oth', .25), { line: LAKE }); }
+  // 5. vs countries (true scale, one after another above Superior) and Balkhash ×5
+  { const a = A('oth', 'sea', .35); const ppd = CAM.ppd;
+    fill(SH.sup, LAKE, a, { fill: .7, lw: 6, blur: 26 });
+    const items = [['aut', 'Австрия', '83 900', 'aut', 'cze'], ['cze', 'Чехия', '78 900', 'cze', 'irl'], ['irl', 'Ирландия', '70 300', 'irl', 'pan'], ['pan', 'Панама', '75 400', 'pan', 'bal']];
+    const sx = W / 2, sy = H * .33;
+    items.forEach(([k, n, km, b, e]) => { const q = a * win(t, V(b) - .1, V(e) + .05, .18); if (q <= 0) return; const s = back(clamp(ap(t, V(b) - .1, .35)));
+      shapeAt(SH['rel_' + k], sx, sy, ppd * s, CMP, q * .9); ctx.save(); ctx.globalAlpha = q; txt(n, sx, sy - 10, 60, '#fff', 'MB', { stroke: 8, sc: 'rgba(0,0,0,.6)' }); txt(km + ' км²', sx, sy + 50, 42, BR.acc, 'MX', { stroke: 6, sc: 'rgba(0,0,0,.6)' }); ctx.restore(); });
+    head('Почти как Австрия', A('aut', 'cze', .25), CMP, H * .13, 86); head('Больше, чем…', A('cze', 'bal', .25), CMP, H * .13, 92);
+    const bal = A('bal', 'sea', .3);
+    for (let i = 0; i < 5; i++) { const q = bal * ap(t, V('bal') + .4 + i * .32, .3); shapeAt(SH.rel_bal, sx + (i % 2 ? 40 : -40), sy - 190 + i * 95, ppd, '#3ad0c0', q * .9); }
+    head('Балхаш × 5', bal, '#3ad0c0', H * .13, 104); pill('≈ одно озеро Верхнее', W / 2, H * .55, 48, bal * ap(t, V('n5'), .3), { line: '#3ad0c0' }); }
+  horizonPanel(t, A('sea', 'storm', .35));
+  stormPanel(t, A('storm', 'ships', .35));
+  // 6. shipwrecks
+  { const a = A('ships', 'conn', .35); fill(SH.sup, '#1a3d66', a, { fill: .55, lw: 3, blur: 10 }); const r = rng(9), n = Math.floor(48 * ap(t, V('ships') + .3, 2.2));
+    for (let i = 0; i < 48; i++) { const lon = -91.5 + r() * 7.3, lat = 46.6 + r() * 2, s = .35 + r() * .2, ph = r(); if (i >= n) continue;
+      const k = clamp((t - V('ships') - .3 - i * .045) / 1.6); const [x, y] = P(lon, lat); ship(x, y + k * 30, s, k * (ph > .5 ? .6 : -.6), a * (1 - .55 * k)); }
+    bigNum(fmt(350 * eout(ap(t, V('n350') - .4, 1.1))), H * .3, 170, a * ap(t, V('n350') - .4, .3), BR.acc, 'кораблей на дне');
+    const [ex, ey] = P(-85.1, 46.99); const q = a * ap(t, V('ef'), .4);
+    if (q > 0) { ship(ex, ey, 1.4, .25, q); pill('«Эдмунд Фицджеральд», 1975', W / 2, H * .66, 46, q, { line: BR.red }); } }
+  // 7. one system -> St Lawrence -> Atlantic
+  { const a = A('conn', 'ppl', .35); LK.forEach(k => fill(SH[k], LAKE, a * .9, { fill: .6, lw: 4, blur: 16 }));
+    polyPartial(SH.route, ap(t, V('conn') + .5, V('atl') - V('conn')), { col: '#9ef2ff', lw: 9, glow: WATER, blur: 22, a });
+    head('Одна водная система', A('conn', 'law', .25), WATER, H * .15, 82);
+    label2(['р. Св. Лаврентия'], -71.5, 47.6, A('law', 'ppl', .3), WATER, 50); label2(['Атлантика'], -58, 44.2, A('atl', 'ppl', .3), WATER, 60); }
+  // 8. people and species
+  { const a = A('ppl', 'great', .35); LK.forEach(k => fill(SH[k], LAKE, a * pulse, { fill: .6, lw: 4, blur: 18 }));
+    const n = Math.floor(36 * ap(t, V('ppl') + .3, 1.4)); for (let i = 0; i < n; i++) { const an = i / 36 * Math.PI * 2, rx = 400, ry = 520; person(W / 2 + Math.cos(an) * rx, H * .5 + Math.sin(an) * ry, 70, '#fff', a * .95); }
+    bigNum(fmt(40 * eout(ap(t, V('n40') - .3, 1))) + ' млн', H * .16, 130, A('ppl', 'sp', .3), BR.acc, 'людей пьют эту воду');
+    bigNum(fmt(4000 * eout(ap(t, V('n4000') - .3, 1))), H * .16, 140, A('sp', 'great', .3), '#7fe08a', 'видов растений и животных');
+    const em = ['🐟', '🦆', '🦌', '🌲', '🐻', '🦅', '🐢', '🌿']; const q = A('sp', 'great', .3);
+    if (q > 0) em.forEach((e, i) => { const an = i / em.length * Math.PI * 2 + .3; const s = back(clamp(ap(t, V('sp') + i * .12, .35)));
+      ctx.save(); ctx.globalAlpha = q; ctx.translate(W / 2 + Math.cos(an) * 250, H * .5 + Math.sin(an) * 330); ctx.scale(s, s); ctx.font = '84px "Noto Color Emoji"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e, 0, 0); ctx.restore(); }); }
+  // 9. finale
+  { const a = A('great', 'cta', .35); LK.forEach(k => fill(SH[k], LAKE, a * pulse, { fill: .9, lw: 6, blur: 36 }));
+    head('Действительно', a, '#ffffff', H * .15, 90); head('ВЕЛИКИЕ', a * ap(t, V('grt2'), .3), LAKE, H * .15 + 110, 130); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru;
+  END = V('vend') + 3.0; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('na', 'tex/na.jpg'), loadImg('gl', 'tex/gl.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
