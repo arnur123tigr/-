@@ -1,0 +1,262 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему в Бразилии говорят по-португальски» — KZ + RU. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 50, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'sa', l0: -88, l1: -28, b0: -58, b1: 15, minppd: 16 });
+TEX.push({ k: 'ib', l0: -12, l1: 6, b0: 34, b1: 46, minppd: 16 });
+TEX.push({ k: 'nebr', l0: -56, l1: -28, b0: -32, b1: 8, minppd: 40 });
+const GOLD = BR.acc, RED = BR.red, SPA = '#4FA8FF', POR = '#3DDC84';
+const LINE = -46.6;   // Tordesillas: 370 leagues west of Cape Verde ≈ 46°37′ W
+const PSEG = [-39.06, -16.45], LISB = [-9.14, 38.72];
+const TXT = {
+  ru: { h1: 'Почему в Бразилии', h2: 'португальский?', spa: 'Испанский', por: 'Португальский', y1494: '1494', steps: '3 шага', oneline: 'одна линия',
+    vs: 'Испания vs Португалия', es: 'Испания', pt: 'Португалия', lands: 'Новые земли?', tord: 'Тордесильяс, 1494', west: 'Испании', east: 'Португалии', deg: '≈ 46° з. д.',
+    cabral: 'Кабрал, 1500', pside: 'португальская сторона', beyond: 'Дальше линии', fifth: '5-я страна мира', area: '8,5 млн км²',
+    ent: 'ЕНТ', d1: 'Великие', d2: 'открытия', col: 'Колумб, 1492', gama: 'Васко да Гама, 1498', cab: 'Кабрал, 1500',
+    p10: '10 млн', p210: '210 млн', x20: '× 20', bra: 'Бразилия', speak: 'говорят по-португальски', cta1: 'Ссылка', cta2: 'в шапке профиля',
+    src: 'Источники: Britannica, IBGE, INE Portugal · карта: NASA Blue Marble · линия примерная' },
+  kk: { h1: 'Неге Бразилияда', h2: 'португал тілі?', spa: 'Испан тілі', por: 'Португал тілі', y1494: '1494', steps: '3 қадам', oneline: 'бір сызық',
+    vs: 'Испания vs Португалия', es: 'Испания', pt: 'Португалия', lands: 'Жаңа жерлер?', tord: 'Тордесильяс, 1494', west: 'Испанияға', east: 'Португалияға', deg: '≈ 46° б. б.',
+    cabral: 'Кабрал, 1500', pside: 'португал жағы', beyond: 'Сызықтан әрі', fifth: 'әлемде 5-орын', area: '8,5 млн км²',
+    ent: 'ҰБТ', d1: 'Ұлы географиялық', d2: 'ашулар', col: 'Колумб, 1492', gama: 'Васко да Гама, 1498', cab: 'Кабрал, 1500',
+    p10: '10 млн', p210: '210 млн', x20: '× 20', bra: 'Бразилия', speak: 'португалша сөйлейді', cta1: 'Сілтеме', cta2: 'профиль шапкасында',
+    src: 'Дереккөздер: Britannica, IBGE, INE Portugal · карта: NASA Blue Marble · сызық шамамен' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function head2(l1, l2, a, y = H * .15) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(66, 66 * 960 / tw(l1, 66, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, 96, Math.min(104, 104 * 960 / tw(l2, 104, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function bigPill(s, y, a, t0, o = {}) { if (a > 0) pill(s, W / 2, y, o.size || 50, a, { bg: o.bg || GOLD, col: o.col || BR.navy, line: o.bg || GOLD, font: 'MB', scale: back(clamp(ap(TT, t0, .4))) }); }
+function catmull(pts, n = 16) {   // smooth lon/lat route through waypoints
+  const o = []; for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; o.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); } }
+  o.push(pts[pts.length - 1]); return o;
+}
+function along(pts, p) {   // point + heading at fraction p of a lon/lat polyline (screen length)
+  const S = pts.map(c => P(c[0], c[1])); let L = 0; const d = [0];
+  for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  const lim = L * clamp(p); for (let i = 1; i < S.length; i++) if (d[i] >= lim) { const k = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1);
+    return [lerp(S[i - 1][0], S[i][0], k), lerp(S[i - 1][1], S[i][1], k), Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0])]; }
+  const z = S[S.length - 1]; return [z[0], z[1], 0];
+}
+function caravel(x, y, s, a, dir = 1, sail = '#fff', cross = RED) {   // 15th-century ship icon in a navy disc
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 44, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = 4; ctx.strokeStyle = GOLD; ctx.stroke(); ctx.scale(dir, 1);
+  ctx.fillStyle = '#8a5a32'; ctx.beginPath(); ctx.moveTo(-30, 10); ctx.lineTo(30, 10); ctx.lineTo(22, 24); ctx.lineTo(-24, 24); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#f2e6cc'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-2, 10); ctx.lineTo(-2, -30); ctx.moveTo(16, 10); ctx.lineTo(16, -18); ctx.stroke();
+  ctx.fillStyle = sail; ctx.beginPath(); ctx.moveTo(-18, -26); ctx.quadraticCurveTo(-8, -10, -18, 6); ctx.lineTo(12, 6); ctx.quadraticCurveTo(4, -10, 12, -26); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = cross; ctx.fillRect(-6, -18, 4, 16); ctx.fillRect(-11, -12, 14, 4);
+  ctx.fillStyle = sail; ctx.beginPath(); ctx.moveTo(18, -16); ctx.lineTo(18, 4); ctx.lineTo(32, 4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function flagDisc(kind, x, y, r, a) {
+  if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = '#000'; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.clip();
+  if (kind === 'es') { ctx.fillStyle = '#C60B1E'; ctx.fillRect(-r, -r, 2 * r, 2 * r); ctx.fillStyle = '#FFC400'; ctx.fillRect(-r, -r / 2, 2 * r, r);
+    ctx.fillStyle = '#AD1519'; rr(-r * .52, -r * .3, r * .3, r * .55, 6); ctx.fill(); }
+  else { ctx.fillStyle = '#046A38'; ctx.fillRect(-r, -r, 2 * r, 2 * r); ctx.fillStyle = '#DA291C'; ctx.fillRect(-r * .25, -r, 2 * r, 2 * r);
+    ctx.beginPath(); ctx.arc(-r * .25, 0, r * .36, 0, 7); ctx.fillStyle = '#FFE900'; ctx.fill(); ctx.beginPath(); ctx.arc(-r * .25, 0, r * .2, 0, 7); ctx.fillStyle = '#DA291C'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-r * .33, -r * .1, r * .16, r * .2); }
+  ctx.restore(); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+function lineX() { return P(LINE, 0)[0]; }
+function tordLine(p, a, lw = 7) {   // the dividing meridian, drawn top -> bottom
+  if (a <= 0 || p <= 0) return; polyPartial([[LINE, 82], [LINE, -62]], p, { col: GOLD, lw, glow: GOLD, blur: 22, a });
+  polyPartial([[LINE, 82], [LINE, -62]], p, { col: '#fff', lw: 2, glow: 'rgba(0,0,0,0)', blur: 0, a: a * .9 });
+}
+function sideTint(a, side, col) { if (a <= 0) return; const x = lineX(); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col;
+  if (side < 0) ctx.fillRect(0, 0, Math.max(0, x), H); else ctx.fillRect(x, 0, W - x, H); ctx.restore(); }
+function westArrow(lat, p, a) {   // amber arrow from the line westwards
+  if (p <= 0 || a <= 0) return; const [x0, y0] = P(LINE - 1, lat), [x1, y1] = P(LINE - 13, lat + 1.5);
+  arrow(x0, y0, x1, y1, (x0 + x1) / 2, y0 - 30, p, a, 8);
+}
+// ---------- routes (approximate) ----------
+const R_COL = catmull([[-6.95, 37.2], [-12, 31], [-17.5, 28.1], [-35, 25], [-55, 24], [-74.5, 24.1]]);
+const R_GAMA = catmull([[-9.14, 38.7], [-16, 26], [-23.5, 15], [-28, 0], [-25, -20], [-5, -33], [18.5, -35.5], [33, -28], [40.7, -15], [40.1, -3.2], [55, 6], [75.8, 11.25]]);
+const R_CAB = catmull([[-9.14, 38.7], [-16, 27], [-24, 15], [-31, 0], [-36, -10], [-39.06, -16.45]]);
+let CAMK = [];
+function buildCam() {
+  CAMK = [
+    [0, -60, -21, 13], [V('q') + 2.2, -59, -19, 22, 'e'], [V('s2'), -58.5, -18.5, 23, 'l'],
+    [V('s2') + 1.2, -36, 2, 11, 'e'], [V('st1'), -35, 3, 11.5, 'l'],
+    [V('st1') + 1.2, -32, 17, 9, 'e'], [V('st2'), -32, 17, 9.6, 'l'],
+    [V('st2') + 1.1, -40, 4, 9.5, 'e'], [V('st3'), -40, 2, 10.5, 'l'],
+    [V('st3') + 1.4, -41.5, -9, 46, 'e'], [V('c1500'), -41, -11, 52, 'l'], [V('grow') - .1, -40.8, -13, 58, 'l'],
+    [V('grow') + 1.3, -54, -15, 23, 'e'], [V('ent'), -54, -15, 25, 'l'],
+    [V('ent') + 1.2, 0, 5, 6.2, 'e'], [V('twist'), 0, 5, 6.4, 'l'],
+    [V('twist') + 1.2, -30, 18, 13, 'e'], [V('cta'), -30, 18, 13.6, 'l'],
+    [V('cta') + 1.6, -30, 5, 8, 'e'], [END, -30, 5, 7, 'l'] ];
+}
+function render(t) {
+  TT = t; CAM = camAt(CAMK, t);
+  drawMap(.12);
+  { ctx.save(); ctx.globalAlpha = .42; pathRings(SH.borders); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore(); }
+  const C = SH.cty;
+  // ---- F1 hook: Spanish-speaking South America blue, Brazil green (the Guianas stay unfilled)
+  { const a = win(t, .3, V('s2') + .6, .5); if (a > 0) {
+      SH.spa.forEach((k, i) => glowFill(C[k], SPA, a * ap(t, .4 + i * .07, .4), { fill: .42, blur: 16, lw: 3 }));
+      const pul = t > V('why') ? .08 * Math.sin((t - V('why')) * 7) : 0;
+      glowFill(C.BRA, POR, a * ap(t, 1.1, .4), { fill: .5 + pul, blur: 26, lw: 5 });
+      { const q = a * ap(t, 1.0, .3); if (q > 0) { const [x, y] = P(-65, -30); pill(TXT.spa, x, y, 46, q, { bg: SPA, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, 1.0, .4))) }); } }
+      { const q = a * ap(t, 1.7, .3); if (q > 0) { const [x, y] = P(-50, -9); pill(TXT.por, x, y, 46, q, { bg: POR, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, 1.7, .4))) }); } }
+      head2(TXT.h1, TXT.h2, a * ap(t, V('why') - .2, .3), H * .13);
+    } }
+  // ---- the line: preview in F2, drawn for real in F4, stays until the ENT scene
+  { const pre = win(t, V('s2') + .5, V('st1') + .2, .3); if (pre > 0) { ctx.save(); ctx.setLineDash([22, 16]); ctx.lineDashOffset = -t * 40; tordLine(ease(ap(t, V('s2') + .5, 1.0)), pre * .8, 5); ctx.restore(); } }
+  const lineA = win(t, V('split') - .3, V('ent') + .3, .3);
+  tordLine(ease(ap(t, V('split') - .3, 1.1)), lineA);
+  // ---- F2 promise
+  { const a = win(t, V('s2') + .2, V('st1'), .3); if (a > 0) {
+      head(TXT.y1494, a, GOLD, H * .19, 150);
+      pill(TXT.oneline, W / 2, H * .265, 40, a * ap(t, V('s2') + .8, .3), { line: GOLD });
+      const sa = a * ap(t, V('steps') - .1, .3);
+      [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .33, sa * back(clamp(ap(t, V('steps') + n * .15, .35))), GOLD));
+      counter(1, sa);
+    } }
+  // ---- F3 Spain vs Portugal
+  { const a = win(t, V('st1') - .1, V('st2') + .4, .3); if (a > 0) {
+      counter(1, win(t, V('st1'), V('st2'), .3));
+      glowFill(C.ESP, SPA, a * ap(t, V('st1') + .4, .4), { fill: .6, blur: 18, lw: 3 }); glowFill(C.PRT, POR, a * ap(t, V('st1') + .6, .4), { fill: .7, blur: 18, lw: 3 });
+      const [ex, ey] = P(-3.5, 40.2), [px, py] = P(-8.2, 39.6);
+      flagDisc('es', ex + 120, ey - 150, 58, a * ap(t, V('st1') + .7, .4)); flagDisc('pt', px - 120, py - 150, 58, a * ap(t, V('st1') + .9, .4));
+      txt('vs', (ex + px) / 2, ey - 150, 46, GOLD, 'MB', { stroke: 6, sc: 'rgba(0,0,0,.5)' });
+      bigPill(TXT.vs, H * .19, a * ap(t, V('st1') + .3, .3), V('st1') + .3, { size: 46 });
+      // ships: Spain west across the ocean, Portugal south along Africa
+      const sp = ease(ap(t, V('st1') + 1.0, V('st2') - V('st1') - .6));
+      const rs = R_COL, rp = catmull([[-9.14, 38.7], [-16, 26], [-18, 14], [-14, 5], [-8, 2]]);
+      polyPartial(rs, sp, { col: SPA, lw: 4, glow: SPA, blur: 10, a: a * .8 }); polyPartial(rp, sp, { col: POR, lw: 4, glow: POR, blur: 10, a: a * .8 });
+      { const [x, y] = along(rs, sp); caravel(x, y, .75, a * ap(t, V('st1') + 1.0, .3), -1, '#fff', '#C60B1E'); }
+      { const [x, y] = along(rp, sp); caravel(x, y, .75, a * ap(t, V('st1') + 1.0, .3), -1, '#fff', RED); }
+      { const q = a * ap(t, V('argue'), .3); if (q > 0) { const [x, y] = P(-62, 4); pill(TXT.lands, x, y, 44, q, { line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('argue'), .4))) }); } }
+    } }
+  // ---- F4 Tordesillas: west to Spain, east to Portugal
+  { const a = win(t, V('st2'), V('st3') + .3, .3); if (a > 0) {
+      counter(2, win(t, V('st2'), V('st3'), .3));
+      sideTint(a * .16 * ap(t, V('west'), .4), -1, SPA); sideTint(a * .16 * ap(t, V('east'), .4), 1, POR);
+      glowFill(C.ESP, SPA, a, { fill: .6, blur: 14, lw: 3 }); glowFill(C.PRT, POR, a, { fill: .7, blur: 14, lw: 3 });
+      bigPill(TXT.tord, H * .19, a * ap(t, V('st2') + .3, .3), V('st2') + .3, { size: 48 });
+      const x = lineX();
+      { const q = a * ap(t, V('west'), .3); if (q > 0) { pill('← ' + TXT.west, x - 230, H * .5, 46, q, { bg: SPA, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, V('west'), .4))) }); flagDisc('es', x - 230, H * .5 - 110, 40, q); } }
+      { const q = a * ap(t, V('east'), .3); if (q > 0) { pill(TXT.east + ' →', x + 250, H * .5, 46, q, { bg: POR, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, V('east'), .4))) }); flagDisc('pt', x + 250, H * .5 - 110, 40, q); } }
+      pill(TXT.deg, x, H * .7, 30, a * ap(t, V('split') + .8, .3), { line: GOLD });
+    } }
+  // ---- F5 the eastern bulge of Brazil is on the Portuguese side, Cabral 1500
+  const edgeA = Math.max(win(t, V('edge') - .2, V('grow') + .4, .3), 0);
+  { const a = win(t, V('st3'), V('grow') + .3, .3); if (a > 0) {
+      counter(3, win(t, V('st3'), V('grow'), .3));
+      if (edgeA > 0) { const x = lineX(); ctx.save(); ctx.beginPath(); ctx.rect(x, 0, W - x, H); ctx.clip(); glowFill(C.BRA, POR, edgeA * (.85 + .15 * Math.sin(t * 6)), { fill: .5, blur: 24, lw: 5 }); ctx.restore();
+        pill(TXT.pside, x + (W - x) / 2, H * .26, 38, edgeA * ap(t, V('edge') + .2, .3), { bg: POR, col: BR.navy, line: '#fff', font: 'MB' }); }
+      const x = lineX();
+      pill('← ' + TXT.west, Math.max(140, x - 170), H * .34, 32, a * .9, { line: SPA }); pill(TXT.east + ' →', Math.min(W - 160, x + 190), H * .34, 32, a * .9, { line: POR });
+      const sp = ease(ap(t, V('c1500') - .4, 2.2)), q = a * ap(t, V('c1500') - .4, .3);
+      if (q > 0) { const r = [[-30.5, -6], [-33.5, -11], [-36.5, -15], [-38.7, -16.4]];
+        const rc = catmull(r); ctx.save(); ctx.setLineDash([16, 12]); polyPartial(rc, sp, { col: '#fff', lw: 4, a: q }); ctx.restore();
+        const [sx, sy] = along(rc, sp); caravel(sx, sy, 1.1, q, 1, '#fff', RED);
+        const qd = q * ap(t, V('c1500') + 1.6, .3); dot(...PSEG, qd);
+        bigPill(TXT.cabral, H * .19, q, V('c1500') - .4, { size: 52 });
+      }
+    } }
+  // ---- F6 Brazil grows west, far beyond the line
+  { const a = win(t, V('grow') - .1, V('ent') + .3, .3); if (a > 0) {
+      const k = ease(ap(t, V('grow') + .2, Math.max(1.5, V('fifth') - V('grow') - .1)));
+      const x0 = lineX(), xw = P(-75, 0)[0], x = lerp(x0, xw, k);
+      ctx.save(); ctx.beginPath(); ctx.rect(x, 0, W - x, H); ctx.clip(); glowFill(C.BRA, POR, a, { fill: .55, blur: 26, lw: 5 }); ctx.restore();
+      if (k < .98) { ctx.save(); ctx.globalAlpha = a * .8; ctx.strokeStyle = POR; ctx.lineWidth = 4; ctx.setLineDash([12, 10]); ctx.shadowColor = POR; ctx.shadowBlur = 12; ctx.beginPath(); ctx.moveTo(x, H * .3); ctx.lineTo(x, H * .75); ctx.stroke(); ctx.restore(); }
+      [-6, -15, -24].forEach((lat, i) => westArrow(lat, ease(ap(t, V('far') - .2 + i * .15, .8)), a * (1 - ap(t, V('fifth') + .4, .4))));
+      bigPill(TXT.beyond, H * .19, a * ap(t, V('grow') + .2, .3) * (1 - ap(t, V('fifth'), .3)), V('grow') + .2);
+      { const q = a * ap(t, V('fifth'), .3); if (q > 0) { bigPill(TXT.fifth, H * .19, q, V('fifth'), { size: 54 }); pill(TXT.area, W / 2, H * .255, 40, q * ap(t, V('fifth') + .4, .3), { line: GOLD, col: GOLD }); } }
+      { const q = a * ap(t, V('fifth') + .2, .3); label2([TXT.bra], -53, -11, q, POR, 66); }
+    } }
+  // ---- F7 ENT: the great voyages
+  { const a = win(t, V('ent') - .1, V('twist') + .3, .3); if (a > 0) {
+      glowFill(C.ESP, SPA, a, { fill: .6, blur: 12, lw: 2 }); glowFill(C.PRT, POR, a, { fill: .7, blur: 12, lw: 2 });
+      [[R_COL, SPA, TXT.col, .3, [-74.5, 24.1], 0, -60], [R_GAMA, POR, TXT.gama, .7, [75.8, 11.25], -120, -70], [R_CAB, GOLD, TXT.cab, 1.1, PSEG, 0, 60]].forEach(([r, col, lab, d, end, dx, dy]) => {
+        const p = ease(ap(t, V('ent') + d, 2.2)); polyPartial(r, p, { col, lw: 5, glow: col, blur: 14, a });
+        const [sx, sy] = along(r, p); if (p < .99) { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(sx, sy, 9, 0, 7); ctx.fillStyle = '#fff'; ctx.shadowColor = col; ctx.shadowBlur = 16; ctx.fill(); ctx.restore(); }
+        const q = a * ap(t, V('ent') + d + 2.0, .3); if (q > 0) { dot(...end, q, col); const [x, y] = P(...end); pill(lab, clamp(x + dx, 200, W - 200), y + dy, 32, q, { line: col }); } });
+      stamp(TXT.ent, W * .25, H * .29, a, V('ent') + .1);
+      head2(TXT.d1, TXT.d2, a * ap(t, V('disc'), .35), H * .13);
+    } }
+  // ---- F8 twist: Portugal vs Brazil, people x 20
+  { const a = win(t, V('twist') - .1, V('cta') + .3, .3); if (a > 0) {
+      glowFill(C.PRT, POR, a, { fill: .8, blur: 22, lw: 4 }); glowFill(C.BRA, POR, a * ap(t, V('twist') + .5, .4), { fill: .55, blur: 26, lw: 5 });
+      const [px, py] = P(-8.2, 39.6), [bx, by] = P(-52, -11);
+      { const q = a * ap(t, V('twist') + .3, .3); if (q > 0) { pill(TXT.pt, px, py - 80, 34, q, {}); pill(TXT.p10, px, py + 80, 44, q, { line: GOLD, col: GOLD, font: 'MB', scale: back(clamp(ap(t, V('twist') + .3, .4))) }); } }
+      { const q = a * ap(t, V('ptg') - .6, .3); if (q > 0) { pill(TXT.bra, bx, by - 110, 40, q, {}); pill(TXT.p210, bx, by, 84, q, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('ptg') - .6, .4))) }); } }
+      arrow(px - 40, py + 40, bx + 150, by - 60, (px + bx) / 2 + 160, (py + by) / 2 - 40, ease(ap(t, V('twist') + .6, 1.0)), a * .9, 7);
+      { const q = a * ap(t, V('x20'), .3); if (q > 0) { const s = back(clamp(ap(t, V('x20'), .45))); ctx.save(); ctx.translate(W / 2, H * .165); ctx.scale(s, s); ctx.globalAlpha = clamp(q * 2);
+          txt(TXT.x20, 0, 0, 190, GOLD, 'MB', { shadow: 'rgba(0,0,0,.8)', blur: 30, stroke: 12, sc: 'rgba(0,0,0,.55)' }); ctx.restore();
+          pill(TXT.speak, W / 2, H * .232, 36, q, { line: GOLD }); } }
+    } }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src, W / 2, H * .965, 20, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  ctaEnd(t);
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function stamp(s, x, y, a, t0) {
+  const sp = ap(TT, t0, .35); if (sp <= 0 || a <= 0) return; const sc = 1 + 1.4 * (1 - eout(sp));
+  ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.18); ctx.scale(sc, sc);
+  rr(-130, -64, 260, 128, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 76, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function ctaEnd(t) {
+  const a = ap(t, V('cta'), .4); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .2, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .56); ctx.scale(pk, pk);
+  txt(TXT.cta1, 0, -70, 66, '#fff', 'MX'); const s = TXT.cta2, size = 64, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, 0, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 66, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .41 + Math.sin(t * 6) * 14, 1.6 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json();
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('sa', 'tex/sa.jpg'), loadImg('ib', 'tex/ib.jpg'), loadImg('nebr', 'tex/nebr.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
