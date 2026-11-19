@@ -1,0 +1,7 @@
+# chimborazo — «Самая высокая точка Земли — не Эверест» (KZ + RU)
+GEO-KARTA reel, JAS EDUCATION satellite style, 1080x1920, code only (no Higgsfield). Engine copied from `nemo/` (2D canvas over NASA Blue Marble) plus a per-pixel textured globe (`drawGlobe`, optional flattening) for scenes 1, 4, 6–7, 9.
+
+- Textures: `prep_tex.py tex him 72 102 16 40 120 and -90 -66 -14 10 120` (Blue Marble tiles B1, B2, C1, D1 from assets.science.nasa.gov in /home/user/data) + `grade.py`; `tex/globe.jpg` = world.jpg at 4096 px; `shapes.json` = Natural Earth 50m Ecuador and Nepal.
+- Scenes: 1 globe dive to Everest (crown №1, «?»), 2 two ways, 3 drawn height panel (8849 m counter, K2, Chimborazo 6263 m), 4 globe flattening (exaggerated, said on screen), 5 map Ecuador + equator, 6 globe centre lines (6382,3 vs 6384,4 km, +2 km), 7 ЕНТ/ҰБТ geoid, 8 summit panel (stars), 9 CTA link in profile header + end card.
+- Voice: ElevenLabs eleven_v4, one take each: RU Egor energetic (`vo_ru.mp3`, 38.4 s, 580 credits), KZ Ерсұлтан (`vo_kk.mp3`, 45.4 s, 568 credits). Draft Microsoft voices kept in `vo/draft/` (`etts.py`). After a new take: `words.py vo_L.mp3 words_L.json L medium`, update RAW/S in `beats.py`, run it, `./build.sh ru|kk` -> `out/chimborazo_<lang>.mp4` (with music only).
+- Facts: NOAA (Chimborazo ~6384,4 km, Everest ~6382,3 km from the centre), Britannica (Everest 8848,86 m; Chimborazo 6263 m). Corner logo 122 px.
