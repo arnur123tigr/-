@@ -20,6 +20,7 @@ S = {'ru': [('rec0', 'У Казахстана есть мировой рекор
             ('ent', 'Бұл ҰБТ-да келеді:'), ('pos', 'Қазақстанның жағдайы — құрлықішілік.'),
             ('uzb', 'Ал көршіміз Өзбекстан —'), ('two', 'тек теңізі жоқ елдермен қоршалған әлемдегі екі елдің бірі.'),
             ('cta', 'Профиль шапкасындағы сілтемеге өтіңіз.')]}
+PFX = {('kk', 'eu'): 1}   # whisper writes «Европаның»
 norm = lambda s: re.sub(r'[^\wәғқңөұүһі]', '', s.lower().replace('ё', 'е'))
 out = json.load(open('beats.json')) if os.path.exists('beats.json') else {}
 for L in sys.argv[1:] or ('ru', 'kk'):
@@ -27,7 +28,7 @@ for L in sys.argv[1:] or ('ru', 'kk'):
     if os.path.exists(fn):
         W = json.load(open(fn)); B = {}; i = 0
         for k, s in seq:
-            w0 = norm(s.split()[0])[:3]
+            w0 = norm(s.split()[0])[:PFX.get((L, k), 3)]
             j = next((j for j in range(i, len(W)) if norm(W[j][2]).startswith(w0)), None)
             if j is None: sys.exit(f'{L}: no word for {k} ({s.split()[0]}) after {W[i][0] if i < len(W) else "end"}')
             B[k] = W[j][0] if k != 'rec0' else 0.0; i = j + 1

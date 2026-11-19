@@ -252,7 +252,7 @@ function render(t) {
 function ctaEnd(t) {
   const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
   const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
-  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = 58, w = tw(s, size, 'MB') + 90;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(TXT.cta1 + ' ' + TXT.cta2, 58, 'MB')), w = tw(s, size, 'MB') + 90;
   rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
   upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
 }
