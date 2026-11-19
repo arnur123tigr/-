@@ -1,0 +1,378 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Самая высокая точка Земли — не Эверест» — KZ + RU. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 46, SH = {};
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'him', l0: 72, l1: 102, b0: 16, b1: 40, minppd: 16 });
+TEX.push({ k: 'and', l0: -90, l1: -66, b0: -14, b1: 10, minppd: 16 });
+const GOLD = BR.acc, RED = BR.red, TURQ = '#4FD1C5', SKY = '#9fe8ff';
+const EVE = [86.925, 27.988], CHI = [-78.817, -1.469];
+const TXT = {
+  ru: { h1: 'Эверест', h1b: '№1?', ev: 'Эверест', two: '2 способа', m1: 'от уровня моря', m2: 'от центра Земли', win: 'победитель другой',
+    sea: 'уровень моря · 0 м', chim: 'Чимборасо', chimH: '6263 м', k2: 'К2', k2H: '8611 м', h3: 'От уровня моря', notsph: 'Земля не шар',
+    exag: 'сплюснутость показана с преувеличением', eqL: 'экватор', ecu: 'Эквадор', near: '≈ 160 км до экватора', center: 'центр Земли',
+    dEv: '6382,3 км', dCh: '6384,4 км', plus: '+ 2 км', h6: 'От центра Земли', ent: 'ЕНТ', geoid: 'Геоид', poles: 'сжата у полюсов',
+    stars: 'Ближе к звёздам', space: 'космос', cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Источники: NOAA, Britannica · карта: NASA Blue Marble' },
+  kk: { h1: 'Эверест', h1b: '№1?', ev: 'Эверест', two: '2 жол', m1: 'теңіз деңгейінен', m2: 'Жер центрінен', win: 'жеңімпаз басқа',
+    sea: 'теңіз деңгейі · 0 м', chim: 'Чимборасо', chimH: '6263 м', k2: 'К2', k2H: '8611 м', h3: 'Теңіз деңгейінен', notsph: 'Жер — шар емес',
+    exag: 'қысылуы әдейі үлкейтіліп көрсетілген', eqL: 'экватор', ecu: 'Эквадор', near: 'экваторға дейін ≈ 160 км', center: 'Жер центрі',
+    dEv: '6382,3 км', dCh: '6384,4 км', plus: '+ 2 км', h6: 'Жер центрінен', ent: 'ҰБТ', geoid: 'Геоид', poles: 'полюстерде қысылған',
+    stars: 'Жұлдыздарға жақын', space: 'ғарыш', cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Дереккөздер: NOAA, Britannica · карта: NASA Blue Marble' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+const pop = k => back(clamp(ap(TT, V(k), .4)));
+function glowSpot(x, y, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function sdot(x, y, a, col = GOLD, r = 11) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(96, 96 * 960 / tw(l1, 96, 'MB')), '#fff', 'MB', { stroke: 8, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, 116, Math.min(150, 150 * 960 / tw(l2, 150, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 10, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function dashLine(x0, y0, x1, y1, p, a, col = '#fff', lw = 6, dash = [20, 16]) {
+  if (a <= 0 || p <= 0) return; const x = lerp(x0, x1, clamp(p)), y = lerp(y0, y1, clamp(p));
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.setLineDash(dash); ctx.lineDashOffset = -TT * 50;
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
+}
+function solidLine(x0, y0, x1, y1, p, a, col = GOLD, lw = 9) {
+  if (a <= 0 || p <= 0) return; const x = lerp(x0, x1, clamp(p)), y = lerp(y0, y1, clamp(p));
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
+}
+function crown(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-50, 22); ctx.lineTo(-58, -26); ctx.lineTo(-26, 0); ctx.lineTo(0, -38); ctx.lineTo(26, 0); ctx.lineTo(58, -26); ctx.lineTo(50, 22); ctx.closePath();
+  ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 26; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke();
+  for (const px of [-58, 0, 58]) { ctx.beginPath(); ctx.arc(px, px ? -26 : -38, 7, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
+  ctx.restore();
+}
+function qmark(x, y, s, a, col = GOLD) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(Math.sin(TT * 7) * .08); ctx.scale(s, s);
+  txt('?', 0, 0, 200, col, 'MB', { stroke: 12, sc: 'rgba(19,11,84,.9)', shadow: col, blur: 30, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function arrowHead(x, y, an, s, a, col = GOLD) {   // straight thick arrow pointing along angle an, tip at (x,y)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(an); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 16;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-34, -30); ctx.lineTo(-34, -12); ctx.lineTo(-80, -12); ctx.lineTo(-80, 12); ctx.lineTo(-34, 12); ctx.lineTo(-34, 30); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+// ---------- space background + stars ----------
+const STARS = (() => { const r = rng(7), a = []; for (let i = 0; i < 260; i++) a.push([r() * W, r() * H, r() * 2.2 + .5, r()]); return a; })();
+function space(a, t, yMax = H) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(W / 2, H * .45, 50, W / 2, H * .45, H * .9); g.addColorStop(0, '#0d1240'); g.addColorStop(1, '#010208'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, yMax);
+  for (const [x, y, r, p] of STARS) { if (y > yMax) continue; ctx.globalAlpha = a * (.35 + .65 * Math.abs(Math.sin(t * 1.3 + p * 9))); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+// ---------- textured globe (orthographic, per pixel), optional flattening ----------
+let TD = null, TWd = 0, THt = 0; const GC = document.createElement('canvas'), gctx = GC.getContext('2d');
+let G = { cx: W / 2, cy: H / 2, R: 400, lon0: 0, lat0: 0, f: 1 };
+function globeP(lon, lat) {     // -> [x, y, z] (z>0 visible) for the current G
+  const la = lat * Math.PI / 180, lo = (lon - G.lon0) * Math.PI / 180, l0 = G.lat0 * Math.PI / 180;
+  const X = Math.cos(la) * Math.sin(lo), Y = Math.sin(la), Z = Math.cos(la) * Math.cos(lo);
+  const y = Y * Math.cos(l0) - Z * Math.sin(l0), z = Y * Math.sin(l0) + Z * Math.cos(l0);
+  return [G.cx + X * G.R, G.cy - y * G.R * G.f, z];
+}
+function drawGlobe(a = 1) {
+  if (a <= 0 || !TD) return;
+  const R = Math.round(G.R), Rf = Math.max(2, Math.round(G.R * G.f)), w = 2 * R + 2, h = 2 * Rf + 2;
+  if (GC.width !== w || GC.height !== h) { GC.width = w; GC.height = h; }
+  const img = gctx.createImageData(w, h), D = new Uint32Array(img.data.buffer);
+  const l0 = G.lat0 * Math.PI / 180, cl = Math.cos(l0), sl = Math.sin(l0), lon0 = G.lon0 * Math.PI / 180;
+  const LX = -.45, LY = .38, LZ = .81;
+  for (let py = 0; py < h; py++) {
+    const v = (Rf + 1 - py - .5) / Rf; if (Math.abs(v) > 1.01) continue;
+    for (let px = 0; px < w; px++) {
+      const u = (px + .5 - R - 1) / R, d = u * u + v * v; if (d >= 1.0) continue;
+      const z = Math.sqrt(1 - d), Y = v * cl + z * sl, Z = -v * sl + z * cl;
+      const lat = Math.asin(Math.max(-1, Math.min(1, Y))), lon = lon0 + Math.atan2(u, Z);
+      let tx = ((lon / (2 * Math.PI) + .5) % 1 + 1) % 1, ty = .5 - lat / Math.PI;
+      const c = TD[Math.min(THt - 1, (ty * THt) | 0) * TWd + ((tx * TWd) | 0)];
+      const sh = .32 + .9 * Math.max(0, u * LX + v * LY + z * LZ), edge = Math.min(1, (1 - Math.sqrt(d)) * R * .8);
+      const r = Math.min(255, (c & 255) * sh), g = Math.min(255, ((c >> 8) & 255) * sh), b = Math.min(255, ((c >> 16) & 255) * sh);
+      D[py * w + px] = ((edge * 255) << 24) | (b << 16) | (g << 8) | r;
+    }
+  }
+  gctx.putImageData(img, 0, 0);
+  ctx.save(); ctx.globalAlpha = a;
+  // atmosphere
+  ctx.save(); ctx.beginPath(); ctx.ellipse(G.cx, G.cy, G.R + 6, G.R * G.f + 6, 0, 0, 7); ctx.shadowColor = 'rgba(120,200,255,.9)'; ctx.shadowBlur = 50; ctx.strokeStyle = 'rgba(140,210,255,.55)'; ctx.lineWidth = 8; ctx.stroke(); ctx.restore();
+  ctx.drawImage(GC, G.cx - R - 1, G.cy - Rf - 1);
+  ctx.restore();
+}
+function globeLine(lat, a, col = '#fff', lw = 3, dash = null, glow = 0) {   // parallel on the globe (visible half)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; if (dash) ctx.setLineDash(dash); if (glow) { ctx.shadowColor = col; ctx.shadowBlur = glow; }
+  ctx.beginPath(); let on = false;
+  for (let lo = -180; lo <= 180; lo += 3) { const [x, y, z] = globeP(G.lon0 + lo, lat); if (z > 0) { on ? ctx.lineTo(x, y) : ctx.moveTo(x, y); on = true; } else on = false; }
+  ctx.stroke(); ctx.restore();
+}
+function globeMeridian(lon, a, col = '#fff', lw = 2.5) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); let on = false;
+  for (let la = -90; la <= 90; la += 3) { const [x, y, z] = globeP(lon, la); if (z > 0) { on ? ctx.lineTo(x, y) : ctx.moveTo(x, y); on = true; } else on = false; }
+  ctx.stroke(); ctx.restore();
+}
+// ---------- mountain profiles (scene 3) and volcano (scene 8) ----------
+function mountain(cx, base, hgt, wid, seed, a, snow = .28, hi = 0) {
+  if (a <= 0) return; const r = rng(seed), pts = [];
+  const N = 26; for (let i = 0; i <= N; i++) { const k = i / N, x = cx + (k - .5) * wid; let y = 1 - Math.pow(Math.abs(k - .5) * 2, 1.25);
+    y = y * (.88 + r() * .16) - (i % 2) * .05 * (1 - Math.abs(k - .5) * 2); if (i === N / 2) y = 1; pts.push([x, base - Math.max(0, y) * hgt]); }
+  ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.moveTo(cx - wid / 2, base); pts.forEach(p => ctx.lineTo(p[0], p[1])); ctx.lineTo(cx + wid / 2, base); ctx.closePath();
+  const g = ctx.createLinearGradient(cx - wid / 2, 0, cx + wid / 2, 0); g.addColorStop(0, '#4a4f63'); g.addColorStop(.5, '#6b7088'); g.addColorStop(.51, '#3b3f52'); g.addColorStop(1, '#2a2d3d');
+  ctx.fillStyle = g; if (hi) { ctx.shadowColor = GOLD; ctx.shadowBlur = 40 * hi; } ctx.fill(); ctx.shadowBlur = 0;
+  ctx.clip(); ctx.fillStyle = 'rgba(240,246,255,.95)'; const sy = base - hgt * (1 - snow);
+  ctx.beginPath(); ctx.moveTo(cx - wid, sy); for (let x = cx - wid; x <= cx + wid; x += 18) ctx.lineTo(x, sy + Math.sin(x * .09 + seed) * 12 + (x % 36 ? 10 : -6)); ctx.lineTo(cx + wid, base - hgt - 20); ctx.lineTo(cx - wid, base - hgt - 20); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = hi ? GOLD : 'rgba(255,255,255,.6)'; ctx.lineWidth = hi ? 5 : 3; ctx.lineJoin = 'round';
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.restore();
+}
+const SEA = H * .74, MPX = 860 / 8849;    // scene 3 scale: px per metre
+function heightPanel(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  let g = ctx.createLinearGradient(0, 0, 0, SEA); g.addColorStop(0, '#050a24'); g.addColorStop(1, '#23306e'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, SEA);
+  for (const [x, y, r, p] of STARS) { if (y > SEA * .55) continue; ctx.globalAlpha = a * .5 * (.4 + .6 * Math.abs(Math.sin(t + p * 9))); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r * .8, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = a; g = ctx.createLinearGradient(0, SEA, 0, H); g.addColorStop(0, '#1d6e86'); g.addColorStop(1, '#03111c'); ctx.fillStyle = g; ctx.fillRect(0, SEA, W, H - SEA);
+  // altitude grid
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2; ctx.font = '26px MS'; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.textAlign = 'left';
+  for (let m = 2000; m <= 8000; m += 2000) { const y = SEA - m * MPX; ctx.beginPath(); ctx.moveTo(150, y); ctx.lineTo(W, y); ctx.stroke(); ctx.fillText(m + ' м', 24, y + 9); }
+  ctx.restore();
+  const pe = eout(ap(t, V('s3') + .15, 1.0));
+  mountain(830, SEA, 6263 * MPX * pe, 380, 5, a);                                  // Chimborazo
+  mountain(330, SEA, 8611 * MPX * pe, 420, 9, a * .9);                             // K2
+  const hiE = ap(t, V('nocomp'), .4);
+  mountain(590, SEA, 8849 * MPX * pe, 560, 3, a, .3, hiE);                         // Everest
+  // sea surface
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(220,250,255,.9)'; ctx.lineWidth = 5; ctx.beginPath();
+  for (let x = 0; x <= W; x += 8) { const y = SEA + Math.sin(x * .03 + t * 3) * 4; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); ctx.restore();
+  pill(TXT.sea, W / 2, SEA + 62, 34, a * ap(t, V('s3') + .3, .3), { line: SKY });
+  // height bar + counter
+  const hp = ease(ap(t, V('s3') + .3, 1.4)), yTop = SEA - 8849 * MPX * hp, bx = 590;
+  dashLine(bx, SEA - 6, bx, yTop, 1, a * clamp(hp * 4), GOLD, 6, [16, 12]);
+  const n = Math.round(8849 * hp); if (hp > 0) { const s = 1 + .08 * Math.sin(Math.min(1, hp) * Math.PI);
+    pill(n + ' м', bx, Math.min(SEA - 120, yTop - 92), 70, a, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: s * back(clamp(ap(t, V('s3') + .3, .4))) }); }
+  pill(TXT.ev, bx, SEA - 8849 * MPX * pe + 200 > SEA - 60 ? SEA - 60 : SEA - 8849 * MPX * .55, 38, a * ap(t, V('s3') + 1.2, .3), { line: GOLD });
+  pill(TXT.k2 + ' · ' + TXT.k2H, 300, SEA - 8611 * MPX * .45, 30, a * ap(t, V('s3') + 1.5, .3), { line: '#fff' });
+  pill(TXT.chim + ' · ' + TXT.chimH, 850, SEA - 6263 * MPX * .4, 30, a * ap(t, V('s3') + 1.7, .3), { line: '#fff' });
+  // crown on Everest
+  const cp = back(clamp(ap(t, V('nocomp'), .45))); if (cp > 0) crown(bx, Math.min(SEA - 120, yTop - 92) - 120, cp * 1.1, a);
+  head(TXT.h3, a * ap(t, V('s3'), .35), GOLD, H * .1, 84);
+}
+function volcano(cx, base, hgt, wid, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.moveTo(cx - wid / 2, base);
+  const N = 40; for (let i = 0; i <= N; i++) { const k = i / N, s = Math.abs(k - .5) * 2, y = base - hgt * (1 - Math.pow(s, .8)) * (s < .06 ? .985 + s * .25 : 1) + Math.sin(i * 1.7) * 5 * s; ctx.lineTo(cx - wid / 2 + k * wid, y); }
+  ctx.lineTo(cx + wid / 2, base); ctx.closePath();
+  const g = ctx.createLinearGradient(cx - wid / 2, 0, cx + wid / 2, 0); g.addColorStop(0, '#2c2f42'); g.addColorStop(.48, '#525870'); g.addColorStop(.52, '#2a2d40'); g.addColorStop(1, '#171926'); ctx.fillStyle = g; ctx.fill();
+  ctx.clip(); ctx.fillStyle = 'rgba(235,244,255,.95)'; const sy = base - hgt * .66; ctx.beginPath(); ctx.moveTo(cx - wid, sy);
+  for (let x = cx - wid; x <= cx + wid; x += 16) ctx.lineTo(x, sy + Math.sin(x * .07) * 14 + Math.abs(x - cx) * .12 + ((x / 16) % 2 ? 18 : 0)); ctx.lineTo(cx + wid, 0); ctx.lineTo(cx - wid, 0); ctx.fill();
+  ctx.restore();
+}
+function hiker(x, y, s, a) {   // person icon with a flag on the summit
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = GOLD; ctx.strokeStyle = GOLD; ctx.lineCap = 'round'; ctx.shadowColor = GOLD; ctx.shadowBlur = 16;
+  ctx.beginPath(); ctx.arc(0, -78, 11, 0, 7); ctx.fill(); ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(0, -64); ctx.lineTo(0, -30); ctx.lineTo(-12, 0); ctx.moveTo(0, -30); ctx.lineTo(12, 0);
+  ctx.moveTo(0, -56); ctx.lineTo(-16, -38); ctx.moveTo(0, -56); ctx.lineTo(18, -74); ctx.stroke();
+  ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(18, -74); ctx.lineTo(18, -124); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(18, -124); ctx.lineTo(54, -112); ctx.lineTo(18, -100); ctx.fill(); ctx.restore();
+}
+function summitPanel(t, a) {
+  if (a <= 0) return; space(a, t);
+  // Milky Way band
+  ctx.save(); ctx.globalAlpha = a * .22; ctx.translate(W / 2, H * .3); ctx.rotate(-.5); const g = ctx.createLinearGradient(0, -160, 0, 160); g.addColorStop(0, 'rgba(160,170,255,0)'); g.addColorStop(.5, 'rgba(200,190,255,.9)'); g.addColorStop(1, 'rgba(160,170,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(-1200, -160, 2400, 320); ctx.restore();
+  const base = H * .98, top = H * .58, sx = W / 2, rise = eout(ap(t, V('s8') - .1, 1.0));
+  ctx.save(); ctx.translate(0, (1 - rise) * 300);
+  volcano(sx, base, base - top, 1500, a);
+  hiker(sx - 4, top + 6, 1.05, a * ap(t, V('s8') + .5, .35));
+  ctx.restore();
+  // line to space
+  const lp = ease(ap(t, V('stars') - .2, 1.0)); dashLine(sx + 14, top - 135, sx + 14, top - 135 - 470 * lp, 1, a * clamp(lp * 4), SKY, 6);
+  if (lp > 0) { ctx.save(); ctx.globalAlpha = a * lp; for (let i = 0; i < 5; i++) { const an = i / 5 * Math.PI * 2 + t; star(sx + 14 + Math.cos(an) * 46, top - 630 + Math.sin(an) * 22, 12, a * lp); } ctx.restore();
+    pill(TXT.space, sx + 14, top - 720, 40, a * ap(t, V('stars') + .5, .3), { line: SKY }); }
+  head(TXT.stars, a * ap(t, V('s8') + .2, .35), GOLD, H * .14, 96);
+  pill(TXT.chim + ' · ' + TXT.dCh, sx, top + 150, 40, a * ap(t, V('volc') - .2, .35), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('volc') - .2, .4))) });
+  pill(TXT.center.charAt(0).toUpperCase() + TXT.center.slice(1) + ' →', sx, top + 240, 30, 0);
+}
+// ---------- camera (map scenes) ----------
+let CK = [];
+function buildCam() {
+  const ev = [EVE[0], EVE[1] + .6, 62];
+  CK = [[0, EVE[0], EVE[1], 15.7], [1.85, EVE[0], EVE[1], 15.7, 'l'], [2.9, EVE[0], EVE[1] + .8, 48], [V('two'), EVE[0], EVE[1] + .7, 56, 'l'], [V('s3'), ...ev, 'l'],
+    [V('s5') - .01, ...ev, 'l'], [V('s5'), -72, -6, 9, 'l'], [V('chim') + .6, CHI[0], CHI[1] + 1.2, 62, 'o'], [V('s6'), CHI[0], CHI[1] + 1.0, 74, 'l']];
+}
+const CUTS = () => [V('s3'), V('s4'), V('s5'), V('s6'), V('s8'), V('cta')];
+function mapScene(t) {
+  CAM = camAt(CK, t); drawMap(.2);
+  const [ex, ey] = P(...EVE);
+  intro(t);
+  if (t < V('s3')) {
+    // S1: Everest glows, crown №1, then a question mark
+    const ga = ap(t, 2.0, .5); glowSpot(ex, ey, ga, GOLD, 50); ring(ex, ey, 66, ap(t, 2.1, .7), ga); sdot(ex, ey, ga);
+    pill(TXT.ev, ex, ey + 115, 50, ga * ap(t, 2.4, .3), { line: GOLD, scale: back(clamp(ap(t, 2.4, .4))) });
+    const cp = back(clamp(ap(t, 2.5, .45)));
+    crown(ex, ey - 150, 1.3 * cp, clamp(cp) * (1 - .5 * ap(t, V('two'), .4)));
+    qmark(ex + 150, ey - 180, back(clamp(ap(t, V('q'), .4))) * (1 - .3 * ap(t, V('two'), .4)), ap(t, V('q'), .2));
+    head2(TXT.h1, TXT.h1b, ap(t, .15, .4) * (1 - ap(t, V('two') - .3, .3)), H * .13);
+    // S2: two ways to measure
+    const ta = ap(t, V('two'), .3); if (ta > 0) {
+      head(TXT.two, ta, GOLD, H * .13, 120);
+      const y1 = H * .24, y2 = H * .305, hi = ap(t, V('second'), .3);
+      pill('1   ' + TXT.m1, W / 2, y1, 46, ta * ap(t, V('two') + .4, .3) * (1 - .45 * hi), { line: '#fff', scale: back(clamp(ap(t, V('two') + .4, .4))) });
+      pill('2   ' + TXT.m2, W / 2, y2, 46, ta * ap(t, V('two') + .9, .3), { bg: hi > 0 ? `rgba(254,179,0,${.25 + .7 * hi})` : undefined, col: hi > .5 ? BR.navy : '#fff', line: GOLD, font: hi > .5 ? 'MB' : 'MX',
+        scale: back(clamp(ap(t, V('two') + .9, .4))) * (1 + .06 * hi * Math.abs(Math.sin(t * 5))) });
+      pill(TXT.win, W / 2, H * .37, 38, ap(t, V('second') + .6, .3), { line: RED, col: '#fff' });
+    }
+  } else {
+    // S5: Chimborazo near the equator
+    const ea = ap(t, V('s5') + .3, .5), [, eqy] = P(0, 0);
+    if (SH.ECU) glowFill(SH.ECU, GOLD, ea * .55, { fill: .22, blur: 18, lw: 4 });
+    { const [qx, qy] = P(-77.2, -2.6); pill(TXT.ecu, qx + 150, qy + 40, 36, ea * (1 - ap(t, V('chim') + .3, .4)), { line: GOLD }); }
+    const qp = ap(t, V('near') - .3, .8);
+    dashLine(0, eqy, W, eqy, qp, .95, '#fff', 5, [22, 14]);
+    if (qp > 0) pill(TXT.eqL + ' · 0°', 190, eqy - 50, 34, ap(t, V('near') + .2, .3), { line: SKY });
+    const [cx, cy] = P(...CHI), ca = ap(t, V('chim') - .2, .4);
+    glowSpot(cx, cy, ca, GOLD, 44); ring(cx, cy, 64, ap(t, V('chim') - .1, .6), ca); sdot(cx, cy, ca);
+    pill(TXT.chim, cx, cy + 112, 52, ca * ap(t, V('chim') + .1, .3), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('chim') + .1, .4))) });
+    const np = ap(t, V('near') + .3, .5); if (np > 0) {   // bracket volcano -> equator
+      const bx = cx + 120; solidLine(bx, cy, bx, eqy, ease(np), 1, GOLD, 7);
+      ctx.save(); ctx.globalAlpha = np; ctx.fillStyle = '#fff'; for (const yy of [cy, eqy]) { ctx.beginPath(); ctx.arc(bx, yy, 9, 0, 7); ctx.fill(); } ctx.restore();
+      pill(TXT.near, W / 2 + 60, (cy + eqy) / 2 - 240, 40, ap(t, V('near') + .6, .3), { line: GOLD, col: GOLD });
+    }
+    head(TXT.chim, ap(t, V('chim') - .3, .35) * 0, GOLD);
+  }
+  const q = win(t, 1.0, V('s6'), .3); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src, W / 2, H * .965, 22, '#fff', 'MS', { blur: 6 }); ctx.restore(); }
+  vignette(.55);
+}
+// ---------- globe scenes ----------
+function intro(t) {       // the whole planet, turning and diving to the Himalayas; hands over to the flat map at R = ppd*180/pi
+  const a = 1 - ap(t, 1.45, .4); if (a <= 0) return;
+  const k = ease(ap(t, .15, 1.75)), R = Math.exp(lerp(Math.log(380), Math.log(15.7 * 180 / Math.PI), ease(ap(t, .7, 1.15))));
+  ctx.save(); ctx.globalAlpha = a * (1 - ap(t, 1.0, .4)); space(1, t); ctx.restore();
+  G = { cx: W / 2, cy: H / 2, R, lon0: lerp(20, EVE[0], k), lat0: lerp(10, EVE[1], k), f: 1 };
+  drawGlobe(a);
+}
+
+function globeS4(t) {     // Earth from the side, bulges at the equator
+  space(1, t);
+  const fl = 1 - .16 * ease(ap(t, V('eq') - .1, 1.6));
+  G = { cx: W / 2, cy: H * .5, R: 410, lon0: -50 + (t - V('s4')) * 9, lat0: 8, f: fl };
+  // reference circle (perfect sphere)
+  const ra = ap(t, V('s4') + .3, .4); if (ra > 0) { ctx.save(); ctx.globalAlpha = ra * .85; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.setLineDash([18, 14]); ctx.beginPath(); ctx.arc(G.cx, G.cy, G.R, 0, 7); ctx.stroke(); ctx.restore(); }
+  drawGlobe(eout(ap(t, V('s4') - .1, .5)));
+  if (ra > 0) { ctx.save(); ctx.globalAlpha = ra * .7; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.setLineDash([18, 14]); ctx.beginPath(); ctx.arc(G.cx, G.cy, G.R, Math.PI * 1.15, Math.PI * 1.85); ctx.arc(G.cx, G.cy, G.R, Math.PI * .15, Math.PI * .85); ctx.stroke(); ctx.restore(); }
+  const ea = ap(t, V('eq') - .1, .5); globeLine(0, ea, GOLD, 6, null, 18);
+  if (ea > 0) { const ex = G.R + 40 + 20 * ease(ap(t, V('eq'), 1.2)); arrowHead(G.cx + ex + 40, G.cy, 0, 1, ea); arrowHead(G.cx - ex - 40, G.cy, Math.PI, 1, ea);
+    pill(TXT.eqL, G.cx, G.cy + 60, 34, ea, { line: GOLD, col: GOLD }); }
+  const pa = ap(t, V('flat') - .2, .4); if (pa > 0) { const py = G.R * G.f + 30; arrowHead(G.cx, G.cy - py, Math.PI / 2, 1, pa, '#fff'); arrowHead(G.cx, G.cy + py, -Math.PI / 2, 1, pa, '#fff'); }
+  head(TXT.notsph, ap(t, V('s4') + .1, .35), GOLD, H * .13, 104);
+  { const q = ap(t, V('eq') + .4, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .7; txt(TXT.exag, W / 2, H * .77, 28, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+}
+function globeS67(t) {    // centre of the Earth -> Everest and Chimborazo; then ENT: geoid
+  space(1, t);
+  const inS7 = t >= V('ent');
+  G = { cx: W / 2, cy: H * .5, R: 400, lon0: 4 + (t - V('s6')) * 1.2, lat0: 0, f: .84 };
+  drawGlobe(1);
+  const s6a = 1 - ap(t, V('ent') - .2, .4);
+  // grid for ENT
+  const ga = ap(t, V('ent') + .1, .5); if (ga > 0) { for (const la of [-60, -30, 30, 60]) globeLine(la, ga * .7, '#fff', 2.5, [10, 8]); for (let lo = -180; lo < 180; lo += 30) globeMeridian(lo, ga * .35, '#fff', 2); globeLine(0, ga, GOLD, 6, null, 18); }
+  if (s6a > 0) {
+    const c = [G.cx, G.cy], e = globeP(...EVE), ch = globeP(...CHI);
+    // push the end points to the limb (both peaks lie almost exactly on it in this view)
+    const lim = (p, la) => { const an = Math.atan2(-(p[1] - G.cy) / G.f, p[0] - G.cx); return [G.cx + Math.cos(an) * G.R * Math.cos(0), G.cy - Math.sin(an) * G.R * G.f]; };
+    const E = lim(e), C = lim(ch);
+    sdot(...c, s6a * ap(t, V('s6'), .3), '#fff', 13); pill(TXT.center, c[0], c[1] + 60, 30, s6a * ap(t, V('s6') + .1, .3), { line: '#fff' });
+    const pe = ease(ap(t, V('s6') + .3, .7)), pc = ease(ap(t, V('farther') - .4, .8));
+    solidLine(c[0], c[1], E[0], E[1], pe, s6a, '#fff', 7);
+    solidLine(c[0], c[1], C[0], C[1], pc, s6a, GOLD, 10);
+    if (pe >= 1) { sdot(...E, s6a, '#fff'); pill(TXT.ev, E[0] - 50, E[1] - 75, 36, s6a, { line: '#fff' }); pill(TXT.dEv, E[0] - 50, E[1] - 145, 32, s6a * ap(t, V('farther'), .3), { line: '#fff' }); }
+    if (pc >= 1) { sdot(...C, s6a, GOLD, 14); pill(TXT.chim, C[0] + 150, C[1] - 70, 38, s6a, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB' }); pill(TXT.dCh, C[0] + 150, C[1] + 70, 34, s6a * ap(t, V('farther') + .5, .3), { line: GOLD, col: GOLD }); }
+    // +2 km
+    const kp = back(clamp(ap(t, V('km2') - .1, .45))); if (kp > 0) { ctx.save(); ctx.globalAlpha = s6a * clamp(kp); ctx.translate(W / 2, H * .25); ctx.scale(kp, kp);
+      const s = TXT.plus, w = tw(s, 120, 'MB') + 100; rr(-w / 2, -86, w, 172, 50); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.7)'; ctx.shadowBlur = 50; ctx.fill(); txt(s, 0, 8, 120, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+    head(TXT.h6, s6a * ap(t, V('s6') + .05, .35), GOLD, H * .13, 96);
+    { const q = s6a * ap(t, V('s6') + .5, .4); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .7; txt(TXT.exag, W / 2, H * .765, 28, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  }
+  if (inS7) {
+    const a = ap(t, V('ent'), .3);
+    const sp = ap(t, V('ent') + .05, .35); if (sp > 0) { const s = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(W / 2 + 270, H * .225); ctx.rotate(-.18); ctx.scale(s, s);
+      rr(-130, -64, 260, 128, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+      txt(TXT.ent, 0, 5, 76, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+    head(TXT.geoid, ap(t, V('geoid') - .2, .35), GOLD, H * .14, 140);
+    const pa = ap(t, V('poles') - .1, .4); if (pa > 0) { const py = G.R * G.f + 30 + 14 * Math.abs(Math.sin(t * 4)); arrowHead(G.cx, G.cy - py, Math.PI / 2, 1.1, pa, GOLD); arrowHead(G.cx, G.cy + py, -Math.PI / 2, 1.1, pa, GOLD);
+      pill(TXT.poles, W / 2, H * .775, 44, pa, { line: GOLD, scale: back(clamp(ap(t, V('poles') - .1, .4))) }); }
+  }
+}
+function globeCta(t) {
+  space(1, t); const k = ease(ap(t, V('cta'), 2.2));
+  G = { cx: W / 2, cy: lerp(H * .5, H * .36, k), R: lerp(520, 230, k), lon0: -79 + (t - V('cta')) * 14, lat0: 6, f: .97 };
+  drawGlobe(1); { const p = globeP(...CHI); if (p[2] > 0) { glowSpot(p[0], p[1], 1 - k * .5, GOLD, 26); sdot(p[0], p[1], 1, GOLD, 9); } }
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = 56, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+function render(t) {
+  TT = t;
+  if (t < V('s3') || (t >= V('s5') && t < V('s6'))) mapScene(t);
+  else if (t < V('s4')) { heightPanel(t, 1); vignette(.35); }
+  else if (t < V('s5')) { globeS4(t); vignette(.35); }
+  else if (t < V('s8')) { globeS67(t); vignette(.35); }
+  else if (t < V('cta')) { summitPanel(t, 1); vignette(.3); }
+  else { globeCta(t); vignette(.3); }
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG]; SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('him', 'tex/him.jpg'), loadImg('and', 'tex/and.jpg'), loadImg('globe', 'tex/globe.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  { const c = document.createElement('canvas'); c.width = IM.globe.width; c.height = IM.globe.height; const x = c.getContext('2d'); x.drawImage(IM.globe, 0, 0);
+    TD = new Uint32Array(x.getImageData(0, 0, c.width, c.height).data.buffer); TWd = c.width; THt = c.height; }
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
