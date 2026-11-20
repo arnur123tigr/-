@@ -1,0 +1,302 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему трясёт Алматы» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 45, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'ind', l0: 62, l1: 100, b0: 5, b1: 46, minppd: 20 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58, minppd: 14 });
+TEX.push({ k: 'alm', l0: 73.5, l1: 80.5, b0: 41, b1: 45.5, minppd: 90 });
+const GOLD = BR.acc, RED = BR.red, TURQ = '#4FD1C5', GREEN = '#3DDC84';
+const KZC = [67.3, 48.2], ALM = [76.92, 43.25], AST = [71.43, 51.13], FRONT = [85.3, 27.2], INDC = [78.6, 22.5], KAR = [70.5, 48.6];
+const TXT = {
+  ru: { alm: 'Алматы', ast: 'Астана', almq: 'трясёт', astq: 'почти нет', cul1: 'Виновник', cul2: 'очень далеко', why: '3 причины',
+    ts: 'Тянь-Шань', grow: 'Горы растут', north: 'север', south: 'юг', almh: 'Алматы ≈ 800 м', peak: 'пик Талгар 4979 м', step: 'Шаг',
+    ind: 'Индия', indn: 'Индия → север', eu: 'Евразийская плита', inp: 'Индийская плита', cm: '4–5 см/год', nail: 'так растут ногти',
+    him: 'Гималаи', tib: 'Тибет', km: '≈ 2000 км', hist1: 'Почти разрушен', hist2: '2 раза',
+    q1: 'Верненское · M 7,3', q2: 'Кеминское · M 8', ent: 'ЕНТ', zone: 'Сейсмозона', zr: 'юг и восток — опасно', zg: 'древняя плита — спокойно',
+    turn: 'Причина — Индия', nob: 'общей границы нет', cta1: 'Ссылка', cta2: 'в шапке профиля',
+    src: 'Карта: NASA Blue Marble · границы, горы: Natural Earth · плиты: Bird 2003 · USGS' },
+  kk: { alm: 'Алматы', ast: 'Астана', almq: 'сілкінеді', astq: 'жоқтың қасы', cul1: 'Кінәлі', cul2: 'өте алыста', why: '3 себеп',
+    ts: 'Тянь-Шань', grow: 'Таулар өсіп жатыр', north: 'солтүстік', south: 'оңтүстік', almh: 'Алматы ≈ 800 м', peak: 'Талғар шыңы 4979 м', step: 'Қадам',
+    ind: 'Үндістан', indn: 'Үндістан → солтүстік', eu: 'Еуразия тақтасы', inp: 'Үнді тақтасы', cm: '4–5 см/жыл', nail: 'тырнақ осылай өседі',
+    him: 'Гималай', tib: 'Тибет', km: '≈ 2000 км', hist1: 'Екі рет', hist2: 'қирай жаздады',
+    q1: 'Верный · M 7,3', q2: 'Кемин · M 8', ent: 'ҰБТ', zone: 'Сейсмикалық аймақ', zr: 'оңтүстік пен шығыс — қауіпті', zg: 'ежелгі тақта — тыныш',
+    turn: 'Себебі — Үндістан', nob: 'ортақ шекара жоқ', cta1: 'Сілтеме', cta2: 'профиль шапкасында',
+    src: 'Карта: NASA Blue Marble · шекаралар, таулар: Natural Earth · тақталар: Bird 2003 · USGS' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  rr(-140, -66, 280, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+// ---------- reel-specific helpers ----------
+function reg(n, col, a, o = {}) { if (SH && a > 0 && SH.reg[n]) glowFill(SH.reg[n], col, a, o); }
+function squeeze(n, col, a, k) {   // a mountain range pressed from the south: drawn squashed toward its centre, pulsing
+  if (!SH || a <= 0) return; const R = SH.reg[n]; let sx = 0, sy = 0, c = 0; R[0].forEach(p => { sx += p[0]; sy += p[1]; c++; });
+  const [cx, cy] = P(sx / c, sy / c); ctx.save(); ctx.translate(cx, cy); ctx.scale(1 + .03 * k, 1 - .09 * k); ctx.translate(-cx, -cy);
+  glowFill(R, col, a, { fill: .35 + .25 * k, blur: 18 + 20 * k, lw: 4 }); ctx.restore();
+}
+function plateLine(a, p = 1) { if (!SH || a <= 0) return; for (const l of SH.plate) polyPartial(l, p, { col: RED, lw: 7, glow: RED, blur: 18, a }); }
+function bigArrow(x0, y0, x1, y1, p, a, col = RED, w = 70) {   // thick straight arrow drawn on with p
+  if (p <= 0 || a <= 0) return; const ex = lerp(x0, x1, p), ey = lerp(y0, y1, p), an = Math.atan2(ey - y0, ex - x0), L = Math.hypot(ex - x0, ey - y0);
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x0, y0); ctx.rotate(an); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 30;
+  ctx.beginPath(); ctx.moveTo(0, -w * .32); ctx.lineTo(Math.max(0, L - w), -w * .32); ctx.lineTo(Math.max(0, L - w), -w * .75); ctx.lineTo(L, 0);
+  ctx.lineTo(Math.max(0, L - w), w * .75); ctx.lineTo(Math.max(0, L - w), w * .32); ctx.lineTo(0, w * .32); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.stroke(); ctx.restore();
+}
+function shake(t) {   // quake: camera jitter (deg), 0 when calm
+  const q = Math.max(win(t, .5, V('cul') - .1, .5) * .9, win(t, V('y1') - .05, V('y1') + 1.1, .1), win(t, V('y2') + .2, V('y2') + 1.5, .1));
+  if (q <= 0) return; const px = q * 9;
+  CAM.lon += px * (Math.sin(t * 57) + .6 * Math.sin(t * 91 + 1)) / (CAM.ppd * KX()); CAM.lat += px * (Math.sin(t * 63 + 2) + .6 * Math.sin(t * 83)) / CAM.ppd;
+}
+function finger(x, y, s, a, grow) {   // fingertip with a nail; the white tip grows
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  rr(-75, -140, 150, 300, 75); ctx.fillStyle = '#d9a07a'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = 5; ctx.strokeStyle = '#8a5a3c'; ctx.stroke();
+  const tip = 10 + 30 * clamp(grow);
+  rr(-52, -118 - tip, 104, 150 + tip, 48); ctx.fillStyle = '#fbe9e2'; ctx.fill();   // free edge (white)
+  rr(-52, -118, 104, 150, 46); ctx.fillStyle = '#f3c3b4'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#b97f6c'; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(0, 18, 30, 12, 0, 0, 7); ctx.fill();   // lunula
+  ctx.restore();
+}
+function profile(t, a) {   // north -> south height section through Almaty to the Zailiysky Alatau crest
+  if (a <= 0) return; const x0 = 90, x1 = 990, y0 = 1180, y1 = 1500, gp = ease(ap(t, V('grow') + .1, 1.2));
+  ctx.save(); ctx.globalAlpha = a; rr(x0 - 30, y0 - 90, x1 - x0 + 60, y1 - y0 + 150, 30); ctx.fillStyle = 'rgba(19,11,84,.86)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(254,179,0,.45)'; ctx.lineWidth = 2.5; ctx.stroke();
+  const PR = [[0, 480], [.18, 560], [.36, 700], [.48, 820], [.56, 1300], [.62, 2400], [.68, 3300], [.74, 3900], [.8, 4600], [.84, 4979], [.88, 4500], [.94, 3700], [1, 3300]];
+  const X = u => lerp(x0, x1, u), Y = h => y1 - (h / 5200) * (y1 - y0) * (1 + .06 * gp * clamp((h - 1500) / 3500));
+  const draw = ap(t, V('s1') + .9, 1.0);
+  ctx.beginPath(); ctx.moveTo(X(0), y1); PR.forEach(([u, h]) => { if (u <= draw) ctx.lineTo(X(u), Y(h)); }); ctx.lineTo(X(Math.min(draw, 1)), y1); ctx.closePath();
+  const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, '#f2f2f2'); g.addColorStop(.35, '#8f7a5a'); g.addColorStop(1, '#4c5a32'); ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath(); PR.forEach(([u, h], i) => { if (u <= draw) i ? ctx.lineTo(X(u), Y(h)) : ctx.moveTo(X(u), Y(h)); }); ctx.strokeStyle = GOLD; ctx.lineWidth = 5; ctx.shadowColor = GOLD; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;
+  txt(TXT.north, x0 + 10, y1 + 34, 26, 'rgba(255,255,255,.75)', 'MS', { align: 'left', blur: 0 }); txt(TXT.south, x1 - 10, y1 + 34, 26, 'rgba(255,255,255,.75)', 'MS', { align: 'right', blur: 0 });
+  const la = ap(t, V('s1') + 1.5, .3); if (la > 0) { ctx.globalAlpha = a * la; ctx.beginPath(); ctx.arc(X(.48), Y(820), 10, 0, 7); ctx.fillStyle = GOLD; ctx.fill();
+    txt(TXT.almh, X(.40), Y(820) - 50, 30, '#fff', 'MX', { blur: 0 }); }
+  const pa = ap(t, V('s1') + 1.9, .3); if (pa > 0) { ctx.globalAlpha = a * pa; txt(TXT.peak, X(.66), y0 - 50, 30, GOLD, 'MX', { blur: 0 }); }
+  if (gp > 0) for (const u of [.68, .8, .9]) upArrow(X(u), Y(PR.find(p => p[0] >= u)[1]) - 40 - 10 * Math.sin(t * 6 + u * 9), .55, a * gp);
+  ctx.restore();
+}
+function waves(t, a) {   // pressure rings rolling north from the collision front
+  if (a <= 0) return; const [x, y] = P(FRONT[0] - 3, FRONT[1] - 2);
+  ctx.save(); ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) { const ph = ((t - V('s3')) * .55 + i * .25) % 1; if (ph < 0) continue; const r = 60 + ph * 1250;
+    ctx.globalAlpha = a * (1 - ph) * .9; ctx.strokeStyle = i % 2 ? GOLD : RED; ctx.lineWidth = 10 * (1 - ph) + 3; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 20;
+    ctx.beginPath(); ctx.arc(x, y, r, -Math.PI * .82, -Math.PI * .18); ctx.stroke(); }
+  ctx.restore();
+}
+function yearCard(y, sub, x, yy, a) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, yy); ctx.scale(k, k);
+  rr(-200, -95, 400, 190, 34); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = 4; ctx.strokeStyle = RED; ctx.stroke(); ctx.fillStyle = RED; rr(-120, 70, 240, 8, 4); ctx.fill();
+  txt(y, 0, -22, 96, GOLD, 'MB', { blur: 0, dy: 0 }); txt(sub, 0, 46, 30, '#fff', 'MX', { blur: 0, dy: 0 }); ctx.restore();
+}
+function crack(x, y, s, p, a) {   // ground crack lines from the city
+  if (p <= 0 || a <= 0) return; const r = rng(7); ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 4; ctx.shadowColor = RED; ctx.shadowBlur = 14;
+  for (let i = 0; i < 6; i++) { let an = i / 6 * Math.PI * 2 + r(), px = x, py = y; ctx.beginPath(); ctx.moveTo(px, py);
+    for (let j = 0; j < 6 * p; j++) { an += (r() - .5) * .9; px += Math.cos(an) * 34 * s; py += Math.sin(an) * 34 * s; ctx.lineTo(px, py); } ctx.stroke(); }
+  ctx.restore();
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  CK = [[0, 67.5, 47.6, 33], [1.1, 67.8, 47.4, 34, 'l'], [V('cul') - .1, 76.9, 43.7, 75],
+    [V('s1') - .1, 76.9, 43.3, 85, 'l'], [V('s1') + .9, 77.1, 42.6, 115], [V('s2') - .1, 77.1, 42.6, 122, 'l'],
+    [V('s2') + 1.7, 80.5, 28, 31], [V('cm') - .1, 80.5, 28.4, 33, 'l'],
+    [V('cm') + 1.0, 84.2, 29.5, 62], [V('s3') - .1, 84.2, 29.7, 66, 'l'],
+    [V('s3') + 1.3, 80.2, 35.5, 28], [V('hist') - .1, 79.8, 36.2, 29.5, 'l'],
+    [V('hist') + 1.3, ALM[0], ALM[1] + .1, 260], [V('ent') - .02, ALM[0], ALM[1] + .1, 285, 'l'],
+    [V('ent'), 67.5, 47.6, 33, 'l'], [V('turn') - .02, 67.5, 47.6, 35, 'l'],
+    [V('turn'), ALM[0], ALM[1], 60, 'l'], [V('turn') + .4, ALM[0], ALM[1], 58, 'l'], [V('turn') + 1.9, 78.5, 33.5, 23.5], [V('cta') - .1, 78.5, 33.6, 24.5, 'l'],
+    [V('cta') + 1.2, 70, 40, 17], [V('vend') + 1, 70, 40.4, 16, 'l']];
+}
+const CUTS = () => [V('ent'), V('turn')];
+function render(t) {
+  TT = t; CAM = camAt(CK, t); shake(t); drawMap(.16); borders(.32);
+  // ---- S1 hook: Almaty shakes, Astana calm
+  { const a = win(t, 0, V('steps') + .1, .3);
+    if (a > 0) {
+      cty('KAZ', GOLD, a * .6 * (1 - ap(t, V('cul') - 1.2, .6)), { fill: .15, blur: 14, lw: 3 });
+      const [x, y] = P(...ALM), ra = a * ap(t, .5, .4);
+      glowSpot(...ALM, ra, RED, 46); ring(x, y, 70, ap(t, .6, .7), ra, RED); dot(...ALM, ra, RED);
+      lab(TXT.alm, ...ALM, ra, { size: 40, dy: -120, line: RED });
+      const sa = a * ap(t, 1.2, .3) * (1 - ap(t, V('cul') - 1.5, .4)); if (sa > 0) { dot(...AST, sa, GREEN); lab(TXT.ast, ...AST, sa, { size: 36, dy: -70, line: GREEN }); lab(TXT.astq, ...AST, sa * ap(t, 2.4, .3), { size: 28, dy: 60, line: GREEN }); }
+      lab(TXT.almq, ...ALM, ra * ap(t, 1.6, .3), { size: 30, dy: 110, line: RED, bg: 'rgba(232,80,47,.9)' });
+      const ca = A('cul', 'steps', .25) * a; if (ca > 0) head2(TXT.cul1, TXT.cul2, ca, H * .14, 120);
+    } }
+  // ---- S2 promise: 3 reasons
+  { const a = win(t, V('steps'), V('s1') + .3, .25);
+    if (a > 0) { dot(...ALM, a, RED); head(TXT.why, a, GOLD, H * .17, 116);
+      [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .25, a * back(clamp(ap(t, V('steps') + .2 + n * .15, .35))), n === 3 ? RED : GOLD)); } }
+  // ---- S3 Tian Shan + height section
+  { const a = A('s1', 's2', .3);
+    if (a > 0) {
+      reg('SHAN', GOLD, a * ap(t, V('s1') + .6, .5), { fill: .22 + .1 * Math.sin(t * 4), blur: 26, lw: 5 });
+      dot(...ALM, a); lab(TXT.alm, ...ALM, a, { size: 32, dy: 60 });
+      label2([TXT.ts], 77.6, 41.75, a * ap(t, V('s1') + .9, .4), GOLD, 74);
+      head(`${TXT.step} 1 / 3`, a * ap(t, V('s1'), .35), GOLD, H * .15, 92);
+      const ga = A('grow', 's2', .25); if (ga > 0) pill(TXT.grow, W / 2, H * .235, 44, ga, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('grow'), .4))) });
+      profile(t, a * ap(t, V('s1') + .8, .3));
+    } }
+  // ---- S4 India pushes north
+  { const a = A('s2', 'cm', .3);
+    if (a > 0) {
+      cty('IND', RED, a * ap(t, V('s2') + 1.0, .5), { fill: .45, blur: 22, lw: 5 }); plateLine(a, ap(t, V('s2') + 1.4, 1));
+      const [x0, y0] = P(78.5, 14), [x1, y1] = P(79.5, 31), p = ease(ap(t, V('s2') + 1.5, .9)) * (1 + .04 * Math.sin(t * 8));
+      bigArrow(x0, y0, x1, y1, p, a, RED, 80);
+      lab(TXT.indn, ...INDC, a * ap(t, V('s2') + 1.8, .3), { size: 40, dy: 120, bg: 'rgba(232,80,47,.92)', line: '#fff' });
+      lab(TXT.eu, 80, 40.5, a * ap(t, V('s2') + 2.2, .3), { size: 28, line: '#fff' });
+      head(`${TXT.step} 2 / 3`, a * ap(t, V('s2'), .35), GOLD, H * .15, 92);
+    } }
+  // ---- S5 4-5 cm a year, like fingernails
+  { const a = A('cm', 's3', .3);
+    if (a > 0) {
+      cty('IND', RED, a, { fill: .35, blur: 18, lw: 4 }); plateLine(a);
+      const [x0, y0] = P(83.2, 25.6), [x1, y1] = P(83.6, 28.1); bigArrow(x0, y0, x1 + Math.sin(t * 7) * 3, y1 + Math.sin(t * 7) * 6, 1, a, RED, 70);
+      lab(TXT.inp, 82.5, 25.0, a * ap(t, V('cm') + .8, .3), { size: 28, line: RED }); lab(TXT.eu, 86, 31.4, a * ap(t, V('cm') + 1, .3), { size: 28, line: '#fff' });
+      const ca = ap(t, V('cm') + .2, .45); if (ca > 0) { ctx.save(); const k = back(clamp(ca)); ctx.globalAlpha = a * clamp(ca * 2); ctx.translate(W / 2, H * .17); ctx.scale(k, k);
+        txt(TXT.cm, 0, 0, 132, GOLD, 'MB', { shadow: 'rgba(0,0,0,.8)', blur: 26, stroke: 10, sc: 'rgba(0,0,0,.5)' }); ctx.restore(); }
+      const na = A('nail', 's3', .25); if (na > 0) { finger(W / 2 + 300, H * .62, .9, na, ap(t, V('nail') + .3, 1.2));
+        pill(TXT.nail, W / 2 + 160, H * .62 + 250, 36, na, { line: GOLD }); }
+    } }
+  // ---- S6 the push reaches 2000 km north: Himalayas, Tibet, Tian Shan squeezed
+  { const a = A('s3', 'hist', .3);
+    if (a > 0) {
+      cty('IND', RED, a * .8, { fill: .3, blur: 14, lw: 3 }); plateLine(a);
+      const k = .5 + .5 * Math.sin((t - V('s3')) * 5);
+      squeeze('HIMALAYAS', RED, a * ap(t, V('s3') + .5, .4), k); squeeze('TIBET', ORA(), a * ap(t, V('s3') + .9, .4) * .8, k * .7);
+      squeeze('SHAN', GOLD, a * ap(t, V('s3') + 1.3, .4), k * .6);
+      waves(t, a * ap(t, V('s3') + .3, .4));
+      label2([TXT.him], 83, 28.6, a * ap(t, V('s3') + .7, .3), RED, 44); label2([TXT.tib], 87.5, 33.5, a * ap(t, V('s3') + 1.0, .3), ORA(), 44);
+      label2([TXT.ts], 85, 43.6, a * ap(t, V('s3') + 1.4, .3), GOLD, 44);
+      const lp = ease(ap(t, V('s3') + 1.6, 1.4)); if (lp > 0) { geoLine(FRONT, ALM, lp, { col: '#fff', lw: 8, blur: 12, a }); dot(...FRONT, a, RED);
+        const [mx, my] = P(lerp(FRONT[0], ALM[0], .5), lerp(FRONT[1], ALM[1], .5)); pill(TXT.km, mx - 150, my, 54, a * ap(t, V('s3') + 2.2, .3), { col: GOLD, line: GOLD, scale: back(clamp(ap(t, V('s3') + 2.2, .4))) }); }
+      const aa = ap(t, V('alm'), .3); if (aa > 0) { const [x, y] = P(...ALM); glowSpot(...ALM, a * aa, RED, 40); ring(x, y, 56, ap(t, V('alm'), .6), a * aa, RED); dot(...ALM, a * aa, RED); lab(TXT.alm, ...ALM, a * aa, { size: 36, dy: -80, line: RED }); }
+      head(`${TXT.step} 3 / 3`, a * ap(t, V('s3'), .35), GOLD, H * .15, 92);
+    } }
+  // ---- S7 Almaty close-up: 1887 and 1911
+  { const a = A('hist', 'ent', .3);
+    if (a > 0) {
+      const [x, y] = P(...ALM); glowSpot(...ALM, a, RED, 90); dot(...ALM, a, RED);
+      crack(x, y, 1.6, ap(t, V('y1'), .6), a * .8); crack(x + 40, y + 30, 1.3, ap(t, V('y2') + .2, .6), a * .8);
+      head2(TXT.hist1, TXT.hist2, a * ap(t, V('hist') + .1, .4), H * .13, 104);
+      yearCard('1887', TXT.q1, W / 2 - 220 + 0, H * .6, a * ap(t, V('y1'), .4)); yearCard('1911', TXT.q2, W / 2 + 220, H * .6 + 60, a * ap(t, V('y2') + .2, .4));
+    } }
+  // ---- S8 ENT: seismic south/east vs ancient platform
+  { const a = A('ent', 'turn', .25);
+    if (a > 0) {
+      const ra = a * ap(t, V('zone'), .4), ga = a * ap(t, V('plate'), .4);
+      if (SH) { glowFill(SH.kzz.red, RED, ra, { fill: .5 + .1 * Math.sin(t * 6), blur: 22, lw: 4 }); glowFill(SH.kzz.green, GREEN, ga, { fill: .42, blur: 16, lw: 4 }); }
+      cty('KAZ', GOLD, a * (1 - .6 * ap(t, V('zone'), .4)), { fill: .15, blur: 18, lw: 5 });
+      stamp(TXT.ent, W / 2 + 250, H * .26, a, ap(t, V('ent') + .1, .35));
+      head(TXT.zone, a * ap(t, V('ent') + .2, .35), RED, H * .15, 96);
+      lab(TXT.zr, 79.5, 44.6, ra, { size: 30, dy: 90, bg: 'rgba(232,80,47,.92)', line: '#fff' });
+      lab(TXT.zg, ...KAR, ga, { size: 30, line: GREEN });
+    } }
+  // ---- S9 turn: the cause is India, no common border
+  { const a = A('turn', 'cta', .25);
+    if (a > 0) {
+      const za = ap(t, V('turn') + 1.0, .5);
+      cty('KAZ', GOLD, a * za, { fill: .22, blur: 18, lw: 4 }); cty('IND', RED, a * za, { fill: .4, blur: 18, lw: 4 });
+      const [x0, y0] = P(...ALM), [x1, y1] = P(...INDC); dot(...ALM, a, GOLD); lab(TXT.alm, ...ALM, a, { size: 32, dy: -60 });
+      arrow(x0, y0 + 20, x1, y1 - 30, x0 - 260, (y0 + y1) / 2, ease(ap(t, V('turn') + 1.5, 1)), a, 10);
+      pill(TXT.turn, W / 2, H * .2, 56, a * ap(t, V('turn') + 1.8, .35), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('turn') + 1.8, .4))) });
+      const ba = a * ap(t, V('turn') + 2.6, .3); if (ba > 0) { const [bx, by] = P(76, 36.5); xMark(bx + 140, by, 1, ba); pill(TXT.nob, bx + 140, by + 75, 32, ba, { line: RED }); }
+    } }
+  // ---- S10 CTA
+  if (t >= V('cta')) { cty('KAZ', GOLD, ap(t, V('cta'), .4), { fill: .3, blur: 18, lw: 4 }); ctaEnd(t); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function ORA() { return '#F08A4B'; }
+function ctaEnd(t) {
+  const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(TXT.cta1 + ' ' + TXT.cta2, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all(['world', 'ind', 'ca', 'alm'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
