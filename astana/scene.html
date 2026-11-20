@@ -1,0 +1,314 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему в Астане так холодно» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 45, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58, minppd: 22 });
+const GOLD = BR.acc, RED = BR.red, ICE = '#7FD3FF', TURQ = '#4FD1C5', WARM = '#FF8A3D';
+const AST = [71.43, 51.13], MSK = [37.62, 55.75], OTT = [-75.7, 45.42], ULB = [106.92, 47.92], KZC = [67.3, 48.2];
+const ATL = [-6, 46], PAC = [146, 38], ARC = [72, 75.5], SIB = [100, 52];
+const TXT = {
+  ru: { h1: 'холоднее Москвы и Оттавы', h2: 'Астана', how: 'Как так?', n2a: 'самая холодная столица', n2b: '№2 в мире',
+    ULB: 'Улан-Батор', AST: 'Астана', OTT: 'Оттава', MSK: 'Москва', jan: 'январь', r3: '3 причины',
+    janA: 'средняя температура', far: 'Далеко от океана', ATL: 'Атлантика', PAC: 'Тихий океан', warm: 'тёплый воздух', notr: 'не доходит',
+    nomt: 'Нет гор', ARC: 'Северный Ледовитый океан', arc: 'арктический воздух', south: 'горы — только на юге', steppe: 'степь',
+    sib1: 'Сибирский', sib2: 'антициклон', hi: 'высокое давление', frost: 'морозы',
+    ent: 'ЕНТ', kl1: 'климат Казахстана', kl2: 'Резко континентальный',
+    rec: 'рекорды Астаны', sum: 'лето', win: 'зима', diff: 'разница', kip: 'кипяток', ice: 'лёд',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Карта: NASA Blue Marble · климат: pogodaiklimat.ru, Environment Canada' },
+  kk: { h1: 'Мәскеу мен Оттавадан суық', h2: 'Астана', how: 'Қалай?', n2a: 'ең суық астана', n2b: 'әлемде №2',
+    ULB: 'Ұланбатыр', AST: 'Астана', OTT: 'Оттава', MSK: 'Мәскеу', jan: 'қаңтар', r3: '3 себеп',
+    janA: 'орташа температура', far: 'Мұхит алыс', ATL: 'Атлант', PAC: 'Тынық мұхит', warm: 'жылы ауа', notr: 'жетпейді',
+    nomt: 'Тау жоқ', ARC: 'Солтүстік Мұзды мұхит', arc: 'Арктика ауасы', south: 'таулар — тек оңтүстікте', steppe: 'дала',
+    sib1: 'Сібір', sib2: 'антициклоны', hi: 'жоғары қысым', frost: 'аяз',
+    ent: 'ҰБТ', kl1: 'Қазақстан климаты', kl2: 'Шұғыл континенттік',
+    rec: 'Астана рекордтары', sum: 'жаз', win: 'қыс', diff: 'айырма', kip: 'қайнаған су', ice: 'мұз',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Карта: NASA Blue Marble · климат: pogodaiklimat.ru, Environment Canada' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  rr(-140, -66, 280, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+// Europe's countries in km around their centroid -> lon/lat at a new centre (true size), rotated by r degrees
+function euRings(o, clon, clat, r = 0) {
+  const c = Math.cos(r * Math.PI / 180), s = Math.sin(r * Math.PI / 180);
+  return o.r.map(ring => ring.map(([dx, dy]) => { const x = dx * c - dy * s, y = dx * s + dy * c, lat = clat + y / 110.57; return [clon + x / (111.32 * Math.cos(lat * Math.PI / 180)), lat]; }));
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function snowflake(x, y, r, a, col = '#fff', rot = 0) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.strokeStyle = col; ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, r * .13); ctx.shadowColor = ICE; ctx.shadowBlur = r * .5;
+  for (let i = 0; i < 6; i++) { ctx.save(); ctx.rotate(i * Math.PI / 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -r);
+    ctx.moveTo(0, -r * .55); ctx.lineTo(-r * .28, -r * .8); ctx.moveTo(0, -r * .55); ctx.lineTo(r * .28, -r * .8); ctx.stroke(); ctx.restore(); }
+  ctx.restore();
+}
+function snow(a, n = 90, sp = 1) {   // deterministic falling snow over the whole frame
+  if (a <= 0) return; const R = rng(7); ctx.save();
+  for (let i = 0; i < n; i++) { const x0 = R() * W, v = (60 + R() * 120) * sp, ph = R() * H, r = 3 + R() * 7, sw = R() * 6;
+    const y = (ph + TT * v) % (H + 40) - 20, x = (x0 + Math.sin(TT * 1.3 + sw) * 30 + W) % W;
+    ctx.globalAlpha = a * (.35 + .5 * (r / 10)); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function frostTint(a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const g = ctx.createRadialGradient(W / 2, H / 2, H * .25, W / 2, H / 2, H * .75);
+  g.addColorStop(0, 'rgba(120,200,255,0)'); g.addColorStop(1, 'rgba(150,215,255,.55)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(60,140,220,.12)'; ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+function bigNum(s, x, y, size, col, a, sc = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); const k = back(clamp(a)) * sc; ctx.scale(k, k);
+  txt(s, 0, 0, size, col, 'MB', { shadow: col, blur: 40, dy: 0, stroke: size * .09, sc: 'rgba(0,0,0,.55)' }); ctx.restore();
+}
+function astMark(a, r = 70) {
+  if (a <= 0) return; const [x, y] = P(...AST);
+  glowSpot(...AST, a * .9, ICE, 44); ring(x, y, r, clamp(a * 1.5), a, '#fff'); dot(...AST, a, ICE);
+  snowflake(x + r * .95, y - r * .95, 30, a, '#fff', TT * .6);
+}
+function windArrow(pts, p, a, col, lw = 9, fade = 0) {   // lon/lat polyline with a moving arrow head; fade: tail-to-head alpha drop
+  if (a <= 0 || p <= 0) return; polyPartial(pts, p, { col, lw, glow: col, blur: 16, a: a * (1 - fade) });
+  const S = pts.map(c => P(...c)); let L = 0; const d = [0]; for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  const lim = L * clamp(p); let i = 1; while (i < S.length - 1 && d[i] < lim) i++; const k = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1);
+  const ex = lerp(S[i - 1][0], S[i][0], k), ey = lerp(S[i - 1][1], S[i][1], k), an = Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0]);
+  ctx.save(); ctx.globalAlpha = a * (1 - fade); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.beginPath();
+  ctx.moveTo(ex + Math.cos(an) * 26, ey + Math.sin(an) * 26); ctx.lineTo(ex + Math.cos(an + 2.5) * 24, ey + Math.sin(an + 2.5) * 24); ctx.lineTo(ex + Math.cos(an - 2.5) * 24, ey + Math.sin(an - 2.5) * 24); ctx.fill(); ctx.restore();
+}
+function wavy(a0, a1, amp, n = 30) { const pts = []; for (let i = 0; i <= n; i++) { const k = i / n; pts.push([lerp(a0[0], a1[0], k), lerp(a0[1], a1[1], k) + Math.sin(k * Math.PI * 3) * amp]); } return pts; }
+function cube(x, y, s, a) {   // ice cube
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(-.12); rr(-s / 2, -s / 2, s, s, s * .18);
+  const g = ctx.createLinearGradient(-s / 2, -s / 2, s / 2, s / 2); g.addColorStop(0, '#e8f8ff'); g.addColorStop(1, '#7fc7ee'); ctx.fillStyle = g; ctx.shadowColor = ICE; ctx.shadowBlur = 30; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-s * .28, -s * .25); ctx.lineTo(-s * .05, -s * .32); ctx.stroke(); ctx.restore();
+}
+function kettle(x, y, s, a) {   // pot of boiling water with steam
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  for (let i = -1; i <= 1; i++) { ctx.beginPath(); for (let k = 0; k <= 20; k++) { const yy = -s * .55 - k * s * .028, xx = i * s * .22 + Math.sin(k * .5 + TT * 6 + i) * s * .06; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); } ctx.stroke(); }
+  rr(-s * .5, -s * .45, s, s * .8, s * .16); const g = ctx.createLinearGradient(0, -s * .45, 0, s * .35); g.addColorStop(0, '#ff9a5a'); g.addColorStop(1, '#d9431f');
+  ctx.fillStyle = g; ctx.shadowColor = WARM; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff'; rr(-s * .6, -s * .52, s * 1.2, s * .12, s * .06); ctx.fill(); ctx.restore();
+}
+function thermo(x, y0, y1, a, top, bot) {   // vertical thermometer bar from cold (bottom) to hot (top)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; rr(x - 22, y0, 44, y1 - y0, 22); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.stroke();
+  const hm = y0 + (y1 - y0) * .55;   // 0 °C mark position (41.6 / 93.2)
+  if (bot > 0) { const g = ctx.createLinearGradient(0, hm, 0, y1); g.addColorStop(0, '#bfe9ff'); g.addColorStop(1, '#2f8be0'); rr(x - 12, hm, 24, (y1 - 10 - hm) * bot, 12); ctx.fillStyle = g; ctx.shadowColor = ICE; ctx.shadowBlur = 18; ctx.fill(); }
+  if (top > 0) { const h = (hm - y0 - 10) * top, g = ctx.createLinearGradient(0, hm - h, 0, hm); g.addColorStop(0, '#ff5a2a'); g.addColorStop(1, '#ffb36b'); rr(x - 12, hm - h, 24, h, 12); ctx.fillStyle = g; ctx.shadowColor = WARM; ctx.shadowBlur = 18; ctx.fill(); }
+  ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.fillRect(x - 34, hm - 2, 68, 4); txt('0°', x - 60, hm, 30, '#fff', 'MX', { blur: 0 }); ctx.restore();
+}
+function anticyclone(a, grow) {   // Siberian High: big blue disc + clockwise-turning isobars
+  if (a <= 0 || grow <= 0) return; const [x, y] = P(...SIB), R = 36 * KX() * CAM.ppd * eout(grow);
+  ctx.save(); ctx.globalAlpha = a; const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, 'rgba(90,170,255,.55)'); g.addColorStop(.7, 'rgba(70,140,240,.32)'); g.addColorStop(1, 'rgba(70,140,240,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill();
+  for (let i = 1; i <= 4; i++) { const r = R * i / 4.6; ctx.strokeStyle = `rgba(200,235,255,${.75 - i * .1})`; ctx.lineWidth = 4; ctx.setLineDash([38, 22]); ctx.lineDashOffset = -TT * 60 * (5 - i) / 4 * (i % 2 ? 1 : 1);
+    ctx.beginPath(); ctx.ellipse(x, y, r, r * .82, 0, 0, 7); ctx.stroke(); }
+  ctx.setLineDash([]);
+  for (let i = 0; i < 6; i++) { const an = TT * .5 + i * Math.PI / 3, r = R * .62, px = x + Math.cos(an) * r, py = y + Math.sin(an) * r * .82, ta = an + Math.PI / 2;
+    ctx.fillStyle = '#e6f6ff'; ctx.beginPath(); ctx.moveTo(px + Math.cos(ta) * 22, py + Math.sin(ta) * 22); ctx.lineTo(px + Math.cos(ta + 2.5) * 20, py + Math.sin(ta + 2.5) * 20); ctx.lineTo(px + Math.cos(ta - 2.5) * 20, py + Math.sin(ta - 2.5) * 20); ctx.fill(); }
+  ctx.restore();
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  const world = [40, 30, 4.2], ast = [AST[0], AST[1] - 1.0, 26], wld = [15, 50, 6.4], eura = [70, 47, 8.4], north = [72, 61, 20], sib = [86, 50, 11], kzv = [KZC[0], KZC[1] - 1.2, 25];
+  CK = [[0, ...world], [.4, ...world, 'l'], [2.6, ...ast, 'o'], [V('n2') - .1, AST[0], AST[1] - 1.0, 28, 'l'],
+    [V('n2') + 1.0, ...wld], [V('jan') - .1, 15, 50, 6.7, 'l'],
+    [V('jan') + .9, AST[0], AST[1] - .6, 34], [V('c1') - .1, AST[0], AST[1] - .6, 37, 'l'],
+    [V('c1') + 1.0, ...eura], [V('c2') - .1, 70, 47, 8.8, 'l'],
+    [V('c2') + 1.0, ...north], [V('c3') - .1, 72, 60.5, 21, 'l'],
+    [V('c3') + 1.0, ...sib], [V('ent') - .05, 86, 50, 11.8, 'l'],
+    [V('ent'), ...kzv, 'l'], [V('but') - .05, KZC[0], KZC[1] - 1.2, 26.5, 'l'],
+    [V('but') + .9, AST[0], AST[1] - .3, 40], [V('cta') - .1, AST[0], AST[1] - .3, 46, 'l'],
+    [V('cta'), 68, 47, 12, 'l'], [V('vend') + 1, 68, 47.5, 13.5, 'l']];
+}
+const CUTS = () => [V('ent'), V('cta')];
+function render(t) {
+  TT = t; CAM = camAt(CK, t); drawMap(.16); borders(.32);
+  // ---- S1 hook
+  { const a = win(t, 0, V('n2') + .2, .3);
+    if (a > 0) {
+      astMark(a * ap(t, 1.6, .8));
+      head2(TXT.h1, TXT.h2, ap(t, .2, .4) * a, H * .15, 150);
+      const q = a * ap(t, V('how'), .3); if (q > 0) pill(TXT.how, W / 2, H * .7, 50, q, { line: ICE, scale: back(clamp(ap(t, V('how'), .4))) });
+      snow(a * ap(t, 1.8, 1) * .7, 60);
+    } }
+  // ---- S2 world: coldest capitals
+  { const a = A('n2', 'jan', .3);
+    if (a > 0) {
+      const C = [['ULB', ULB, '−21°', GOLD, 1], ['AST', AST, '−14°', GOLD, 2], ['OTT', OTT, '−10°', ICE, 0], ['MSK', MSK, '−6°', ICE, 0]];
+      C.forEach(([k, p, v, col, n], i) => { const q = a * ap(t, V('n2') + .6 + i * .25, .3); dot(...p, q, n ? GOLD : ICE);
+        lab(`${n ? '№' + n + ' ' : ''}${TXT[k]} ${v}`, ...p, q, { size: k === 'AST' ? 34 : 28, dy: (k === 'MSK' || k === 'ULB') ? 52 : -52, line: col, bg: k === 'AST' ? GOLD : undefined, col: k === 'AST' ? BR.navy : undefined }); });
+      head2(TXT.n2a, TXT.n2b, a * ap(t, V('n2') + .1, .4), H * .14, 130);
+      const ra = a * ap(t, V('n2') + 1.8, .3); if (ra > 0) { ctx.save(); ctx.globalAlpha = ra * .7; txt(TXT.jan + ', °C', W / 2, H * .71, 30, '#fff', 'MS', { blur: 6 }); ctx.restore(); }
+      const fa = A('r3', 'jan', .25); if (fa > 0) {
+        pill(TXT.r3, W / 2, H * .655, 44, fa, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('r3'), .4))) });
+        [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .58, fa * back(clamp(ap(t, V('r3') + .2 + n * .18, .35))), GOLD)); }
+    } }
+  // ---- S3 January -14
+  { const a = A('jan', 'c1', .3);
+    if (a > 0) {
+      frostTint(a * .8); astMark(a, 60);
+      lab(TXT.AST, ...AST, a, { size: 30, dy: 90 });
+      ctx.save(); ctx.globalAlpha = a * ap(t, V('jan') + .3, .3); txt(TXT.janA, W / 2, H * .2, 50, '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+      bigNum('−14 °C', W / 2, H * .3, 190, ICE, a * ap(t, V('jan') + 1.0, .45));
+      pill(TXT.jan, W / 2, H * .4, 40, a * ap(t, V('jan') + 1.3, .3), { line: ICE });
+      snow(a, 120, 1.3);
+    } }
+  // ---- S4 far from the ocean
+  { const a = A('c1', 'c2', .3);
+    if (a > 0) {
+      kz(a * .7, { pulse: .3, fill: .22 }); dot(...AST, a, ICE);
+      const la = ease(ap(t, V('c1') + .7, 1.1));
+      geoLine(AST, ATL, la, { col: '#fff', lw: 7, blur: 12, a }); geoLine(AST, PAC, la, { col: '#fff', lw: 7, blur: 12, a });
+      if (la >= 1) { dot(...ATL, a, '#9fe8ff'); dot(...PAC, a, '#9fe8ff'); }
+      lab(TXT.ATL, ATL[0] + 4, ATL[1] - 6, a * ap(t, V('c1') + 1.4, .3), { size: 30, line: '#9fe8ff' });
+      lab(TXT.PAC, PAC[0] - 6, PAC[1] - 6, a * ap(t, V('c1') + 1.6, .3), { size: 30, line: '#9fe8ff' });
+      // warm sea air from the Atlantic dies out before Kazakhstan
+      for (let i = 0; i < 3; i++) { const t0 = V('warm') + .1 + i * .25, p = ease(ap(t, t0, 1.4)), pts = wavy([-4 + i * 2, 52 - i * 4], [44 + i * 3, 52 - i * 3.5], 1.6);
+        windArrow(pts, p, a, WARM, 8, clamp((p - .55) / .45) * .85); }
+      const wa = a * ap(t, V('warm') + .5, .3); if (wa > 0) { lab(TXT.warm, 12, 58.5, wa, { size: 30, line: WARM }); const [x, y] = P(50, 48); xMark(x, y, 1, a * ap(t, V('warm') + 1.6, .3));
+        pill(TXT.notr, x, y + 64, 30, a * ap(t, V('warm') + 1.7, .3), { line: RED }); }
+      head(TXT.far, a * ap(t, V('c1') + .1, .35), ICE, H * .16, 92);
+      counter(1, a);
+    } }
+  // ---- S5 no mountains in the north
+  { const a = A('c2', 'c3', .3);
+    if (a > 0) {
+      kz(a * .7, { pulse: .3, fill: .2 }); dot(...AST, a, ICE); lab(TXT.AST, ...AST, a, { size: 26, dy: 46 });
+      lab(TXT.ARC, 72, 74.2, a * ap(t, V('c2') + .9, .3), { size: 28, line: ICE });
+      for (let i = 0; i < 5; i++) { const lon = 56 + i * 8, t0 = V('arc') - .3 + i * .15 + (i % 2) * .1, p = ease(ap(t, t0, 1.5));
+        windArrow(wavy([lon + 2, 73], [lon - 2 + (i === 2 ? 1.4 : 0), i === 2 ? 52.2 : 47.5], .6, 20), p, a, ICE, 10); }
+      lab(TXT.arc, 88, 63, a * ap(t, V('arc') + .8, .3), { size: 30, line: ICE });
+      lab(TXT.south, 78, 42.3, a * ap(t, V('c2') + 1.6, .3), { size: 28, line: GOLD });
+      head(TXT.nomt, a * ap(t, V('c2') + .1, .35), ICE, H * .16, 110);
+      snow(a * ap(t, V('arc') + .5, .6) * .6, 70, 1.6);
+      counter(2, a);
+    } }
+  // ---- S6 Siberian High
+  { const a = A('c3', 'ent', .3);
+    if (a > 0) {
+      cty('MNG', ICE, a * .5, { fill: .08, blur: 8, lw: 2 }); kz(a * .6, { pulse: .3, fill: .18 });
+      anticyclone(a, ap(t, V('c3') + .8, 1.8));
+      const [x, y] = P(...SIB); pill(TXT.hi, x, y, 32, a * ap(t, V('c3') + 1.6, .3), { line: ICE });
+      head2(TXT.sib1, TXT.sib2, a * ap(t, V('c3') + .2, .4), H * .14, 120);
+      const fa = a * ap(t, V('frost'), .4); if (fa > 0) { frostTint(fa * .6); astMark(fa, 50); pill(TXT.frost + ' ❄', W / 2, H * .7, 46, fa, { bg: ICE, col: BR.navy, line: ICE, font: 'MB', scale: back(clamp(ap(t, V('frost'), .4))) }); snow(fa, 110, 1.4); }
+      counter(3, a);
+    } }
+  // ---- S7 ENT
+  { const a = A('ent', 'but', .25);
+    if (a > 0) { kz(a);
+      stamp(TXT.ent, W / 2 + 250, H * .3, a, ap(t, V('ent') + .1, .35));
+      head2(TXT.kl1, TXT.kl2, a * ap(t, V('kl'), .35), H * .14, 96); } }
+  // ---- S8 + S9 records and the 93-degree range
+  { const a = A('but', 'cta', .3);
+    if (a > 0) {
+      dot(...AST, a, GOLD);
+      head(TXT.rec, a * ap(t, V('but') + .1, .35), GOLD, H * .15, 84);
+      const sa = ap(t, V('sum') + .2, .4), wa = ap(t, V('win') + .2, .4);
+      const x = W * .2, y0 = H * .24, y1 = H * .62; thermo(x, y0, y1, a * ap(t, V('but') + .4, .3), ease(ap(t, V('sum'), 1)), ease(ap(t, V('win'), 1)));
+      const dk = 1 - .8 * ap(t, V('diff'), .3);
+      bigNum('+41,6 °C', W * .6, H * .3, 120, WARM, a * sa * dk); pill(TXT.sum + ' · 1936', W * .6, H * .37, 34, a * sa * dk, { line: WARM });
+      bigNum('−51,6 °C', W * .6, H * .56, 120, ICE, a * wa * dk); pill(TXT.win + ' · 1893', W * .6, H * .63, 34, a * wa * dk, { line: ICE });
+      if (wa > 0) snow(a * wa * .5, 50, 1);
+      const da = a * ap(t, V('diff') + .1, .35);
+      if (da > 0) { ctx.save(); ctx.globalAlpha = da; ctx.strokeStyle = GOLD; ctx.lineWidth = 6; ctx.shadowColor = GOLD; ctx.shadowBlur = 14; const bx = x + 60;
+        ctx.beginPath(); ctx.moveTo(bx, y0 + 20); ctx.lineTo(bx + 24, y0 + 20); ctx.lineTo(bx + 24, y1 - 20); ctx.lineTo(bx, y1 - 20); ctx.stroke(); ctx.restore();
+                bigNum('93 °C', W * .6, H * .43, 200, GOLD, da); pill(TXT.diff, W * .6, H * .43 + 125, 34, da, { line: GOLD }); }
+      const ka = a * ap(t, V('kip') + .1, .35);
+      if (ka > 0) { kettle(W * .3, H * .715, 120, ka * back(clamp(ap(t, V('kip') + .1, .4)))); cube(W * .7, H * .715, 120, a * back(clamp(ap(t, V('kip') + .7, .4))));
+        pill(TXT.kip + ' 100°', W * .3, H * .77, 30, ka, { line: WARM }); pill(TXT.ice + ' 0°', W * .7, H * .77, 30, a * ap(t, V('kip') + .7, .3), { line: ICE });
+        txt('≈', W / 2, H * .715, 90, GOLD, 'MB', { blur: 0 }); }
+    } }
+  // ---- S10 CTA
+  if (t >= V('cta')) { kz(ap(t, V('cta'), .4)); dot(...AST, 1, ICE); ctaEnd(t); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function ctaEnd(t) {
+  const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(TXT.cta1 + ' ' + TXT.cta2, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('ca', 'tex/ca.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
