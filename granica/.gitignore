@@ -1,0 +1,9 @@
+out/
+chk/
+*.log
+prev/vo_*.mp3
+out/
+chk/
+chk2/
+tmp_tts/
+*.log
