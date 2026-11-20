@@ -1,0 +1,300 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Невидимая стена между Бали и Ломбоком» (линия Уоллеса) — KZ + RU. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 50, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 }, { k: 'world', l0: 180, l1: 540, b0: -90, b1: 90 });
+TEX.push({ k: 'ind', l0: 90, l1: 160, b0: -30, b1: 25, minppd: 9 });
+TEX.push({ k: 'mid', l0: 103, l1: 129, b0: -13, b1: 5, minppd: 36 });
+TEX.push({ k: 'bl', l0: 112.4, l1: 118.6, b0: -11.5, b1: -5.5, minppd: 110 });
+const GOLD = BR.acc, RED = BR.red, ASIA = '#FF8A3D', AUS = '#38D6C4', WATER = '#5FD4FF';
+const BALI = [115.12, -8.38], LOMB = [116.3, -8.62];
+const EMO = '"Noto Color Emoji"';
+const TXT = {
+  ru: { h1: 'Невидимая', h2: 'стена', bali: 'Бали', lomb: 'Ломбок', km: '≈ 35 км', worlds: '2 разных мира', asia: 'Азия', aus: 'Австралия',
+    wline: 'Линия Уоллеса', wname: 'Альфред Уоллес', wyears: '1823–1913', y150: '> 150 лет назад', ice: 'Ледниковый период', m: 'м', baliA: 'Бали = Азия',
+    strait: 'Пролив Ломбок', deep: '> 250 м', never: 'не высыхал никогда', shallow: 'мелко', sea: 'уровень моря', stop: 'СТОП', wall: 'Стена из воды', birds: 'Даже птицы',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Источники: Britannica, NHM London · карта: NASA Blue Marble, рельеф дна: Mapzen/AWS Terrain Tiles' },
+  kk: { h1: 'Көрінбейтін', h2: 'қабырға', bali: 'Бали', lomb: 'Ломбок', km: '≈ 35 км', worlds: '2 бөлек әлем', asia: 'Азия', aus: 'Австралия',
+    wline: 'Уоллес сызығы', wname: 'Альфред Уоллес', wyears: '1823–1913', y150: '150+ жыл бұрын', ice: 'Мұз басу кезеңі', m: 'м', baliA: 'Бали = Азия',
+    strait: 'Ломбок бұғазы', deep: '> 250 м', never: 'ешқашан құрғамаған', shallow: 'таяз', sea: 'теңіз деңгейі', stop: 'ТОҚТА', wall: 'Судан қабырға', birds: 'Тіпті құстар',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Дереккөздер: Britannica, NHM London · карта: NASA Blue Marble, түп рельефі: Mapzen/AWS Terrain Tiles' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+function head2(l1, l2, a, y = H * .15) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(66, 66 * 960 / tw(l1, 66, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, 96, Math.min(110, 110 * 960 / tw(l2, 110, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function bigPill(s, y, a, t0, o = {}) { if (a > 0) pill(s, o.x || W / 2, y, o.size || 50, a, { bg: o.bg || GOLD, col: o.col || BR.navy, line: o.line || o.bg || GOLD, font: 'MB', scale: back(clamp(ap(TT, t0, .4))) }); }
+function emoDisc(ch, x, y, r, a, ring = GOLD, t0 = null) {   // emoji animal in a navy disc
+  if (a <= 0) return; const s = t0 === null ? 1 : back(clamp(ap(TT, t0, .4)));
+  ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 18; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = Math.max(4, r * .09); ctx.strokeStyle = ring; ctx.stroke();
+  ctx.scale(r * 1.15 / 96, r * 1.15 / 96); ctx.font = `96px ${EMO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, 0, 7);
+  ctx.restore();
+}
+function emo(ch, x, y, size, a = 1, rot = 0, flip = 1) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(flip, 1);
+  ctx.scale(size / 96, size / 96); ctx.shadowBlur = 0; ctx.shadowColor = 'rgba(0,0,0,0)'; ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0, 44, 34, 9, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#000'; ctx.font = `96px ${EMO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, 0, 0); ctx.restore(); }
+function islandPill(s, lon, lat, dy, a, t0, col = GOLD) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x, y + dy, 46, a, { line: col, scale: back(clamp(ap(TT, t0, .4))) }); }
+// ---------- the Wallace line ----------
+function wline(p, a, lw = 7) {   // drawn south -> north up to fraction p
+  if (a <= 0 || p <= 0) return; const pts = SH.wl;
+  polyPartial(pts, p, { col: GOLD, lw: lw + 6, glow: GOLD, blur: 30, a: a * .55 });
+  polyPartial(pts, p, { col: '#fff', lw, glow: GOLD, blur: 18, a });
+}
+const WL_SOUTH = () => SH.wl.slice(0, 4);   // the Bali–Lombok part only
+function wlineSouth(a, lw = 7) { if (a <= 0) return; polyPartial(WL_SOUTH(), 1, { col: GOLD, lw: lw + 6, glow: GOLD, blur: 30, a: a * .55 }); polyPartial(WL_SOUTH(), 1, { col: '#fff', lw, glow: GOLD, blur: 18, a }); }
+function shelf(p, a) {   // ice-age land bridges: sea floor shallower than 20..120 m appears as dry land
+  if (a <= 0 || p <= 0) return;
+  for (let k = 1; k <= 6; k++) { const q = clamp(p * 6 - (k - 1)); if (q <= 0) break; ctx.save(); ctx.globalAlpha = a * (k === 1 ? q : Math.min(1, q + .0)); drawTex({ k: 'sh' + k * 20, l0: 94, l1: 132, b0: -12, b1: 8 }); ctx.restore(); }
+}
+// ---------- Wallace portrait (drawn): white beard, round glasses, dark coat ----------
+function wallace(x, y, r, a, t0) {
+  if (a <= 0) return; const s = back(clamp(ap(TT, t0, .45)));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#d9c9a3'); g.addColorStop(1, '#a8916a'); ctx.fillStyle = g;
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.save(); ctx.clip(); const k = r / 100;
+  ctx.fillStyle = '#23201f'; ctx.beginPath(); ctx.ellipse(0, 112 * k, 92 * k, 52 * k, 0, Math.PI, 0); ctx.fill();                       // coat
+  ctx.fillStyle = '#f2efe8'; ctx.beginPath(); ctx.moveTo(-16 * k, 62 * k); ctx.lineTo(0, 100 * k); ctx.lineTo(16 * k, 62 * k); ctx.fill(); // collar
+  ctx.fillStyle = '#e7b995'; ctx.beginPath(); ctx.ellipse(0, -10 * k, 30 * k, 38 * k, 0, 0, 7); ctx.fill();                          // face
+  ctx.fillStyle = '#e2ddd3'; ctx.beginPath(); ctx.ellipse(-31 * k, -18 * k, 10 * k, 18 * k, 0, 0, 7); ctx.ellipse(31 * k, -18 * k, 10 * k, 18 * k, 0, 0, 7); ctx.fill(); // side hair
+  ctx.fillStyle = '#d8b08e'; ctx.beginPath(); ctx.ellipse(0, -40 * k, 26 * k, 12 * k, 0, Math.PI, 0); ctx.fill();                      // bald crown
+  ctx.fillStyle = '#f4f1ea'; ctx.beginPath(); ctx.moveTo(-30 * k, 2 * k); ctx.quadraticCurveTo(-36 * k, 58 * k, 0, 76 * k); ctx.quadraticCurveTo(36 * k, 58 * k, 30 * k, 2 * k);
+  ctx.quadraticCurveTo(14 * k, 14 * k, 0, 10 * k); ctx.quadraticCurveTo(-14 * k, 14 * k, -30 * k, 2 * k); ctx.fill();                   // beard
+  ctx.strokeStyle = '#cfc8bb'; ctx.lineWidth = 2 * k; for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * 7 * k, 20 * k); ctx.quadraticCurveTo(i * 9 * k, 46 * k, i * 4 * k, 66 * k); ctx.stroke(); }
+  ctx.fillStyle = '#efe9df'; ctx.beginPath(); ctx.ellipse(-9 * k, 6 * k, 12 * k, 5 * k, .2, 0, 7); ctx.ellipse(9 * k, 6 * k, 12 * k, 5 * k, -.2, 0, 7); ctx.fill(); // moustache
+  ctx.strokeStyle = '#3a2f25'; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.arc(-12 * k, -14 * k, 9 * k, 0, 7); ctx.moveTo(21 * k, -14 * k); ctx.arc(12 * k, -14 * k, 9 * k, 0, 7);
+  ctx.moveTo(-3 * k, -14 * k); ctx.lineTo(3 * k, -14 * k); ctx.stroke();                                                            // round glasses
+  ctx.fillStyle = '#2a211b'; ctx.beginPath(); ctx.arc(-12 * k, -14 * k, 2.6 * k, 0, 7); ctx.arc(12 * k, -14 * k, 2.6 * k, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#bba78f'; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.moveTo(-20 * k, -27 * k); ctx.lineTo(-5 * k, -26 * k); ctx.moveTo(5 * k, -26 * k); ctx.lineTo(20 * k, -27 * k); ctx.stroke();
+  ctx.restore(); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.lineWidth = 7; ctx.strokeStyle = GOLD; ctx.stroke(); ctx.restore();
+}
+// ---------- cutaway: depth profile west -> east (Java, Bali Strait, Bali, Lombok Strait, Lombok), schematic ----------
+const PROF = [[0, 120], [.05, 260], [.1, 150], [.15, 20], [.17, -40], [.21, -60], [.25, -45], [.28, 10], [.33, 300], [.4, 900], [.45, 350], [.5, 40], [.53, -20],
+  [.56, -150], [.585, -290], [.61, -330], [.635, -280], [.66, -120], [.69, -15], [.72, 40], [.78, 400], [.84, 1000], [.9, 420], [.96, 150], [1, 120]];
+function profY(m, y0) { return m >= 0 ? y0 - m * .2 : y0 - m * 1.15; }
+function cutaway(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0d1a4a'); g.addColorStop(.42, '#1d2f6e'); g.addColorStop(1, '#090628'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const x0 = 40, x1 = W - 40, y0 = H * .44, X = f => x0 + (x1 - x0) * f;
+  const drop = ease(ap(t, V('deep0') + .9, 1.6)), sl = -120 * drop, ySea = profY(sl, y0);
+  // water: everything below the current sea level and above the floor
+  ctx.save(); ctx.beginPath(); ctx.moveTo(X(0), ySea); ctx.lineTo(X(1), ySea); ctx.lineTo(X(1), H); ctx.lineTo(X(0), H); ctx.closePath(); ctx.clip();
+  const wg = ctx.createLinearGradient(0, ySea, 0, profY(-330, y0)); wg.addColorStop(0, 'rgba(70,170,220,.85)'); wg.addColorStop(1, 'rgba(10,50,120,.95)'); ctx.fillStyle = wg; ctx.fillRect(0, ySea, W, H - ySea);
+  ctx.restore();
+  // ground
+  ctx.beginPath(); ctx.moveTo(X(0), H); PROF.forEach(([f, m]) => ctx.lineTo(X(f), profY(m, y0))); ctx.lineTo(X(1), H); ctx.closePath();
+  const gg = ctx.createLinearGradient(0, profY(1000, y0), 0, H); gg.addColorStop(0, '#6f8a3a'); gg.addColorStop(.35, '#8a6a3c'); gg.addColorStop(1, '#3b2614'); ctx.fillStyle = gg; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
+  if (drop > 0) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, ySea); ctx.clip(); ctx.beginPath(); PROF.forEach(([f, m], i) => { if (m < 0) { const [x, y] = [X(f), profY(m, y0)]; ctx.moveTo(x, y); ctx.arc(x, y, 0, 0, 0); } }); ctx.restore(); }
+  // sea level lines: today (thin) and ice age (dashed amber)
+  ctx.save(); ctx.setLineDash([16, 12]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.beginPath(); ctx.moveTo(X(0), y0); ctx.lineTo(X(1), y0); ctx.stroke();
+  if (drop > 0) { ctx.strokeStyle = GOLD; ctx.lineWidth = 5; ctx.globalAlpha = a * clamp(drop * 2); ctx.beginPath(); ctx.moveTo(X(0), ySea); ctx.lineTo(X(1), ySea); ctx.stroke(); } ctx.restore();
+  txt('0 ' + TXT.m, X(0) + 50, y0 - 26, 30, '#fff', 'MX', { align: 'left' });
+  if (drop > 0) pill(`${Math.round(sl)} ${TXT.m}`, X(.11), ySea + 44, 40, clamp(drop * 2), { line: GOLD, col: GOLD });
+  // labels
+  pill(TXT.bali, X(.4), profY(900, y0) - 60, 42, ap(t, V('deep0') + .2, .3), { line: ASIA });
+  pill(TXT.lomb, X(.84), profY(1000, y0) - 60, 42, ap(t, V('deep0') + .35, .3), { line: AUS });
+  // the Wallace line through the strait
+  ctx.save(); ctx.globalAlpha = a * ap(t, V('deep0') + .3, .4); ctx.strokeStyle = GOLD; ctx.lineWidth = 6; ctx.setLineDash([20, 12]); ctx.shadowColor = GOLD; ctx.shadowBlur = 16;
+  ctx.beginPath(); ctx.moveTo(X(.61), profY(1100, y0)); ctx.lineTo(X(.61), profY(-330, y0) + 30); ctx.stroke(); ctx.restore();
+  // depth arrow in the strait
+  { const q = ap(t, V('deep') + .3, .4); if (q > 0) { const xa = X(.61) + 70, ya0 = y0 + 8, ya1 = profY(-330, y0) - 6, yy = lerp(ya0, ya1, eout(q));
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(xa, ya0); ctx.lineTo(xa, yy); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(xa - 16, yy - 18); ctx.lineTo(xa + 16, yy - 18); ctx.lineTo(xa, yy + 4); ctx.fill(); ctx.restore();
+      bigPill(TXT.deep, (ya0 + ya1) / 2 + 40, q, V('deep') + .3, { x: Math.min(W - 160, xa + 140), size: 54 }); } }
+  // shallow side dries
+  { const q = clamp(drop * 1.6 - .6); if (q > 0) pill(TXT.shallow, X(.24), profY(-60, y0) + 150, 36, q, { line: GOLD }); }
+  bigPill(TXT.strait, H * .17, ap(t, V('deep0') + .1, .3), V('deep0') + .1, { size: 54 });
+  { const q = ap(t, V('never'), .3); if (q > 0) pill('✓ ' + TXT.never, W / 2, H * .7, 44, q, { bg: AUS, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, V('never'), .4))) }); }
+  ctx.restore();
+}
+function waterWall(t, a) {   // shimmering wall of water along the Bali–Lombok part of the line
+  if (a <= 0) return; const pts = WL_SOUTH().map(c => P(c[0], c[1]));
+  ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const path = () => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); };
+  path(); ctx.strokeStyle = 'rgba(95,212,255,.32)'; ctx.lineWidth = 120 * clamp(a * 1.2); ctx.shadowColor = WATER; ctx.shadowBlur = 40; ctx.stroke();
+  path(); ctx.strokeStyle = 'rgba(160,235,255,.45)'; ctx.lineWidth = 50; ctx.shadowBlur = 20; ctx.stroke();
+  path(); ctx.setLineDash([26, 34]); ctx.lineDashOffset = t * 160; ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 10; ctx.shadowBlur = 0; ctx.stroke();
+  path(); ctx.setLineDash([10, 46]); ctx.lineDashOffset = -t * 110; ctx.strokeStyle = 'rgba(200,245,255,.8)'; ctx.lineWidth = 24; ctx.stroke();
+  ctx.restore();
+}
+function stopSign(x, y, r, a, t0) {
+  if (a <= 0) return; const s = back(clamp(ap(TT, t0, .35))); ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); for (let i = 0; i < 8; i++) { const an = Math.PI / 8 + i * Math.PI / 4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.closePath();
+  ctx.fillStyle = '#D7263D'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 7; ctx.strokeStyle = '#fff'; ctx.stroke();
+  txt(TXT.stop, 0, 4, Math.min(r * .5, r * 1.3 * 100 / tw(TXT.stop, 100, 'MB')), '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function catmull(pts, n = 16) {
+  const o = []; for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; o.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); } }
+  o.push(pts[pts.length - 1]); return o;
+}
+function along(pts, p) {
+  const S = pts.map(c => P(c[0], c[1])); let L = 0; const d = [0];
+  for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  const lim = L * clamp(p); for (let i = 1; i < S.length; i++) if (d[i] >= lim) { const k = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1);
+    return [lerp(S[i - 1][0], S[i][0], k), lerp(S[i - 1][1], S[i][1], k), Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0])]; }
+  const z = S[S.length - 1]; return [z[0], z[1], 0];
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function ctaEnd(t) {
+  const a = ap(t, V('cta'), .4); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .2, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .56); ctx.scale(pk, pk);
+  txt(TXT.cta1, 0, -70, 66, '#fff', 'MX'); const s = TXT.cta2, size = 64, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, 0, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 66, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .41 + Math.sin(t * 6) * 14, 1.6 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+// ---------- camera ----------
+let CAMK = [];
+function buildCam() {
+  CAMK = [
+    [0, 108, 0, 3.4], [.8, 110, -3, 6, 'e'], [2.7, 115.55, -8.45, 330, 'e'], [V('s2'), 115.55, -8.45, 360, 'l'], [V('why') - .1, 115.55, -8.45, 400, 'l'],
+    [V('west0') + .3, 107, 1, 30, 'e'], [V('east0'), 108, 0, 31, 'l'],
+    [V('east0') + 1.1, 128, -9, 26, 'e'], [V('wal'), 128.5, -9, 27, 'l'],
+    [V('wal') + 1.2, 118.5, 0, 36, 'e'], [V('ice0'), 118.5, -.5, 38, 'l'],
+    [V('ice0') + 1.1, 110, -2.5, 30, 'e'], [V('bali') - .2, 110.5, -3, 33, 'l'], [V('bali') + 1.0, 115, -7.8, 95, 'e'], [V('deep0'), 115.1, -7.9, 105, 'l'],
+    [V('deep0') + .01, 114.9, -8.1, 150, 'l'], [V('walk'), 114.9, -8.1, 150, 'l'], [V('stop'), 115.2, -8.25, 175, 'l'], [V('birds') - .1, 115.5, -8.3, 190, 'l'],
+    [V('birds') + 1.0, 115.9, -8.0, 110, 'e'], [V('cta'), 116, -8.0, 105, 'l'],
+    [V('cta') + 1.6, 118, -4, 22, 'e'], [END, 118, -4, 20, 'l'] ];
+}
+const TIGER_PATH = catmull([[112.9, -7.5], [113.7, -7.9], [114.4, -8.15], [114.9, -8.25], [115.3, -8.3], [115.66, -8.4]]);
+function render(t) {
+  TT = t; CAM = camAt(CAMK, t);
+  drawMap(.1);
+  { ctx.save(); ctx.globalAlpha = .38; pathRings(SH.borders); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore(); }
+  // ---- ice-age shelf: grows in F6, stays (fully dry) through the walk scene
+  const lvlP = ease(ap(t, V('ice') + .2, Math.max(1, V('lvl') - V('ice') + .4)));
+  const shelfA = win(t, V('ice0') + .5, V('birds') + .8, .4);
+  shelf(lvlP, shelfA * .92);
+  // ---- F3/F4 tints: Asian side amber-orange, Australian side turquoise
+  { const a = win(t, V('west0'), V('ice0') + .2, .4); if (a > 0) {
+      SH.west.forEach(r => glowFill([r], ASIA, a * ap(t, V('west0') + .2, .5), { fill: .34, blur: 12, lw: 2.5 }));
+      SH.east.forEach(r => glowFill([r], AUS, a * ap(t, V('east0') + .2, .5), { fill: .34, blur: 12, lw: 2.5 })); } }
+  // ---- the line: Bali–Lombok part from the hook, the whole line from F5
+  const fullP = ease(ap(t, V('wal') + .3, 1.6));
+  const lineA = win(t, .9, V('cta') + .4, .3);
+  if (t < V('wal') + .3) { const p = ease(ap(t, 1.0, 1.4)); polyPartial(WL_SOUTH(), p, { col: GOLD, lw: 13, glow: GOLD, blur: 30, a: lineA * .55 }); polyPartial(WL_SOUTH(), p, { col: '#fff', lw: 7, glow: GOLD, blur: 18, a: lineA }); }
+  else wline(Math.max(fullP, .25), lineA);
+  // ---- F1 hook
+  { const a = win(t, .3, V('why') + .1, .35); if (a > 0) {
+      head2(TXT.h1, TXT.h2, a * ap(t, .5, .35), H * .13);
+      const q = a * ap(t, 2.2, .3); islandPill(TXT.bali, BALI[0], BALI[1], -170, q, 2.2, ASIA); islandPill(TXT.lomb, LOMB[0], LOMB[1], -170, a * ap(t, 2.45, .3), 2.45, AUS);
+      // F2 distance across the strait
+      const d = ease(ap(t, V('s2') + .3, .8)), A0 = [115.71, -8.47], A1 = [116.07, -8.47];
+      if (d > 0) { const [xa, ya] = P(...A0), [xb, yb] = P(...A1); ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(lerp(xa, xb, d), lerp(ya, yb, d)); ctx.stroke(); [xa, lerp(xa, xb, d)].forEach(x => { ctx.beginPath(); ctx.moveTo(x, ya - 22); ctx.lineTo(x, ya + 22); ctx.stroke(); }); ctx.restore();
+        pill(TXT.km, (xa + xb) / 2, ya + 90, 54, a * ap(t, V('s2') + .9, .3), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('s2') + .9, .4))) }); }
+      { const q2 = a * ap(t, V('worlds'), .3); if (q2 > 0) { const [x] = P(...A0); pill('← ' + TXT.asia, x - 230, H * .62, 42, q2, { bg: ASIA, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, V('worlds'), .4))) });
+          pill(TXT.aus + ' →', x + 300, H * .62, 42, q2, { bg: AUS, col: BR.navy, line: '#fff', font: 'MB', scale: back(clamp(ap(t, V('worlds') + .15, .4))) });
+          pill(TXT.worlds, W / 2, H * .31, 46, q2, { line: GOLD, col: GOLD }); } }
+    } }
+  // ---- F3 west: Asian animals
+  { const a = win(t, V('west0'), V('east0') + .5, .3); if (a > 0) {
+      label2([TXT.asia], 103, 12, a * ap(t, V('west') + .1, .35), ASIA, 84);
+      [['🐒', 'monk', 113.8, 1.0], ['🐅', 'tig', 101.5, -1.5], ['🐘', 'ele', 101.0, 7.5]].forEach(([e, k, lon, lat]) => { const [x, y] = P(lon, lat); emoDisc(e, x, y, 82, a * ap(t, V(k) - .15, .2), ASIA, V(k) - .15); });
+    } }
+  // ---- F4 east: Australian relatives
+  { const a = win(t, V('east0'), V('wal') + .4, .3); if (a > 0) {
+      label2([TXT.aus], 130.5, -25, a * ap(t, V('east') + .3, .35), AUS, 80);
+      [['🦘', 'mars', 133.5, -17.5], ['🐨', 'mars', 140.5, -29, .25], ['🦜', 'cock', 139.5, -4.5]].forEach(([e, k, lon, lat, dd = 0]) => { const [x, y] = P(lon, lat); emoDisc(e, x, y, 82, a * ap(t, V(k) - .15 + dd, .2), AUS, V(k) - .15 + dd); });
+    } }
+  // ---- F5 Wallace: line extends north, portrait
+  { const a = win(t, V('wal'), V('ice0') + .2, .3); if (a > 0) {
+      bigPill(TXT.wline, H * .2, a * ap(t, V('wal') + .4, .3), V('wal') + .4, { size: 54 });
+      wallace(W * .28, H * .37, 150, a * ap(t, V('alf') - .2, .3), V('alf') - .2);
+      pill(TXT.wname, W * .28, H * .37 + 200, 36, a * ap(t, V('alf'), .3), { line: GOLD });
+      pill(TXT.wyears, W * .28, H * .37 + 262, 30, a * ap(t, V('alf') + .2, .3), {});
+      { const q = a * ap(t, V('y150'), .3); if (q > 0) pill(TXT.y150, W * .7, H * .66, 44, q, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: back(clamp(ap(t, V('y150'), .4))) }); }
+    } }
+  // ---- F6 ice age: sea level drops 0 -> -120 m, Bali joins Asia
+  { const a = win(t, V('ice0'), V('deep0') + .1, .3); if (a > 0) {
+      bigPill('❄ ' + TXT.ice, H * .17, a * ap(t, V('ice0') + .2, .3), V('ice0') + .2, { size: 50, bg: '#cfefff', line: '#fff' });
+      const q = a * ap(t, V('ice') + .1, .3);
+      if (q > 0) { const n = Math.round(-120 * lvlP); ctx.save(); ctx.globalAlpha = q; const s = back(clamp(ap(t, V('ice') + .1, .4))); ctx.translate(W / 2, H * .27); ctx.scale(s, s);
+        txt(`${n === 0 ? '0' : '−' + Math.abs(n)} ${TXT.m}`, 0, 0, 150, '#fff', 'MB', { shadow: WATER, blur: 30, stroke: 12, sc: 'rgba(0,0,0,.55)' }); ctx.restore(); }
+      { const qb = a * ap(t, V('bali'), .3); if (qb > 0) { glowFill(SH.bali, ASIA, qb * (.8 + .2 * Math.sin(t * 7)), { fill: .55, blur: 26, lw: 5 }); islandPill(TXT.baliA, BALI[0], BALI[1], -130, qb, V('bali'), ASIA); } }
+    } }
+  // ---- F8 walk: tiger walks over the dry shelf to Bali and stops at the line; F8b the wall is water
+  { const a = win(t, V('walk') - .1, V('birds') + .3, .3); if (a > 0) {
+      wlineSouth(a);
+      glowFill(SH.bali, ASIA, a * .7, { fill: .3, blur: 14, lw: 3 }); glowFill(SH.lombok, AUS, a * .7, { fill: .3, blur: 14, lw: 3 });
+      const k = ease(ap(t, V('walk') + .1, Math.max(1.2, V('stop') - V('walk') - .1))); const [x, y] = along(TIGER_PATH, k);
+      const bounce = k < 1 ? Math.abs(Math.sin(t * 14)) * 10 : 0, shake = t > V('stop') ? Math.sin((t - V('stop')) * 50) * 8 * (1 - ap(t, V('stop'), .5)) : 0;
+      emo('🐅', x + shake, y - 50 - bounce, 120, a, 0, -1);
+      if (k < 1) { [.25, .5, .75].forEach((f, i) => { if (k > f / 1.0 * .99) { const [px, py] = along(TIGER_PATH, f * k); ctx.save(); ctx.globalAlpha = a * .7; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, 7, 0, 7); ctx.fill(); ctx.restore(); } }); }
+      const [lx, ly] = P(115.8, -8.4); stopSign(lx + 120, ly - 230, 92, a * ap(t, V('stop') - .05, .2), V('stop') - .05);
+      waterWall(t, a * ap(t, V('wall') - .2, .5));
+      { const q = a * ap(t, V('wall'), .3); if (q > 0) bigPill('🌊 ' + TXT.wall, H * .19, q, V('wall'), { size: 54 }); }
+    } }
+  // ---- F9 birds: two turn back at the line, one crosses
+  { const a = win(t, V('birds') - .1, V('cta') + .3, .3); if (a > 0) {
+      wlineSouth(a); waterWall(t, a * .5);
+      bigPill(TXT.birds, H * .19, a * ap(t, V('birds') + .1, .3), V('birds') + .1, { size: 58 });
+      const lx = P(115.82, -8.2)[0];
+      [[-7.3, 0, true], [-8.05, .35, true], [-8.8, .7, false]].forEach(([lat, d, back_]) => {
+        const k = ap(t, V('birds') + .6 + d, 2.6); if (k <= 0) return;
+        const y = P(115, lat)[1] + Math.sin(t * 9 + d * 5) * 8; const xs = lx - 330, xe = lx + 300;
+        let x, flip;
+        if (back_) { const u = k < .5 ? ease(k * 2) : 1 - ease((k - .5) * 2); x = lerp(xs, lx - 30, u); flip = k < .5 ? -1 : 1; }
+        else { x = lerp(xs, xe, ease(k)); flip = -1; }
+        emo('🐦', x, y, 84, a * (back_ ? 1 : (k < .85 ? 1 : 1 - (k - .85) / .15 * .6)), 0, flip);
+      });
+    } }
+  // ---- F7 cutaway (full screen panel)
+  { const a = win(t, V('deep0') - .15, V('walk') - .05, .25); cutaway(t, a); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  ctaEnd(t);
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  await document.fonts.load(`80px ${EMO}`, '🐅🐒🐘🦘🐨🦜🐦🌊❄');
+  SH = await (await fetch('shapes.json')).json();
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  END = V('vend') + 2.6; buildCam();
+  const L = [['world', 'tex/world.jpg'], ['ind', 'tex/ind.jpg'], ['mid', 'tex/mid.jpg'], ['bl', 'tex/bl.jpg'], ['logo', 'brand/logo_white_transparent.png']];
+  for (let k = 20; k <= 120; k += 20) L.push(['sh' + k, `tex/shelf_${k}.png`]);
+  await Promise.all(L.map(([k, s]) => loadImg(k, s)));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
