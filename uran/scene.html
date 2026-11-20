@@ -1,0 +1,374 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Казахстан — урановая сверхдержава» — KZ + RU, voices Ерсұлтан / Egor. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 45, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58, minppd: 14 });
+const GOLD = BR.acc, RED = BR.red, TURQ = '#4FD1C5', LIL = '#9F8CF0', ORA = '#F08A4B', BLUE = '#4FA8FF', GRN = '#3DDC84';
+const KZC = [67.3, 48.2], URC = [68.6, 44.7], FIELD = [69.2, 45.2];
+const CHU = [[75.6, 42.85], [74.7, 43.2], [73.9, 43.6], [73.0, 44.0], [72.0, 44.4], [70.9, 44.9], [69.8, 45.3], [68.8, 45.6], [68.0, 45.7]];
+const PROV = { chu: [[66.9, 46.0], [68.5, 46.5], [70.4, 46.1], [71.6, 45.1], [71.2, 44.1], [69.7, 43.6], [68.2, 44.1], [67.2, 44.9]],
+  syr: [[64.4, 45.2], [66.0, 45.5], [67.6, 44.6], [68.4, 43.2], [68.3, 42.5], [67.3, 42.6], [66.2, 43.6], [64.6, 44.3]] };
+const MINES = [[68.6, 45.4], [69.3, 45.7], [69.7, 45.1], [70.4, 44.9], [69.0, 44.7], [70.0, 44.3], [65.6, 44.8], [66.6, 44.3], [67.4, 43.7], [67.9, 43.0]];
+const TXT = {
+  ru: { h1: 'Казахстан', no1: '№1 в мире', u: 'Уран', f3: '3 факта', last: 'последний — самый странный',
+    pct: '≈ 40%', pctS: 'урана планеты', CAN: 'Канада', NAM: 'Намибия', AUS: 'Австралия', KAZ: 'Казахстан', share: 'доля мировой добычи',
+    y1: 'С 2009 года', y2: '№1 в мире', yrs: '15+ лет',
+    south: 'Юг Казахстана', chu: 'Шу-Сарысу', syr: 'Сырдарья', rChu: 'р. Шу', rSyr: 'р. Сырдарья', sand: 'Пески', mines: 'рудники',
+    c1: '1 т урана', c2: '16 000 т угля', wag: '≈ 230 вагонов', eq: '=', cU: 'уран', cC: 'уголь',
+    ent: 'ЕНТ', e1: 'Где добывают уран?', e2: 'Уран — юг', oil: 'нефть — запад', coalL: 'уголь — центр',
+    nm1: 'Без шахт', nm2: 'и карьеров', inj: 'раствор ↓', prod: 'уран ↑', ore: 'рудный песок', clay: 'глина', dep: 'сотни метров', plant: 'завод',
+    isl1: 'Подземное', isl2: 'выщелачивание', wells: 'ряды скважин',
+    fuel1: 'Топливо для АЭС', fuel2: 'всего мира', CHN: 'Китай', FRA: 'Европа', USA: 'США', IND: 'Индия', KOR: 'Корея',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Карта: NASA Blue Marble · Natural Earth · данные: World Nuclear Association' },
+  kk: { h1: 'Қазақстан', no1: 'Әлемде №1', u: 'Уран', f3: '3 дерек', last: 'соңғысы — ең таңғаларлық',
+    pct: '≈ 40%', pctS: 'планета уранының', CAN: 'Канада', NAM: 'Намибия', AUS: 'Австралия', KAZ: 'Қазақстан', share: 'әлемдік өндірістегі үлесі',
+    y1: '2009 жылдан бері', y2: 'Әлемде №1', yrs: '15+ жыл',
+    south: 'Қазақстанның оңтүстігі', chu: 'Шу-Сарысу', syr: 'Сырдария', rChu: 'Шу өзені', rSyr: 'Сырдария өзені', sand: 'Құм', mines: 'кен орындары',
+    c1: '1 т уран', c2: '16 000 т көмір', wag: '≈ 230 вагон', eq: '=', cU: 'уран', cC: 'көмір',
+    ent: 'ҰБТ', e1: 'Уран қайда өндіріледі?', e2: 'Уран — оңтүстік', oil: 'мұнай — батыс', coalL: 'көмір — орталық',
+    nm1: 'Шахта жоқ', nm2: 'карьер жоқ', inj: 'ерітінді ↓', prod: 'уран ↑', ore: 'кенді құм', clay: 'саз', dep: 'жүздеген метр', plant: 'зауыт',
+    isl1: 'Жерасты', isl2: 'шаймалау', wells: 'ұңғыма қатарлары',
+    fuel1: 'Әлемдегі АЭС-ке', fuel2: 'отын', CHN: 'Қытай', FRA: 'Еуропа', USA: 'АҚШ', IND: 'Үндістан', KOR: 'Корея',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Карта: NASA Blue Marble · Natural Earth · деректер: World Nuclear Association' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  rr(-140, -66, 280, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+// ---------- icons ----------
+function atom(x, y, r, a, col = GOLD) {   // nucleus + three rotating orbits
+  if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.shadowColor = col; ctx.shadowBlur = 16; ctx.strokeStyle = col; ctx.lineWidth = r * .07;
+  for (let i = 0; i < 3; i++) { ctx.save(); ctx.rotate(i * Math.PI / 3 + TT * .4); ctx.beginPath(); ctx.ellipse(0, 0, r * .95, r * .34, 0, 0, 7); ctx.stroke();
+    const an = TT * 3 + i * 2.1; ctx.beginPath(); ctx.arc(Math.cos(an) * r * .95, Math.sin(an) * r * .34, r * .09, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); }
+  ctx.beginPath(); ctx.arc(0, 0, r * .2, 0, 7); ctx.fillStyle = col; ctx.fill(); ctx.restore();
+}
+function dropIcon(x, y, r, a, col = '#222') {
+  if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -r * .8); ctx.bezierCurveTo(r * .7, -r * .1, r * .6, r * .7, 0, r * .7); ctx.bezierCurveTo(-r * .6, r * .7, -r * .7, -r * .1, 0, -r * .8);
+  ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+}
+function coalIcon(x, y, r, a) {
+  if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.stroke();
+  lump(0, r * .1, r * .8, 3); ctx.restore();
+}
+function lump(x, y, r, seed) {   // one faceted coal lump
+  const R = rng(seed * 977 + 13); ctx.save(); ctx.translate(x, y); ctx.beginPath();
+  for (let i = 0; i < 7; i++) { const an = i / 7 * 6.283, k = .7 + R() * .35; ctx.lineTo(Math.cos(an) * r * k, Math.sin(an) * r * k * .8); }
+  ctx.closePath(); ctx.fillStyle = '#1b1b20'; ctx.fill(); ctx.strokeStyle = '#55555f'; ctx.lineWidth = Math.max(1, r * .08); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-r * .3, -r * .35); ctx.lineTo(r * .15, -r * .45); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.stroke(); ctx.restore();
+}
+function poly(pts, col, a, o = {}) { if (a > 0) glowFill([pts.concat([pts[0]])], col, a, o); }
+// ---------- procedural steppe grain + well field (close-up of an ISL field) ----------
+let GRAIN = null;
+function makeGrain() {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'), R = rng(7);
+  g.fillStyle = '#b39a6c'; g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 2600; i++) { const x = R() * 512, y = R() * 512, r = 2 + R() * 18; g.fillStyle = `rgba(${R() < .5 ? '90,70,40' : '220,200,160'},${.04 + R() * .08})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+  for (let i = 0; i < 900; i++) { const x = R() * 512, y = R() * 512; g.fillStyle = `rgba(90,110,60,${.15 + R() * .2})`; g.beginPath(); g.arc(x, y, 1 + R() * 2.5, 0, 7); g.fill(); }
+  GRAIN = c;
+}
+function steppeGrain(a) {
+  if (a <= 0 || !GRAIN) return; const [x0, y0] = P(FIELD[0], FIELD[1]), sc = CAM.ppd / 1600;
+  const pat = ctx.createPattern(GRAIN, 'repeat'); pat.setTransform(new DOMMatrix([sc, 0, 0, sc, x0, y0]));
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = pat; ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+const WELLS = (() => { const L = [], dl = .012, dx = dl / Math.cos(FIELD[1] * Math.PI / 180) * 1.15;
+  const blocks = [[-.2, -.12, .02, .1], [.04, -.2, .22, .02], [.06, .05, .26, .2], [-.24, .12, -.04, .24]];
+  for (const [l0, b0, l1, b1] of blocks) for (let j = 0; FIELD[1] + b0 + j * dl <= FIELD[1] + b1; j++) for (let i = 0; FIELD[0] + l0 + i * dx <= FIELD[0] + l1; i++)
+    L.push([FIELD[0] + l0 + i * dx + (j % 2) * dx / 2, FIELD[1] + b0 + j * dl, (i + j * 2) % 3 === 0]);
+  return L; })();
+function wellField(a, p) {   // p: 0..1 reveal
+  if (a <= 0) return; const r = clamp(CAM.ppd / 380, 1.4, 6.5);
+  ctx.save(); ctx.globalAlpha = a;
+  if (CAM.ppd > 400) { ctx.strokeStyle = 'rgba(235,225,200,.55)'; ctx.lineWidth = clamp(CAM.ppd / 900, .8, 3); ctx.beginPath();
+    for (const [l, b] of WELLS) { const [x, y] = P(l, b); ctx.moveTo(x - r * 3, y); ctx.lineTo(x + r * 3, y); } ctx.stroke(); }
+  WELLS.forEach(([l, b, prod], i) => { if ((i * 37 % 100) / 100 > p) return; const [x, y] = P(l, b); if (x < -20 || x > W + 20 || y < -20 || y > H + 20) return;
+    ctx.fillStyle = 'rgba(225,215,190,.75)'; ctx.fillRect(x - r * 1.6, y - r * 1.6, r * 3.2, r * 3.2);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = prod ? GOLD : BLUE; ctx.fill(); });
+  ctx.restore();
+}
+// ---------- cutaway of in-situ leaching ----------
+function cutaway(t, a) {
+  if (a <= 0) return; const t0 = V('p3');
+  ctx.save(); ctx.globalAlpha = a;
+  const Y = { sky: 330, gr: 730, c1: 970, o0: 1060, o1: 1290, c2: 1380, bot: 1500 };
+  let g = ctx.createLinearGradient(0, 0, 0, Y.gr); g.addColorStop(0, '#0b1030'); g.addColorStop(1, '#3a4f7a'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, Y.gr);
+  const lay = [[Y.gr, Y.c1, '#9c8358', '#86704a'], [Y.c1, Y.o0, '#6a5a4c', '#574a3e'], [Y.o0, Y.o1, '#c7a35a', '#a98943'], [Y.o1, Y.c2, '#6a5a4c', '#574a3e'], [Y.c2, H, '#4a3f36', '#3a322b']];
+  for (const [y0, y1, c0, c1] of lay) { g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, c0); g.addColorStop(1, c1); ctx.fillStyle = g; ctx.fillRect(0, y0, W, y1 - y0); }
+  const R = rng(5); for (let i = 0; i < 260; i++) { const x = R() * W, y = Y.o0 + 6 + R() * (Y.o1 - Y.o0 - 12); ctx.fillStyle = R() < .3 ? 'rgba(254,179,0,.9)' : 'rgba(255,240,200,.35)'; ctx.fillRect(x, y, 4, 4); }
+  ctx.fillStyle = '#7c6a3e'; ctx.fillRect(0, Y.gr - 10, W, 14); // steppe surface
+  ctx.fillStyle = 'rgba(120,140,70,.8)'; for (let x = 0; x < W; x += 14) ctx.fillRect(x, Y.gr - 16 - (x * 7 % 9), 3, 8 + (x * 7 % 9));
+  // labels of layers
+  const lb = (s, y, col = '#fff') => { ctx.save(); txt(s, 40, y, 30, col, 'MX', { align: 'left', blur: 6 }); ctx.restore(); };
+  lb(TXT.clay, (Y.c1 + Y.o0) / 2, 'rgba(255,255,255,.8)'); lb(TXT.ore, (Y.o0 + Y.o1) / 2 + 60, GOLD); lb(TXT.clay, (Y.o1 + Y.c2) / 2, 'rgba(255,255,255,.8)');
+  // depth bracket
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W - 50, Y.gr + 10); ctx.lineTo(W - 36, Y.gr + 10); ctx.lineTo(W - 36, Y.o0); ctx.lineTo(W - 50, Y.o0); ctx.stroke();
+  ctx.save(); ctx.translate(W - 66, (Y.gr + Y.o0) / 2); ctx.rotate(-Math.PI / 2); txt(TXT.dep, 0, 0, 28, '#fff', 'MX', { blur: 6 }); ctx.restore();
+  // wells
+  const WX = [[250, 'inj'], [540, 'prod'], [830, 'inj']], wy = (Y.o0 + Y.o1) / 2;
+  const ps = ap(t, V('sol'), 1.0), ss = ap(t, V('sol') + .8, 1.4), rs = ap(t, V('rise'), 1.4);
+  for (const [x, k] of WX) {
+    ctx.fillStyle = '#d9d9e0'; ctx.fillRect(x - 13, Y.gr - 60, 26, wy - Y.gr + 60); ctx.fillStyle = '#20202a'; ctx.fillRect(x - 7, Y.gr - 60, 14, wy - Y.gr + 60);
+    ctx.fillStyle = k === 'inj' ? BLUE : GOLD; rr(x - 30, Y.gr - 96, 60, 44, 8); ctx.fill(); // wellhead
+    // fluid inside the pipe
+    if (k === 'inj' && ps > 0) { const yy = Y.gr - 52 + (wy - Y.gr + 52) * ease(ps); ctx.fillStyle = BLUE; ctx.shadowColor = BLUE; ctx.shadowBlur = 14; ctx.fillRect(x - 6, Y.gr - 52, 12, yy - Y.gr + 52); ctx.shadowBlur = 0;
+      for (let i = 0; i < 4; i++) { const q = ((t * 1.4 + i / 4) % 1), y = Y.gr - 40 + q * (yy - Y.gr + 40); ctx.fillStyle = '#d8ecff'; ctx.beginPath(); ctx.moveTo(x - 10, y - 8); ctx.lineTo(x + 10, y - 8); ctx.lineTo(x, y + 6); ctx.fill(); } }
+    if (k === 'prod' && rs > 0) { const yy = wy - (wy - Y.gr + 52) * ease(rs); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 16; ctx.fillRect(x - 6, yy, 12, wy - yy); ctx.shadowBlur = 0;
+      for (let i = 0; i < 4; i++) { const q = ((t * 1.4 + i / 4) % 1), y = wy - q * (wy - yy); ctx.fillStyle = '#fff4c8'; ctx.beginPath(); ctx.moveTo(x - 10, y + 8); ctx.lineTo(x + 10, y + 8); ctx.lineTo(x, y - 6); ctx.fill(); } }
+  }
+  // solution spreading through the ore sand towards the production well
+  if (ss > 0) { const R2 = rng(11);
+    for (let i = 0; i < 90; i++) { const side = i % 2 ? 1 : -1, x0 = side < 0 ? 250 : 830, ph = (R2() + t * .35) % 1, dy = (R2() - .5) * (Y.o1 - Y.o0 - 40);
+      const far = Math.abs(540 - x0) * clamp(ss * 1.2) ; const x = x0 + (540 - x0) * ph * clamp(ss * 1.3), y = wy + dy * Math.sin(ph * Math.PI);
+      const k = clamp(ph * 1.6 - .5) * clamp(rs * 3 + ss - .9); ctx.globalAlpha = a * clamp(ss * 3) * .9;
+      ctx.fillStyle = k > .5 ? GOLD : BLUE; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = a; }
+  // plant + barrel on the surface
+  const px = 540, py = Y.gr - 150; ctx.fillStyle = '#e8e8ee'; rr(px + 60, py - 40, 220, 130, 10); ctx.fill(); ctx.fillStyle = BR.navy; ctx.fillRect(px + 90, py - 10, 40, 40); ctx.fillRect(px + 150, py - 10, 40, 40); ctx.fillRect(px + 210, py - 10, 40, 40);
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(px, Y.gr - 96); ctx.lineTo(px, py + 40); ctx.lineTo(px + 60, py + 40); ctx.stroke();
+  txt(TXT.plant, px + 170, py - 70, 30, '#fff', 'MX', { blur: 6 });
+  const bar = back(ap(t, V('rise') + 1.2, .5)); if (bar > 0) { ctx.save(); ctx.translate(px + 340, py + 30); ctx.scale(bar, bar); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 30; rr(-40, -55, 80, 110, 12); ctx.fill(); ctx.shadowBlur = 0;
+    txt('U', 0, 4, 64, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+  // labels for flows
+  pill(TXT.inj, 250, Y.c1 - 60, 34, ap(t, V('sol') + .2, .3), { line: BLUE }); pill(TXT.inj, 830, Y.c1 - 60, 34, ap(t, V('sol') + .3, .3), { line: BLUE });
+  pill(TXT.prod, 540, Y.o1 + 60, 36, ap(t, V('rise') + .2, .3), { line: GOLD, col: GOLD });
+  ctx.restore();
+  // heading with crossed pit and shaft
+  const ha = a * ap(t, t0 + .1, .35);
+  head2(TXT.nm1, TXT.nm2, ha, H * .135, 100);
+}
+// ---------- coal comparison panel ----------
+function coalPanel(t, a) {
+  if (a <= 0) return; panel(a * .96); const t0 = V('coal');
+  ctx.save(); ctx.globalAlpha = a;
+  const u = back(ap(t, t0 + .2, .5)); const ux = 250, uy = 900;
+  if (u > 0) { ctx.save(); ctx.translate(ux, uy); ctx.scale(u, u); const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 140); g.addColorStop(0, 'rgba(254,179,0,.6)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.fillRect(-140, -140, 280, 280);
+    ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 40; rr(-38, -38, 76, 76, 10); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(-30, -30, 60, 10); ctx.restore();
+    txt(TXT.c1, ux, uy - 170, 52, GOLD, 'MB'); pill(TXT.cU, ux, uy + 140, 30, a, { line: GOLD }); }
+  const eq = ap(t, t0 + .9, .3); if (eq > 0) { ctx.save(); ctx.globalAlpha = a * eq; txt('=', 430, uy, 110, '#fff', 'MB'); ctx.restore(); }
+  // coal heap grows
+  const c = ease(ap(t, V('coal2'), 1.4)); const cx = 740, base = 1060;
+  if (c > 0) { const R = rng(3), n = Math.round(160 * c);
+    for (let i = 0; i < n; i++) { const k = i / 160, row = Math.floor(Math.sqrt(i * 2)), x = cx + (R() - .5) * 520 * (1 - k * .8), y = base - k * 360 * c - R() * 30; lump(x, y, 22 + R() * 14, i + 1); }
+    txt(TXT.c2, cx, 600 - 0 * c, 66, '#fff', 'MB', { stroke: 8, sc: 'rgba(0,0,0,.5)' }); pill(TXT.cC, cx, base + 70, 30, a, { line: 'rgba(255,255,255,.6)' }); }
+  // wagons: 230 little rail cars
+  const wg = ap(t, V('coal2') + 1.2, 1.2);
+  if (wg > 0) { const N = Math.round(230 * wg); for (let i = 0; i < N; i++) { const col = i % 23, row = Math.floor(i / 23), x = 100 + col * 38, y = 1210 + row * 26;
+      ctx.fillStyle = '#2a2a35'; ctx.fillRect(x, y, 32, 16); ctx.fillStyle = '#111'; ctx.fillRect(x + 3, y - 4, 26, 5); ctx.fillStyle = '#888'; ctx.fillRect(x + 4, y + 16, 5, 4); ctx.fillRect(x + 23, y + 16, 5, 4); }
+    txt(TXT.wag, W / 2, 1530, 44, GOLD, 'MB', { blur: 8 }); }
+  ctx.restore();
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  CK = [[0, 30, 25, 3.4], [.4, 30, 25, 3.4, 'l'], [2.8, KZC[0], KZC[1] - 1.2, 20, 'o'], [V('p1') - .1, KZC[0], KZC[1] - 1.4, 21.5, 'l'],
+    [V('p1') + 1.0, 8, 14, 3.75], [V('y09') - .1, 10, 14, 3.9, 'l'],
+    [V('y09') + .9, KZC[0], KZC[1] - 1.2, 20], [V('p2') - .05, KZC[0], KZC[1] - 1.4, 21.5, 'l'],
+    [V('p2') + 1.3, 68.2, 44.3, 62], [V('coal') + .4, 68.4, 44.3, 68, 'l'], [V('ent') - .05, 68.5, 44.3, 70, 'l'],
+    [V('ent'), KZC[0], KZC[1] - 1.6, 21, 'l'], [V('p3') - .05, KZC[0], KZC[1] - 1.6, 22.5, 'l'],
+    [V('p3'), FIELD[0], FIELD[1], 2600, 'l'], [V('steppe') - .02, FIELD[0], FIELD[1], 2600, 'l'],
+    [V('steppe'), FIELD[0], FIELD[1], 3000, 'l'], [V('steppe') + .9, FIELD[0], FIELD[1], 2100, 'l'], [V('fuel') - .1, FIELD[0] - .2, FIELD[1], 80, 'e'],
+    [V('fuel') + 1.3, 22, 32, 4.3], [V('cta') - .05, 24, 32, 4.5, 'l'],
+    [V('cta'), 67, 46, 16, 'l'], [V('vend') + 1, 67, 46.5, 17.5, 'l']];
+}
+const CUTS = () => [V('ent'), V('p3'), V('steppe'), V('cta')];
+function poleFade() {
+  for (const [lat, dir] of [[84, -1], [-60, 1]]) { const y = P(0, lat)[1];
+    if (dir < 0 ? y <= 0 : y >= H) continue;
+    const g = ctx.createLinearGradient(0, y + dir * -160, 0, y); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y, y - dir * 160), W, 160); ctx.fillStyle = '#000'; dir < 0 ? ctx.fillRect(0, 0, W, y) : ctx.fillRect(0, y, W, H - y); }
+}
+function lakesRivers(a) { if (!SH || a <= 0) return;
+  for (const k in SH.lake) glowFill(SH.lake[k], '#4fb8d8', a * .8, { fill: .7, blur: 6, lw: 2 });
+  for (const l of SH.riv.syr) polyPartial(l, 1, { col: '#7fd8ff', lw: 4, blur: 8, glow: '#7fd8ff', a: a });
+  polyPartial(CHU, 1, { col: '#7fd8ff', lw: 4, blur: 8, glow: '#7fd8ff', a: a }); }
+function render(t) {
+  TT = t; CAM = camAt(CK, t); drawMap(.16);
+  const close = clamp((Math.log(CAM.ppd) - Math.log(300)) / (Math.log(1400) - Math.log(300)));
+  steppeGrain(close * .85);
+  borders(.32 * (1 - close)); poleFade();
+  // ---- S1 hook + S2 uranium, three facts
+  { const a = win(t, 0, V('p1') + .2, .3);
+    if (a > 0) {
+      kz(a * ap(t, .9, .8));
+      head2(TXT.h1, TXT.no1, ap(t, .3, .4) * win(t, 0, V('u') + .1, .25), H * .15, 150);
+      const [x, y] = P(80.5, 50.5); atom(x + 40, y - 60, 70, a * ap(t, 1.6, .5));
+      const ua = A('u', 'p1', .25); if (ua > 0) head(TXT.u, ua, GOLD, H * .17, 150);
+      const fa = A('f3', 'p1', .25); if (fa > 0) {
+        [1, 2, 3].forEach(n => numDisc(n, W / 2 + (n - 2) * 110, H * .26, fa * back(clamp(ap(t, V('f3') + .25 + n * .18, .35))), n === 3 ? RED : GOLD));
+        const ca = fa * ap(t, V('f3') + 1.1, .3); if (ca > 0) pill(TXT.last, W / 2, H * .32, 36, ca, { line: RED });
+      }
+    } }
+  // ---- S3 world: top-4 producers with bars
+  { const a = A('p1', 'y09', .3);
+    if (a > 0) {
+      const L = [['KAZ', 40, GOLD, KZC], ['CAN', 15, TURQ, [-100, 57]], ['NAM', 11, LIL, [17.5, -22]], ['AUS', 9, ORA, [134, -25]]];
+      L.forEach(([iso, , col, c], i) => { const q = a * ap(t, V('pct') + (i ? .3 + i * .25 : 0), .4); if (iso === 'KAZ') kz(a); else cty(iso, col, q, { fill: .55, blur: 14, lw: 3 });
+        if (iso !== 'KAZ') lab(TXT[iso], c[0], c[1], q, { size: 26, dy: -40, line: col }); });
+      head2(TXT.pctS, TXT.pct, a * ap(t, V('pct') + .9, .4), H * .13, 150);
+      const ba = a * ap(t, V('pct') + 1.2, .35);
+      if (ba > 0) { const x0 = 120, y0 = H * .64, bw = 520, bh = 58, g = 22;
+        ctx.save(); ctx.globalAlpha = ba; rr(x0 - 20, y0 - 60, 880, 4 * (bh + g) + 80, 26); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.strokeStyle = 'rgba(254,179,0,.35)'; ctx.lineWidth = 2.5; ctx.stroke();
+        txt(TXT.share, x0 + 420, y0 - 30, 24, 'rgba(255,255,255,.7)', 'MS', { blur: 0 }); ctx.restore();
+        L.forEach(([iso, v, col], i) => { const y = y0 + i * (bh + g), grow = ease(ap(t, V('pct') + 1.4 + (iso === 'KAZ' ? 1.0 : i * .18), .7)), w = bw * v / 40 * grow;
+          ctx.save(); ctx.globalAlpha = ba; rr(x0 + 250, y, Math.max(w, 1), bh, 12); ctx.fillStyle = col; if (iso === 'KAZ') { ctx.shadowColor = GOLD; ctx.shadowBlur = 24; } ctx.fill(); ctx.restore();
+          ctx.save(); ctx.globalAlpha = ba; txt(TXT[iso], x0 + 236, y + bh / 2, 30, iso === 'KAZ' ? GOLD : '#fff', 'MX', { align: 'right', blur: 0 }); ctx.restore();
+          if (grow > .5) { ctx.save(); ctx.globalAlpha = ba * ap(grow, .5, .4); txt('≈' + v + '%', x0 + 250 + w + 14, y + bh / 2 + 2, 30, '#fff', 'MB', { align: 'left', blur: 0, dy: 0 }); ctx.restore(); } });
+        star(x0 + 250 + bw + 140, y0 + bh / 2, 30, ba * back(clamp(ap(t, V('most'), .4)))); }
+      counter(1, a);
+    } }
+  // ---- S4 since 2009
+  { const a = A('y09', 'p2', .3);
+    if (a > 0) { kz(a); const [x, y] = P(80.5, 50.5); atom(x + 40, y - 60, 60, a);
+      head2(TXT.y1, TXT.y2, a * ap(t, V('y09') + .2, .4), H * .14, 130);
+      const tl = ease(ap(t, V('y09') + .6, 1.6)), x0 = 160, x1 = 920, ty = H * .7;
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, ty); ctx.lineTo(x1, ty); ctx.stroke();
+      ctx.strokeStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 18; ctx.beginPath(); ctx.moveTo(x0, ty); ctx.lineTo(lerp(x0, x1, tl), ty); ctx.stroke(); ctx.restore();
+      const yr = Math.round(lerp(2009, 2025, tl));
+      pill('2009', x0, ty + 70, 34, a, { line: GOLD }); if (tl > .02) pill(String(yr), lerp(x0, x1, tl), ty - 70, 40, a, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB' });
+      if (tl >= 1) pill(TXT.yrs, W / 2, ty + 150, 52, a * ap(t, V('y09') + 2.3, .3), { line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('y09') + 2.3, .4))) });
+      counter(1, a); } }
+  // ---- S5 south: provinces between the Chu and the Syr Darya
+  { const a = A('p2', 'ent', .3);
+    if (a > 0) { kz(a * .6, { fill: .12, pulse: .2 }); lakesRivers(a * ap(t, V('p2') + .8, .5));
+      const sa = a * ap(t, V('south'), .5); if (sa > 0) head(TXT.south, sa * (1 - ap(t, V('sands') + 1.2, .3)), GOLD, H * .16, 84);
+      const pa = ap(t, V('sands'), .5);
+      poly(PROV.chu, GOLD, a * pa, { fill: .45, blur: 26 + 10 * Math.sin(t * 5), lw: 5 }); poly(PROV.syr, GOLD, a * ap(t, V('sands') + .4, .5), { fill: .45, blur: 26 + 10 * Math.sin(t * 5 + 1), lw: 5 });
+      lab(TXT.chu, 69.2, 45.2, a * ap(t, V('sands') + .3, .3), { size: 34, dy: -10 }); lab(TXT.syr, 65.5, 44.6, a * ap(t, V('sands') + .7, .3), { size: 34, dy: 10 });
+      MINES.forEach((m, i) => atomDot(m, a * ap(t, V('sands') + 1.0 + i * .08, .3)));
+      lab(TXT.rChu, 73.4, 43.9, a * ap(t, V('sands') + .4, .3), { size: 24, line: '#7fd8ff', dy: -36 }); lab(TXT.rSyr, 62.0, 45.9, a * ap(t, V('sands') + .8, .3), { size: 24, line: '#7fd8ff', dy: 40 });
+      head(TXT.sand + ' · ' + TXT.mines, a * ap(t, V('sands') + 1.4, .35) * (1 - ap(t, V('coal') - .3, .3)), GOLD, H * .16, 70);
+      counter(2, a);
+      coalPanel(t, a * ap(t, V('coal') - .1, .35)); if (t >= V('coal')) counter(2, a);
+    } }
+  // ---- S7 ENT: where resources are
+  { const a = A('ent', 'p3', .25);
+    if (a > 0) { kz(a, { fill: .2 });
+      dropIcon(...P(53.5, 46.4), 34, a * ap(t, V('ent') + .5, .3)); pill(TXT.oil, P(53.5, 46.4)[0], P(53.5, 46.4)[1] + 66, 26, a * ap(t, V('ent') + .6, .3), { line: 'rgba(255,255,255,.5)' });
+      coalIcon(...P(73.1, 49.9), 34, a * ap(t, V('ent') + .7, .3)); pill(TXT.coalL, P(73.1, 49.9)[0], P(73.1, 49.9)[1] + 66, 26, a * ap(t, V('ent') + .8, .3), { line: 'rgba(255,255,255,.5)' });
+      const ua = a * ap(t, V('where') + .3, .3); poly(PROV.chu, GOLD, ua, { fill: .5, blur: 24 }); poly(PROV.syr, GOLD, ua, { fill: .5, blur: 24 });
+      atom(...P(68.5, 44.6), 50, ua); lab(TXT.e2, 68.5, 44.6, ua, { size: 40, dy: 110, col: GOLD });
+      stamp(TXT.ent, W / 2 + 250, H * .3, a, ap(t, V('ent') + .1, .35));
+      head(TXT.e1, a * ap(t, V('where'), .35), GOLD, H * .15, 76); } }
+  // ---- S8 cutaway
+  { const a = A('p3', 'steppe', .25); if (a > 0) { cutaway(t, a); counter(3, a); } }
+  // ---- S9 the field from above, then fuel for the world
+  { const a = A('steppe', 'cta', .3);
+    if (a > 0) { const fa = 1 - ap(t, V('fuel') + .3, .6);
+      wellField(a * fa, ap(t, V('steppe') - .2, 1.0));
+      if (CAM.ppd < 300) glowSpot(FIELD[0] - .02, FIELD[1], a * fa * (1 - CAM.ppd / 300), GOLD, 30);
+      head2(TXT.isl1, TXT.isl2, a * ap(t, V('steppe') + .3, .4) * fa, H * .13, 110);
+      if (CAM.ppd > 600) pill(TXT.wells, W / 2, H * .7, 34, a * fa * ap(t, V('steppe') + 1, .3), { line: GOLD });
+      const wa = a * ap(t, V('fuel') + .5, .5);
+      if (wa > 0) { kz(wa, { fill: .4 });
+        const D = [['CHN', [105, 33]], ['FRA', [2.5, 47]], ['USA', [-96, 39]], ['IND', [79, 22]], ['KOR', [127.8, 36.5]]];
+        D.forEach(([iso, d], i) => { const p = ease(ap(t, V('fuel') + .9 + i * .2, .8)); const [x0, y0] = P(68, 46), [x1, y1] = P(...d);
+          cty(iso, TURQ, wa * ap(p, .9, .1), { fill: .35, blur: 12, lw: 2 });
+          arrow(x0, y0, x1, y1, (x0 + x1) / 2, Math.min(y0, y1) - 120 - Math.abs(x1 - x0) * .15, p, wa, 6);
+          lab(TXT[iso], d[0], d[1], wa * ap(p, .95, .05), { size: 26, dy: 44, line: TURQ }); });
+        head2(TXT.fuel1, TXT.fuel2, wa * ap(t, V('fuel') + .6, .4), H * .13, 120); }
+    } }
+  // ---- S10 CTA
+  if (t >= V('cta')) { kz(ap(t, V('cta'), .4)); ctaEnd(t); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1) * (1 - A('p3', 'steppe', .25)); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function atomDot(m, a) { if (a <= 0) return; const [x, y] = P(...m); ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fillStyle = '#fff'; ctx.shadowColor = GOLD; ctx.shadowBlur = 16; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = GOLD; ctx.stroke(); ctx.restore(); }
+function ctaEnd(t) {
+  const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(s, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json(); makeGrain();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('ca', 'tex/ca.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
