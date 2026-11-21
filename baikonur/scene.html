@@ -1,0 +1,362 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Байқоңыр Байқоңырда емес» — Flat Vector + satellite map, KZ + RU (Ерсұлтан / Egor). Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 66, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58 });
+// flat palette (script) on JAS brand: amber replaces yellow, JAS navy deepens the background
+const F = { bg1: '#1D2B53', bg2: '#130B54', tq: '#2EC4B6', am: BR.acc, co: '#EF476F', cr: '#FFF3D6', dk: '#0E1638', sh: 'rgba(5,6,30,.35)' };
+const GOLD = BR.acc;
+const TYU = [63.32, 45.62], VIL = [66.05, 47.83], ULY = [67.0, 48.65];
+const TX = {
+  ru: { name: 'БАЙКОНУР', trap: 'ЛОВУШКА ЕНТ', tyur: 'Тюратам', kzo: 'Кызылординская обл.', vil: 'пос. Байконур', uly: 'Улытау', km: '300+ км',
+    s3t: 'СЕКРЕТНЫЙ ПОЛИГОН', noname: 'НАЗВАНИЯ НЕТ', date: '12.04.1961', s4t: 'ГАГАРИН', wq: 'Откуда старт?', news: 'БАЙКОНУР', pad: 'старт',
+    gagCap: 'Юрий Гагарин', gagSub: '12 апреля 1961', gagCr: 'Фото: ТАСС / mos.ru, CC BY 4.0',
+    len: 'ЛЕНИНСК', city: 'БАЙКОНУР', rent: 'АРЕНДА', till: 'до 2050 года', doc: 'ДОГОВОР', ru: 'Россия',
+    entT: 'ЗАПОМНИ ДЛЯ ЕНТ', rows: [['1955', 'полигон'], ['1961', 'Гагарин'], ['1991', 'Токтар Аубакиров']],
+    aubCap: 'Токтар Аубакиров', aubSub: 'первый казахский космонавт', aubCr: 'Марка Казпочты, 1996',
+    qT: 'ВОПРОС С ЕНТ', qq: ['Кто первый казахский', 'космонавт?'], opts: [['А', 'Мусабаев'], ['Б', 'Аубакиров'], ['В', 'Аимбетов']], ans: 'Токтар Аубакиров · 1991',
+    link1: 'Ссылка', link2: 'в шапке профиля', src: 'Карта: NASA Blue Marble · Natural Earth' },
+  kk: { name: 'БАЙҚОҢЫР', trap: 'ҰБТ ТҰЗАҒЫ', tyur: 'Төретам', kzo: 'Қызылорда облысы', vil: 'Байқоңыр кенті', uly: 'Ұлытау', km: '300+ км',
+    s3t: 'ҚҰПИЯ ПОЛИГОН', noname: 'АТАУЫ ЖОҚ', date: '12.04.1961', s4t: 'ГАГАРИН', wq: 'Қайдан ұшты?', news: 'БАЙҚОҢЫР', pad: 'старт',
+    gagCap: 'Юрий Гагарин', gagSub: '1961 жылғы 12 сәуір', gagCr: 'Фото: ТАСС / mos.ru, CC BY 4.0',
+    len: 'ЛЕНИНСК', city: 'БАЙҚОҢЫР', rent: 'ЖАЛҒА', till: '2050 жылға дейін', doc: 'КЕЛІСІМ', ru: 'Ресей',
+    entT: 'ҰБТ-ҒА ЕСТЕ САҚТА', rows: [['1955', 'полигон'], ['1961', 'Гагарин'], ['1991', 'Тоқтар Әубәкіров']],
+    aubCap: 'Тоқтар Әубәкіров', aubSub: 'алғашқы қазақ ғарышкері', aubCr: 'Қазпошта маркасы, 1996',
+    qT: 'ҰБТ СҰРАҒЫ', qq: ['Алғашқы қазақ', 'ғарышкері кім?'], opts: [['А', 'Мұсабаев'], ['Ә', 'Әубәкіров'], ['Б', 'Аймбетов']], ans: 'Тоқтар Әубәкіров · 1991',
+    link1: 'Сілтеме', link2: 'профиль шапкасында', src: 'Карта: NASA Blue Marble · Natural Earth' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 56, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .84, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const pop = (t, t0, d = .45) => back(ap(t, t0, d));          // springy 0..1(+overshoot)
+// ---------- flat drawing kit ----------
+function bgFlat(a = 1) {
+  ctx.save(); ctx.globalAlpha = a; const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, F.bg2); g.addColorStop(1, F.bg1); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const r = rng(7); ctx.fillStyle = F.cr; for (let i = 0; i < 70; i++) { const x = r() * W, y = r() * H * .7, s = 1.5 + r() * 3; ctx.globalAlpha = a * (.25 + .5 * r()) * (.7 + .3 * Math.sin(TT * 2 + i)); ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function shade(fn, dx = 10, dy = 12) { ctx.save(); ctx.translate(dx, dy); ctx.globalAlpha *= .9; fn(F.sh); ctx.restore(); fn(null); }   // one-tone soft shadow
+function ground(y, col = F.tq, a = 1) { ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillRect(0, y, W, H - y); ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.fillRect(0, y, W, 14); ctx.restore(); }
+function rocket(x, y, s, flame = 0, a = 1, kind = 0) {   // base of rocket at (x,y); kind 1 = Vostok with side boosters
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  if (flame > 0) { const f = flame * (1 + .15 * Math.sin(TT * 40)); ctx.fillStyle = F.co; ctx.beginPath(); ctx.moveTo(-34, 0); ctx.quadraticCurveTo(0, 210 * f, 34, 0); ctx.fill();
+    ctx.fillStyle = F.am; ctx.beginPath(); ctx.moveTo(-20, 0); ctx.quadraticCurveTo(0, 140 * f, 20, 0); ctx.fill(); ctx.fillStyle = F.cr; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.quadraticCurveTo(0, 70 * f, 9, 0); ctx.fill(); }
+  shade(c => {
+    if (kind === 1) { ctx.fillStyle = c || '#d9cdb0'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * 40, 0); ctx.lineTo(sx * 70, 0); ctx.lineTo(sx * 46, -170); ctx.closePath(); ctx.fill(); } }
+    ctx.fillStyle = c || F.co; ctx.beginPath(); ctx.moveTo(-40, -10); ctx.lineTo(-78, 18); ctx.lineTo(-40, -80); ctx.fill(); ctx.beginPath(); ctx.moveTo(40, -10); ctx.lineTo(78, 18); ctx.lineTo(40, -80); ctx.fill();
+    ctx.fillStyle = c || F.cr; rr(-40, -300, 80, 300, 10); ctx.fill();
+    ctx.fillStyle = c || F.co; ctx.beginPath(); ctx.moveTo(-40, -298); ctx.quadraticCurveTo(-40, -380, 0, -420); ctx.quadraticCurveTo(40, -380, 40, -298); ctx.fill();
+    if (!c) { ctx.fillStyle = F.tq; ctx.beginPath(); ctx.arc(0, -220, 20, 0, 7); ctx.fill(); ctx.fillStyle = F.dk; ctx.beginPath(); ctx.arc(0, -220, 11, 0, 7); ctx.fill();
+      ctx.fillStyle = F.am; ctx.fillRect(-40, -120, 80, 16); ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.fillRect(14, -300, 26, 300); }
+  }, 12, 14);
+  ctx.restore();
+}
+function gantry(x, y, s, a = 1, open = 0) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(-open * .5);
+  ctx.fillStyle = F.dk; ctx.fillRect(-150, -380, 22, 380); for (let i = 0; i < 6; i++) ctx.fillRect(-150, -360 + i * 62, 80, 10); ctx.restore();
+}
+function yurt(x, y, s, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.fillRect(-60, -55, 120, 55); ctx.beginPath(); ctx.moveTo(-66, -52); ctx.quadraticCurveTo(0, -120, 66, -52); ctx.fill();
+    if (!c) { ctx.fillStyle = F.am; ctx.fillRect(-60, -46, 120, 10); ctx.fillStyle = F.co; rr(-16, -40, 32, 40, 6); ctx.fill(); ctx.fillStyle = F.co; ctx.beginPath(); ctx.arc(0, -104, 8, 0, 7); ctx.fill(); } }, 6, 7);
+  ctx.restore();
+}
+function pin(x, y, s, col, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  shade(c => { ctx.fillStyle = c || col; ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-60, -70, -48, -130, 0, -130); ctx.bezierCurveTo(48, -130, 60, -70, 0, 0); ctx.fill();
+    if (!c) { ctx.fillStyle = F.cr; ctx.beginPath(); ctx.arc(0, -88, 20, 0, 7); ctx.fill(); } }, 6, 8);
+  ctx.restore();
+}
+function cross(x, y, s, p, col = F.co) {   // two bars drawn on
+  if (p <= 0) return; ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = col; ctx.lineWidth = 20; ctx.lineCap = 'round';
+  const a = clamp(p * 2), b = clamp(p * 2 - 1); ctx.beginPath(); ctx.moveTo(-70, -70); ctx.lineTo(-70 + 140 * a, -70 + 140 * a); ctx.stroke();
+  if (b > 0) { ctx.beginPath(); ctx.moveTo(70, -70); ctx.lineTo(70 - 140 * b, -70 + 140 * b); ctx.stroke(); } ctx.restore();
+}
+function plate(s, x, y, size, bg, col, a = 1, sc = 1, o = {}) {   // flat label plate
+  if (a <= 0 || sc <= 0) return; const w = tw(s, size, o.font || 'MB') + size * 1.2, h = size * 1.7;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(o.rot || 0); ctx.scale(sc, sc);
+  shade(c => { ctx.fillStyle = c || bg; rr(-w / 2, -h / 2, w, h, o.r ?? h * .3); ctx.fill(); }, 7, 9);
+  txt(s, 0, 3, size, col, o.font || 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function calendar(x, y, s, top, big, a = 1, sc = 1) {
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc); ctx.rotate(-.05);
+  shade(c => { ctx.fillStyle = c || F.cr; rr(-130, -120, 260, 260, 22); ctx.fill(); if (!c) { ctx.fillStyle = F.co; rr(-130, -120, 260, 70, [22, 22, 0, 0]); ctx.fill();
+    ctx.fillStyle = F.dk; for (const dx of [-70, 70]) { rr(dx - 9, -138, 18, 40, 9); ctx.fill(); } } }, 9, 11);
+  txt(top, 0, -84, 34, F.cr, 'MB', { blur: 0, dy: 0 }); txt(big, 0, 40, big.length > 5 ? 46 : 92, F.dk, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function newspaper(x, y, s, head, a = 1, sc = 1) {
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc); ctx.rotate(.04);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.fillRect(-210, -150, 420, 300); if (!c) { ctx.fillStyle = 'rgba(14,22,56,.18)'; for (let i = 0; i < 5; i++) { ctx.fillRect(-180, 40 + i * 20, 170, 9); ctx.fillRect(10, 40 + i * 20, 170, 9); }
+    ctx.fillStyle = F.dk; ctx.fillRect(-190, -132, 380, 8); ctx.fillRect(-190, 18, 380, 5); } }, 10, 12);
+  txt(head, 0, -60, Math.min(78, 78 * 360 / tw(head, 78, 'MB')), F.dk, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function globe(x, y, r, a = 1) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  shade(c => { ctx.fillStyle = c || F.tq; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill(); if (!c) { ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.clip(); ctx.fillStyle = F.am;
+    const o = (TT * 30) % (r * 2); for (const [dx, dy, w, h] of [[-.5, -.3, .5, .35], [.2, .1, .45, .5], [-.2, .45, .3, .2]]) { ctx.beginPath(); ctx.ellipse(dx * r + o - r * .3, dy * r, w * r * .6, h * r * .6, .3, 0, 7); ctx.fill(); }
+    ctx.restore(); } }, 8, 10);
+  ctx.restore();
+}
+function bubble(s, x, y, a, sc, dir = 1) {
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc, sc); const w = tw(s, 44, 'MB') + 60;
+  shade(c => { ctx.fillStyle = c || '#fff'; rr(-w / 2, -45, w, 90, 30); ctx.fill(); ctx.beginPath(); ctx.moveTo(-20 * dir, 40); ctx.lineTo(-50 * dir, 80); ctx.lineTo(10 * dir, 44); ctx.fill(); }, 6, 8);
+  txt(s, 0, 3, 44, F.dk, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function wagon(x, y, s, col) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); shade(c => { ctx.fillStyle = c || col; rr(-110, -110, 220, 95, 10); ctx.fill(); if (!c) { ctx.fillStyle = F.cr; ctx.fillRect(-80, -90, 50, 34); ctx.fillRect(30, -90, 50, 34); }
+  ctx.fillStyle = c || F.dk; for (const dx of [-65, 65]) { ctx.beginPath(); ctx.arc(dx, -12, 18, 0, 7); ctx.fill(); } }, 6, 8); ctx.restore(); }
+function tent(x, y, s, col) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); shade(c => { ctx.fillStyle = c || col; ctx.beginPath(); ctx.moveTo(-90, 0); ctx.lineTo(0, -110); ctx.lineTo(90, 0); ctx.fill();
+  if (!c) { ctx.fillStyle = F.dk; ctx.beginPath(); ctx.moveTo(-22, 0); ctx.lineTo(0, -55); ctx.lineTo(22, 0); ctx.fill(); } }, 6, 8); ctx.restore(); }
+function excavator(x, y, s, arm) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); shade(c => { ctx.fillStyle = c || F.am; rr(-90, -120, 130, 80, 10); ctx.fill(); rr(-30, -170, 70, 60, 8); ctx.fill();
+  ctx.fillStyle = c || F.dk; rr(-110, -42, 170, 42, 21); ctx.fill(); ctx.save(); ctx.translate(40, -110); ctx.rotate(-.6 + arm * .5); ctx.fillStyle = c || F.am; ctx.fillRect(0, -10, 150, 20); ctx.translate(150, 0); ctx.rotate(1.3 - arm * .6);
+  ctx.fillRect(0, -9, 100, 18); ctx.fillStyle = c || F.co; ctx.beginPath(); ctx.moveTo(90, -20); ctx.lineTo(130, 10); ctx.lineTo(90, 20); ctx.fill(); ctx.restore(); }, 6, 8); ctx.restore(); }
+function hammerMan(x, y, s, ph) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); shade(c => { ctx.fillStyle = c || F.co; ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(-20, -90); ctx.lineTo(20, -90); ctx.lineTo(28, 0); ctx.fill();
+  ctx.fillStyle = c || '#e9b98f'; ctx.beginPath(); ctx.arc(0, -118, 24, 0, 7); ctx.fill(); ctx.fillStyle = c || F.am; ctx.beginPath(); ctx.arc(0, -124, 26, Math.PI, 0); ctx.fill();
+  ctx.save(); ctx.translate(18, -80); ctx.rotate(-1.2 + Math.abs(Math.sin(ph)) * 1.4); ctx.fillStyle = c || F.dk; ctx.fillRect(0, -6, 70, 12); ctx.fillRect(60, -20, 22, 40); ctx.restore(); }, 5, 6); ctx.restore(); }
+function signPost(x, y, s, label, a = 1, flip = 0, col = F.tq) {   // road sign that flips (flip 0..1 half turn)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = F.dk; ctx.fillRect(-150, -10, 18, 260); ctx.fillRect(132, -10, 18, 260);
+  const sx = Math.abs(Math.cos(flip * Math.PI)); ctx.scale(Math.max(.02, sx), 1);
+  shade(c => { ctx.fillStyle = c || col; rr(-240, -120, 480, 200, 20); ctx.fill(); if (!c) { ctx.strokeStyle = F.cr; ctx.lineWidth = 8; rr(-222, -102, 444, 164, 14); ctx.stroke(); } }, 9, 11);
+  txt(label, 0, -18, Math.min(84, 84 * 400 / tw(label, 84, 'MB')), F.cr, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function contract(x, y, s, a, sc, title, big, stampP) {
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc); ctx.rotate(-.06);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.fillRect(-170, -230, 340, 460); if (!c) { ctx.fillStyle = 'rgba(14,22,56,.2)'; for (let i = 0; i < 7; i++) ctx.fillRect(-130, -110 + i * 30, 260 - (i % 3) * 40, 10); } }, 10, 12);
+  txt(title, 0, -172, Math.min(46, 46 * 280 / tw(title, 46, 'MB')), F.dk, 'MB', { blur: 0, dy: 0 });
+  if (stampP > 0) { const k = 1 + 1.2 * (1 - eout(stampP)); ctx.save(); ctx.translate(40, 140); ctx.rotate(-.2); ctx.scale(k, k); ctx.globalAlpha = a * clamp(stampP * 2);
+    ctx.strokeStyle = F.co; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(0, 0, 86, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(239,71,111,.15)'; ctx.fill(); txt(big, 0, 4, 64, F.co, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+  ctx.restore();
+}
+function helmet(x, y, s, a, sc) {   // cosmonaut helmet with a Kazakh koshkar-muiz ornament
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.beginPath(); ctx.arc(0, 0, 100, Math.PI * .95, Math.PI * 2.05); ctx.lineTo(90, 70); ctx.lineTo(-90, 70); ctx.closePath(); ctx.fill();
+    if (!c) { ctx.fillStyle = F.tq; ctx.beginPath(); ctx.ellipse(0, 4, 66, 52, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(-24, -16, 20, 12, -.5, 0, 7); ctx.fill();
+      ctx.fillStyle = F.co; ctx.fillRect(-90, 58, 180, 18); } }, 8, 10);
+  ctx.strokeStyle = F.am; ctx.lineWidth = 7; ctx.lineCap = 'round';   // ram-horn curls on the brow
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, -78); ctx.bezierCurveTo(sx * 24, -98, sx * 52, -92, sx * 48, -70); ctx.bezierCurveTo(sx * 44, -56, sx * 28, -62, sx * 32, -74); ctx.stroke(); }
+  ctx.restore();
+}
+function photoCard(img, x, y, w, h, a, sc, cap, sub, cr, round = false) {
+  if (!img || a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc, sc);
+  const ir = img.width / img.height, r = w / h; let sw = img.width, sh = img.height, sx = 0, sy = 0;
+  if (ir > r) { sw = img.height * r; sx = (img.width - sw) * (img._cx ?? .5); } else { sh = img.width / r; sy = (img.height - sh) * (img._cy ?? .2); }
+  if (round) { ctx.fillStyle = F.sh; ctx.beginPath(); ctx.arc(10, 12, w / 2 + 22, 0, 7); ctx.fill(); ctx.fillStyle = '#9aa3b8'; ctx.beginPath(); ctx.arc(0, 0, w / 2 + 22, 0, 7); ctx.fill();
+    ctx.fillStyle = F.dk; for (let i = 0; i < 8; i++) { const an = i * Math.PI / 4; ctx.beginPath(); ctx.arc(Math.cos(an) * (w / 2 + 11), Math.sin(an) * (w / 2 + 11), 6, 0, 7); ctx.fill(); }
+    ctx.save(); ctx.beginPath(); ctx.arc(0, 0, w / 2, 0, 7); ctx.clip(); ctx.drawImage(img, sx, sy, sw, sh, -w / 2, -h / 2, w, h); ctx.restore(); }
+  else { ctx.fillStyle = F.sh; ctx.fillRect(-w / 2 - 14 + 12, -h / 2 - 14 + 14, w + 28, h + 150); ctx.fillStyle = F.cr; ctx.fillRect(-w / 2 - 14, -h / 2 - 14, w + 28, h + 150);
+    ctx.drawImage(img, sx, sy, sw, sh, -w / 2, -h / 2, w, h); }
+  const cy = round ? h / 2 + 80 : h / 2 + 52;
+  if (round) plate(cap, 0, cy, 46, F.am, F.dk, 1, 1); else txt(cap, 0, cy, 46, F.dk, 'MB', { blur: 0, dy: 0 });
+  txt(sub, 0, cy + (round ? 72 : 46), 32, round ? '#fff' : F.co, 'MX', { blur: round ? 10 : 0, dy: 0 });
+  txt(cr, 0, cy + (round ? 118 : 86), 20, round ? 'rgba(255,255,255,.7)' : 'rgba(14,22,56,.6)', 'MS', { blur: 0, dy: 0 });
+  ctx.restore();
+}
+function donut(x, y, r, p, n, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  ctx.lineWidth = 22; ctx.strokeStyle = 'rgba(255,243,214,.18)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+  ctx.strokeStyle = F.am; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(1 - p)); ctx.stroke();
+  txt(String(n), 0, 6, r * 1.1, F.cr, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function bigTitle(t, t0, y, a = 1) {   // «БАЙҚОҢЫР ≠ БАЙҚОҢЫР»
+  const p1 = pop(t, t0), p2 = pop(t, t0 + .35), p3 = pop(t, t0 + .7); const s = 104, k = Math.min(1, 980 / (tw(TX.name, s, 'MB') * 1.02));
+  ctx.save(); ctx.globalAlpha = a;
+  for (const [p, yy, col] of [[p1, y, F.cr], [p3, y + 250, F.am]]) if (p > 0) { ctx.save(); ctx.translate(W / 2, yy); ctx.scale(p * k, p * k); txt(TX.name, 0, 0, s, col, 'MB', { shadow: F.sh, blur: 0, dy: 10 }); ctx.restore(); }
+  if (p2 > 0) { ctx.save(); ctx.translate(W / 2, y + 125); ctx.scale(p2, p2); ctx.fillStyle = F.co; rr(-70, -46, 140, 20, 10); ctx.fill(); rr(-70, 26, 140, 20, 10); ctx.fill();
+    ctx.strokeStyle = F.co; ctx.lineWidth = 20; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(34, -78); ctx.lineTo(-34, 78); ctx.stroke(); ctx.restore(); }
+  ctx.restore();
+}
+function stars2(a) { if (a <= 0) return; const r = rng(11); ctx.save(); ctx.fillStyle = F.cr; for (let i = 0; i < 60; i++) { ctx.globalAlpha = a * (.3 + .6 * r()); ctx.beginPath(); ctx.arc(r() * W, r() * H, 1.5 + r() * 2.5, 0, 7); ctx.fill(); } ctx.restore(); }
+// ---------- map helpers (satellite) ----------
+function borders(a = .35) { if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; pathRings(SH.borders); ctx.stroke(); ctx.restore(); }
+function kzGlow(a) { if (SH && a > 0) glowFill(SH.cty.KAZ, GOLD, a, { fill: .16, blur: 22, lw: 4 }); }
+function dashLine(a, b, p, al) {
+  if (p <= 0 || al <= 0) return; const [x0, y0] = P(...a), [x1, y1] = P(...b); ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = GOLD; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.setLineDash([4, 26]); ctx.lineDashOffset = -TT * 40; ctx.shadowColor = GOLD; ctx.shadowBlur = 14; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(lerp(x0, x1, p), lerp(y0, y1, p)); ctx.stroke(); ctx.restore();
+}
+function mapPill(s, lon, lat, a, dy, size = 40, col = '#fff') { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x, y + dy, size, clamp(a * 2), { line: GOLD, col, scale: back(clamp(a)) }); }
+function spot(lon, lat, a, col = GOLD) { if (a <= 0) return; const [x, y] = P(lon, lat); for (let i = 0; i < 2; i++) { const ph = (TT * .9 + i * .5) % 1;
+  ctx.save(); ctx.globalAlpha = a * (1 - ph) * .9; ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 20 + ph * 70, 0, 7); ctx.stroke(); ctx.restore(); } dot(lon, lat, a, col); }
+// ---------- scenes ----------
+let CK = [];
+function sceneIntro(t, tEnd, again = false) {   // rocket on the pad + title; at tEnd-0.9 it lifts off
+  bgFlat(); ground(H * .72, F.tq);
+  const lift = again ? ap(t, V('cta') + .2, 1.6) : ap(t, tEnd - 1.0, 1.0), ly = -Math.pow(lift, 2) * 1900, sh = (1 - lift) * Math.sin(t * 60) * 2.5;
+  gantry(W / 2 + 10, H * .72, 1, 1, eout(clamp(lift * 3)));
+  rocket(W / 2 + sh, H * .72 - 6 + ly, 1.05, .25 + .9 * clamp(lift * 4) + .1 * Math.sin(t * 9), 1, 0);
+  if (lift > 0) { ctx.save(); ctx.globalAlpha = clamp(lift * 3) * (1 - lift) * .9; ctx.fillStyle = F.cr; for (let i = 0; i < 9; i++) { const dx = (i - 4) * 90, r = 60 + 50 * lift + (i % 3) * 15; ctx.beginPath(); ctx.arc(W / 2 + dx * (1 + lift), H * .72 - 10, r, 0, 7); ctx.fill(); } ctx.restore(); }
+  const t0 = again ? V('often') + .2 : .35, fa = again ? 1 - ap(t, V('cta') - .2, .4) : 1 - ap(t, tEnd - 1.0, .5);
+  bigTitle(t, t0, H * .13, fa);
+  if (!again) {
+    const pp = pop(t, .7); pin(W * .82, H * .62, .9 * pp, F.co, clamp(pp)); cross(W * .82, H * .62 - 80, .8, ap(t, 1.05, .4) * fa);
+    plate(TX.trap, W * .27, H * .58, 46, F.am, F.dk, fa, pop(t, 1.2), { rot: -.06 });
+  }
+}
+function sceneMap(t) {
+  CAM = camAt(CK, t); drawMap(.12); borders(.4); kzGlow(ap(t, V('map'), .8) * (1 - ap(t, V('tyur'), 1) * .5));
+  const aT = ap(t, V('tyur') - .1, .5), aV = ap(t, V('real'), .5);
+  spot(...TYU, aT); spot(...VIL, aV, GOLD);
+  dashLine(TYU, VIL, ap(t, V('km') - .1, 1.3), aV);
+  if (aT > 0) { const [x, y] = P(...TYU); rocket(x - 70, y + 20, .22 * pop(t, V('tyur') - .1), .3, clamp(aT * 2)); }
+  if (aV > 0) { const [x, y] = P(...VIL); yurt(x + 80, y - 20, .55 * pop(t, V('real')), clamp(aV * 2)); }
+  mapPill(TX.tyur, ...TYU, ap(t, V('kzo') + .6, .45), 70, 46, GOLD); mapPill(TX.kzo, ...TYU, ap(t, V('kzo'), .45), 150, 32);
+  mapPill(TX.vil, ...VIL, ap(t, V('real') + .3, .45), -95, 44, GOLD); mapPill(TX.uly, ...ULY, ap(t, V('km') + 1.6, .45), -80, 32);
+  const am = ap(t, V('km') + .5, .45); if (am > 0) { const [x0, y0] = P(...TYU), [x1, y1] = P(...VIL); plate(TX.km, (x0 + x1) / 2 + 120, (y0 + y1) / 2 + 20, 60, F.am, F.dk, clamp(am * 2), back(am), { rot: -.08 }); }
+  vignette(.55);
+  const c = ap(t, V('map'), .6) * (1 - ap(t, V('y55') - .8, .6)); txt(TX.src, W / 2, H * .965, 20, 'rgba(255,255,255,.55)', 'MS', { blur: 0 });
+}
+function sceneBuild(t) {   // 1955: secret test site in the steppe, camera slides left -> right
+  bgFlat(); const x0 = -lerp(0, 700, ease(ap(t, V('y55'), V('y61') - V('y55')))); ground(H * .7, '#d9b26f'); ctx.fillStyle = '#c79f5c'; ctx.fillRect(0, H * .7 + 120, W, 30);
+  ctx.save(); ctx.translate(x0, 0); const gy = H * .7;
+  ctx.fillStyle = F.dk; ctx.fillRect(-200, gy + 40, 2400, 10); ctx.fillRect(-200, gy + 70, 2400, 10); for (let i = 0; i < 60; i++) ctx.fillRect(-200 + i * 40, gy + 34, 12, 52);
+  const tt = t - V('y55'); const tr = Math.max(0, 700 - tt * 450);
+  wagon(250 + tr, gy + 40, 1, F.co); wagon(490 + tr, gy + 40, 1, F.tq); wagon(730 + tr, gy + 40, 1, F.co);
+  tent(1080, gy, 1.2, F.cr); tent(1280, gy, 1, F.tq); tent(1460, gy, 1.1, F.cr);
+  excavator(1700, gy + 10, 1.1, .5 + .5 * Math.sin(t * 2.5)); hammerMan(1230, gy + 10, 1.1, t * 5); hammerMan(1960, gy + 10, 1.1, t * 5 + 1);
+  ctx.restore();
+  calendar(W * .72, H * .3, 1.15, '', '1955', 1, pop(t, V('y55') + .3));
+  plate(TX.s3t, W / 2, H * .13, 54, F.co, F.cr, 1, pop(t, V('y55') + 1.3));
+  const pn = pop(t, V('noname')); if (pn > 0) { signPost(W * .3, H * .36, .62 * pn, '? ? ?', 1, 0, F.dk); plate(TX.noname, W * .3, H * .47, 40, F.am, F.dk, 1, pop(t, V('noname') + .5), { rot: .05 }); }
+}
+function sceneNaming(t) {   // 1961: launch, the world asks, the newspaper names the far village
+  bgFlat(); stars2(.6);
+  const tl = t - V('y61'), lift = ap(t, V('y61') + .5, 2.4), gy = H * .74;
+  const split = ap(t, V('hide') - .3, .8);    // later the view widens: pad left, village right
+  ground(gy, F.tq);
+  const rx = lerp(W / 2, W * .2, ease(split));
+  rocket(rx, gy - Math.pow(lift, 1.6) * 1700 * (1 - split), .9, .4 + lift, 1 - split * .0, 1);
+  calendar(W * .76, H * .33, 1, '', TX.date, 1 - ap(t, V('world'), .4), pop(t, V('y61') + .2));
+  plate('1961 · ' + TX.s4t, W / 2, H * .12, 58, F.am, F.dk, 1 - ap(t, V('hide') - .3, .4), pop(t, V('y61') + .6));
+  // Gagarin photo slides out from behind (the calendar / later the newspaper)
+  const gA = win(t, V('y61') + .8, V('world') + 1.2, .35), gS = eout(ap(t, V('y61') + .8, .5));
+  photoCard(IM.gag, W * .5 - (1 - gS) * 700, H * .4, 420, 520, gA, 1, TX.gagCap, TX.gagSub, TX.gagCr);
+  // world asks
+  const wa = ap(t, V('world') + .3, .4) * (1 - ap(t, V('hide') - .3, .4));
+  globe(W * .5, H * .42, 150 * back(clamp(wa)), clamp(wa * 2)); bubble(TX.wq, W * .62, H * .26, clamp(wa * 2), back(clamp(ap(t, V('world') + .6, .4))));
+  // pad (left) vs far village (right) + newspaper with an arrow to the village
+  if (split > 0) {
+    ctx.save(); ctx.globalAlpha = split; yurt(W * .8, gy, 1.1); plate(TX.pad, W * .2, gy + 80, 36, F.dk, F.cr, 1, 1); plate(TX.vil, W * .8, gy + 80, 36, F.am, F.dk, 1, 1); ctx.restore();
+    dashH(W * .3, W * .7, gy - 40, split);
+    const pn = pop(t, V('named') - .2); newspaper(W / 2, H * .3, 1, TX.news, 1, pn);
+    const pa = ap(t, V('named') + .5, .7); if (pa > 0) arrow(W * .62, H * .38, W * .78, gy - 150, W * .82, H * .45, pa, 1, 12);
+    const px = ap(t, V('named') + 1.1, .4); if (px > 0) cross(W * .2, gy - 230, .5, px, F.co);
+  }
+}
+function dashH(x0, x1, y, a) { ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = F.am; ctx.lineWidth = 8; ctx.setLineDash([4, 22]); ctx.lineCap = 'round'; ctx.lineDashOffset = -TT * 40; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  ctx.setLineDash([]); txt(TX.km, (x0 + x1) / 2, y - 40, 40, F.am, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+function sceneCity(t) {   // Leninsk -> Baikonur (1995) + lease to 2050
+  bgFlat(); ground(H * .76, F.tq);
+  for (let i = 0; i < 6; i++) { const x = 60 + i * 190, h = 160 + (i * 73) % 140; ctx.fillStyle = i % 2 ? '#27386b' : '#22305e'; ctx.fillRect(x, H * .76 - h, 150, h);
+    ctx.fillStyle = 'rgba(255,211,63,.5)'; for (let j = 0; j < 3; j++) for (let k = 0; k < Math.floor(h / 60); k++) ctx.fillRect(x + 20 + j * 44, H * .76 - h + 20 + k * 55, 22, 26); }
+  const fl = ap(t, V('y95') + .2, .6), lab = fl < .5 ? TX.len : TX.city, sp = pop(t, V('len'));
+  signPost(W / 2, H * .42, .95 * sp, lab, 1, fl, fl < .5 ? F.dk : F.tq);
+  const y95 = pop(t, V('y95') + .9); if (y95 > 0) plate('1995', W / 2 + 230, H * .3, 56, F.am, F.dk, 1, y95, { rot: .12 });
+  const ca = ap(t, V('rent'), .5); const k = 1 - ap(t, V('ent') - .5, .5);
+  if (ca > 0) { ctx.save(); ctx.globalAlpha = .7 * clamp(ca * 2) * k; ctx.fillStyle = '#050a20'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    contract(W / 2, H * .45 - (1 - k) * 900, 1.15, k, back(clamp(ca)), TX.doc, '2050', ap(t, V('rent') + 1.6, .35));
+    plate(TX.rent + ' · ' + TX.till, W / 2, H * .15, 50, F.co, F.cr, k, pop(t, V('rent') + .5));
+    plate(TX.ru, W / 2 - 150, H * .62, 36, F.dk, F.cr, k, pop(t, V('rent') + .9)); }
+}
+function sceneEnt(t) {   // ENT card: 1955, 1961, 1991 + helmet + Aubakirov porthole
+  bgFlat(); const flipOut = ap(t, V('q') - .35, .35);
+  ctx.save(); ctx.translate(W / 2, H * .5); ctx.scale(1 - flipOut, 1); ctx.translate(-W / 2, -H * .5);
+  const cp = pop(t, V('ent') - .1); ctx.save(); ctx.translate(W / 2, H * .48); ctx.scale(cp, cp);
+  shade(c => { ctx.fillStyle = c || F.cr; rr(-440, -560, 880, 1000, 40); ctx.fill(); }, 12, 14); ctx.fillStyle = F.tq; rr(-440, -560, 880, 150, [40, 40, 0, 0]); ctx.fill();
+  txt(TX.entT, 0, -484, Math.min(60, 60 * 800 / tw(TX.entT, 60, 'MB')), F.dk, 'MB', { blur: 0, dy: 0 });
+  const tm = [V('ent') + .5, V('ent') + 1.0, V('first') + 1.0];
+  TX.rows.forEach(([y, s], i) => { const p = pop(t, tm[i]); if (p <= 0) return; ctx.save(); ctx.translate(-380, -300 + i * 190); ctx.scale(p, p);
+    plate(y, 90, 0, 58, i === 2 ? F.am : F.dk, i === 2 ? F.dk : F.cr, 1, 1); txt(s, 220, 4, Math.min(52, 52 * 400 / tw(s, 52, 'MB')), F.dk, 'MB', { align: 'left', blur: 0, dy: 0 }); ctx.restore(); });
+  ctx.restore();
+  helmet(W * .76, H * .62, 1.1, 1, pop(t, V('first') + 1.4));
+  ctx.restore();
+  const aA = win(t, V('first') + 1.9, V('q') - .4, .35), aS = back(ap(t, V('first') + 1.9, .6));
+  if (aA > 0) { ctx.save(); ctx.globalAlpha = .6 * aA; ctx.fillStyle = '#050a20'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  photoCard(IM.aub, W / 2, H * .43, 460, 460, aA, aS, TX.aubCap, TX.aubSub, TX.aubCr, true);
+}
+function sceneQuiz(t) {
+  bgFlat(); const fin = ap(t, V('q') - .05, .35);
+  ctx.save(); ctx.translate(W / 2, H * .5); ctx.scale(fin, 1); ctx.translate(-W / 2, -H * .5);
+  shade(c => { ctx.fillStyle = c || F.cr; rr(80, H * .16, W - 160, H * .6, 40); ctx.fill(); }, 12, 14); ctx.fillStyle = F.co; rr(80, H * .16, W - 160, 130, [40, 40, 0, 0]); ctx.fill();
+  txt(TX.qT, W / 2, H * .16 + 66, 54, F.cr, 'MB', { blur: 0, dy: 0 });
+  const qa = ap(t, V('who'), .4); ctx.save(); ctx.globalAlpha = qa; TX.qq.forEach((l, i) => txt(l, W / 2, H * .3 + i * 70, 58, F.dk, 'MB', { blur: 0, dy: 0 })); ctx.restore();
+  const ans = ap(t, V('ans'), .35);
+  TX.opts.forEach(([L, s], i) => { const p = pop(t, V('opts') + i * .55); if (p <= 0) return; const ok = i === 1, y = H * .45 + i * 150;
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(p * (ok ? 1 + .06 * ans : 1), p); ctx.globalAlpha = ok ? 1 : 1 - .6 * ans;
+    const bg = ok && ans > 0 ? F.tq : '#e8dcc0'; ctx.fillStyle = bg; rr(-380, -58, 760, 116, 30); ctx.fill();
+    ctx.fillStyle = ok && ans > 0 ? F.dk : F.co; ctx.beginPath(); ctx.arc(-310, 0, 40, 0, 7); ctx.fill(); txt(L, -310, 4, 46, F.cr, 'MB', { blur: 0, dy: 0 });
+    txt(s, 30, 4, 54, F.dk, 'MB', { blur: 0, dy: 0 }); if (ok && ans > 0) { ctx.strokeStyle = F.dk; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(280, 0); ctx.lineTo(305, 26); ctx.lineTo(350, -26); ctx.stroke(); }
+    ctx.restore(); });
+  ctx.restore();
+  const t0 = B._p0 + OFF, t1 = V('ans') - .1;   // countdown in the pause
+  const da = win(t, t0, t1 + .2, .2); if (da > 0) { const p = clamp((t - t0) / (t1 - t0)); donut(W / 2, H * .86 - 30, 70, p, Math.max(1, 3 - Math.floor(p * 3)), da); }
+  const pa = pop(t, V('ans') + .8); if (pa > 0) plate(TX.ans, W / 2, H * .705, 44, F.am, F.dk, 1, pa);
+}
+function buildCam() {
+  const kzw = [67, 47.4, 21], both = [64.9, 46.55, 120], tyu = [TYU[0], TYU[1], 300];
+  CK = [[V('map') - .2, ...kzw], [V('tyur') - .3, 66.5, 47.3, 22, 'l'], [V('tyur') + .6, 64.2, 46.2, 70],
+    [V('real') - .1, 64.4, 46.4, 76, 'l'], [V('real') + 1.0, ...both], [V('y55') - .9, both[0], both[1], 128, 'l'], [V('y55') - .1, ...tyu]];
+}
+function render(t) {
+  TT = t; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  if (t < V('map')) sceneIntro(t, V('map'));
+  else if (t < V('y55')) sceneMap(t);
+  else if (t < V('y61')) sceneBuild(t);
+  else if (t < V('len')) sceneNaming(t);
+  else if (t < V('ent')) sceneCity(t);
+  else if (t < V('q')) sceneEnt(t);
+  else if (t < V('often')) sceneQuiz(t);
+  else sceneIntro(t, 1e9, true);
+  // transitions: rocket lift-off blur into map (flash), zoom-in flash, slides
+  cutFade(t, [V('y55'), V('y61'), V('len'), V('ent'), V('often')]);
+  const fl = 1 - Math.abs(t - V('map')) / .25; if (fl > 0) { ctx.save(); ctx.globalAlpha = clamp(fl); ctx.fillStyle = F.cr; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  captions(t);
+  if (t >= V('cta')) ctaLink2(t);
+  logo(.9);
+  endCardLink2(t, V('vend') + .6);
+}
+function ctaLink2(t) {
+  const t0 = V('cta') + .1, p = pop(t, t0 + .3);
+  ctx.save(); ctx.globalAlpha = .55 * ap(t, t0, .4); ctx.fillStyle = '#050a20'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save(); txt(TX.link1, W / 2, H * .6, 70, '#fff', 'MB', { shadow: F.sh, blur: 0, dy: 8, a: ap(t, t0, .3) }); ctx.restore();
+  plate(TX.link2, W / 2, H * .68, 70, F.am, F.dk, clamp(p), p);
+  const bob = Math.sin(t * 6) * 14; if (p > 0) { ctx.save(); ctx.globalAlpha = clamp(p); ctx.translate(W / 2, H * .5 + bob); ctx.fillStyle = F.am;
+    ctx.beginPath(); ctx.moveTo(0, -60); ctx.lineTo(50, 0); ctx.lineTo(18, 0); ctx.lineTo(18, 50); ctx.lineTo(-18, 50); ctx.lineTo(-18, 0); ctx.lineTo(-50, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+}
+function endCardLink2(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 400 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TX.link1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TX.link2, W / 2, H * .62 + 95, 80, BR.acc, 'MB', { blur: 0 });
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('ca', 'tex/ca.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  await Promise.all([loadImg('gag', 'photos/gagarin.jpg').catch(() => 0), loadImg('aub', 'photos/aubakirov.jpg').catch(() => 0)]);
+  if (IM.aub) IM.aub._cy = .4; if (IM.gag) { IM.gag._cx = .47; IM.gag._cy = .1; }
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
