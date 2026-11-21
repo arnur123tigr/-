@@ -26,14 +26,14 @@ const TXT = {
     maml: 'Мамлюк', egy: 'Египет', head4: 'Мамлюк · Египет', bow: 'Конь и лук', gen: 'Полководец', bagh: 'Багдад', dam: 'Дамаск', alep: 'Алеппо',
     ain: 'Айн-Джалут', y1260: '1260', first1: 'Первое крупное', first2: 'поражение монголов', sultan: 'Султан · 1260–1277', head6: 'Из рабов — в султаны',
     syr: 'Сирия', kin: 'Земляк казахов', ent: 'ЕНТ', q: ['В каком году мамлюки', 'разбили монголов', 'при Айн-Джалуте?'], opts: [['А', '1219'], ['Б', '1260'], ['В', '1380']],
-    cta1: 'Ссылка', cta2: 'в шапке профиля', ph1: 'Мечеть султана Бейбарса, Каир', ph2: '',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', ph1: 'Мечеть султана Бейбарса, Каир', ph2: 'Золотой динар Бейбарса, Каир', cr1: 'Фото: R Prazeres, CC BY-SA 4.0, Wikimedia Commons', cr2: 'Фото: Waleedcop2, CC BY-SA 4.0, Wikimedia Commons',
     src: 'Снимки: NASA Blue Marble · границы и реки: Natural Earth · маршрут схематичный' },
   kk: { t1: 'Мысыр сұлтаны', t2: 'Дешті Қыпшақтан', trap: 'ҰБТ тұзағы', cairo: 'Каир', dk: ['Дешті Қыпшақ'], born: 'Бейбарс · ~1223', y: '~1223',
     mong: 'Моңғолдар', inv: 'Моңғол шапқыншылығы', slave: 'Құл', market: 'Құл базары', crim: 'Қырым', eye1: 'Көзінде ақ дақ', eye2: 'арзанға сатылды',
     maml: 'Мәмлүк', egy: 'Мысыр', head4: 'Мәмлүк · Мысыр', bow: 'Ат пен садақ', gen: 'Қолбасшы', bagh: 'Бағдат', dam: 'Дамаск', alep: 'Халеб',
     ain: 'Айн-Джалут', y1260: '1260', first1: 'Моңғолдардың алғашқы', first2: 'ірі жеңілісі', sultan: 'Сұлтан · 1260–1277', head6: 'Құлдан — сұлтанға',
     syr: 'Сирия', kin: 'Қазақтың жерлесі', ent: 'ҰБТ', q: ['Мәмлүктер моңғолдарды', 'Айн-Джалутта', 'қай жылы жеңді?'], opts: [['А', '1219'], ['Ә', '1260'], ['Б', '1380']],
-    cta1: 'Сілтеме', cta2: 'профиль шапкасында', ph1: 'Сұлтан Бейбарс мешіті, Каир', ph2: '',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', ph1: 'Сұлтан Бейбарс мешіті, Каир', ph2: 'Бейбарстың алтын динары, Каир', cr1: 'Фото: R Prazeres, CC BY-SA 4.0, Wikimedia Commons', cr2: 'Фото: Waleedcop2, CC BY-SA 4.0, Wikimedia Commons',
     src: 'Түсірілім: NASA Blue Marble · шекаралар мен өзендер: Natural Earth · маршрут шартты' } }[LANG];
 </script>
 <script src="helpers.js"></script>
@@ -150,12 +150,12 @@ function eyeIcon(x, y, s, a) {   // eye with a white cloudy spot (bельмо / 
   const g = ctx.createRadialGradient(6, -4, 0, 6, -4, 20); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(6, -4, 20, 0, 7); ctx.fill(); ctx.restore();
   ctx.lineWidth = 5; ctx.strokeStyle = GOLD; ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(0, -48, 60, 0); ctx.quadraticCurveTo(0, 48, -60, 0); ctx.stroke(); ctx.restore();
 }
-function photoCard(im, cx, cy, w, a, rise, cap) {   // real photo in a thin gold frame, rising from a map point
+function photoCard(im, cx, cy, w, a, rise, cap, cr) {   // real photo in a thin gold frame, rising from a map point
   if (!im || a <= 0) return; const h = w * im.height / im.width, p = eout(rise);
   ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(cx, cy + (1 - p) * 220); const s = .55 + .45 * p; ctx.scale(s, s);
   ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 40; ctx.fillStyle = BR.navy; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.fill(); ctx.shadowBlur = 0;
   ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.lineWidth = 4; ctx.strokeStyle = GOLD; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.stroke();
-  if (cap) txt(cap, 0, h / 2 + 34, 30, '#fff', 'MX', { blur: 0, dy: 0 }); ctx.restore();
+  if (cap) txt(cap, 0, h / 2 + 34, 30, '#fff', 'MX', { blur: 0, dy: 0 }); if (cr) txt(cr, 0, h / 2 + 96, 18, 'rgba(255,255,255,.8)', 'MS', { blur: 6 }); ctx.restore();
 }
 function flash(t0, a = 1) { const q = (1 - ap(TT, t0, .5)) * ap(TT, t0 - .05, .05) * a; if (q <= 0) return; ctx.save(); ctx.globalAlpha = q * .85; const [x, y] = P(...AIN);
   const g = ctx.createRadialGradient(x, y, 0, x, y, 700); g.addColorStop(0, '#fff'); g.addColorStop(.3, 'rgba(254,179,0,.6)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); }
@@ -217,7 +217,7 @@ function render(t) {
       const bq = A('bow', 'mong2', .3); if (bq > 0) pill(TXT.bow, W / 2, H * .72, 44, bq, { line: GOLD, scale: back(clamp(ap(t, V('bow') + .2, .4))) });
       const gq = A('gen', 'mong2', .3); if (gq > 0) { star(cx, cy - 64, 30, gq * ap(t, V('gen') + .2, .3)); pill(TXT.gen, W / 2, H * .64, 50, gq, { bg: GOLD, col: BR.navy, line: '#fff', scale: back(clamp(ap(t, V('gen') + .2, .4))) }); }
       head(TXT.head4, a * ap(t, V('egypt') + 3.6, .35), GOLD, H * .16, 92);
-      const pa = win(t, V('bow') - .2, V('bow') + 3.6, .3); photoCard(IM.ph1, W / 2, H * .43, 640, pa, ap(t, V('bow') - .2, .7), TXT.ph1); } }
+      const pa = win(t, V('bow') - .2, V('bow') + 3.6, .3); photoCard(IM.ph1, W / 2, H * .43, 640, pa, ap(t, V('bow') - .2, .7), TXT.ph1, TXT.cr1); } }
   // ---- S5 Mongols through Baghdad and Syria; Ain Jalut 1260
   { const a = A('mong2', 'sultan', .3);
     if (a > 0) { const brk = ap(t, V('ain') + 1.1, .6);
@@ -241,7 +241,7 @@ function render(t) {
       if (dq >= 1) { const [bx, by] = P(...BIRTH); bigDot(bx, by, 12, a); }
       head(TXT.head6, a * ap(t, V('rule') + .6, .35), GOLD, H * .16, 92);
       const kq = A('kin', 'ent', .3); if (kq > 0) { kz(kq * .9, { pulse: .4, fill: .2 }); pill(TXT.kin, W / 2, H * .27, 46, kq, { line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('kin'), .4))) }); }
-      const pa = win(t, V('rule') + 1.6, V('kin') + .2, .3); photoCard(IM.ph2, W / 2, H * .45, 560, pa, ap(t, V('rule') + 1.6, .7), TXT.ph2); } }
+      const pa = win(t, V('rule') + 1.6, V('kin') + .2, .3); photoCard(IM.ph2, W / 2, H * .45, 560, pa, ap(t, V('rule') + 1.6, .7), TXT.ph2, TXT.cr2); } }
   // ---- S7 ENT quiz
   { const a = win(t, V('ent'), V('path'), .35);
     if (a > 0) { ctx.save(); ctx.globalAlpha = a * .6; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
