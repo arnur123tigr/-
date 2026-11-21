@@ -1,0 +1,463 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#000}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Перовск: қаланы жаулаған генералдың атымен атады» — Flat Vector timeline of the names of Kyzylorda.
+// Flat shapes, no outlines, no gradients, one-tone soft shadow; palette navy #1D2B53, turquoise, yellow, coral, cream.
+// Gate scenes (1 and 8) on cream; the timeline world (scenes 2–6) on navy with the axis at y = LY; quiz card (7).
+// render(T) is deterministic; times come from beats.json (timing.py).
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OW = 1080, OH = 1920, LY = 1250;
+const P = { navy: '#1D2B53', tq: '#2EC4B6', yel: '#FFD23F', cor: '#EF476F', cream: '#FFF3D6', clay: '#E3A869', clayD: '#C98A4E', clayL: '#F2C58E', ink: '#131C3A' };
+const BR = { navy: '#130B54', amber: '#FEB300' };
+const SH = 'rgba(8,12,34,.28)', SHc = 'rgba(29,43,83,.16)';   // one-tone shadows on navy and on cream
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+let B, M, IMG = {}, CAM, SHOTS = [];
+
+const L = {
+  kk: {
+    kzl: 'ҚЫЗЫЛОРДА', prv: 'ПЕРОВСК', ak: 'АҚМЕШІТ', fort: ['ФОРТ', 'ПЕРОВСКИЙ'],
+    trap: 'ҰБТ ТҰЗАҒЫ', q1: 'ПЕРОВСК = ?', river: 'Сырдария', mosque: '«ақ мешіт»',
+    st: [['', 'Ақмешіт'], ['1853', 'Перовский'], ['1856', 'Жанқожа'], ['1922', 'Ақмешіт'], ['1925', 'Қызылорда']],
+    perov: 'Перовский', ph: ['В. А. Перовский', 'Орынбор генерал-губернаторы'], janq: 'Жанқожа', age: '80+ жаста',
+    conq: 'жаулаушының аты', fort2: 'Перовск',
+    h: { s2: 'АҚМЕШІТ · ҚОҚАН БЕКІНІСІ', s3: '1853 · ПЕРОВСКИЙ', s4: 'ФОРТ ПЕРОВСКИЙ › ПЕРОВСК', s5: '1856 · ЖАНҚОЖА', s6: '1925 · ҚЫЗЫЛОРДА' },
+    ov: [['1853', 'Ақмешіт'], ['1853', 'Форт Перовский'], ['1856', 'Жанқожа'], ['1867', 'Перовск'], ['1922', 'Ақмешіт'], ['1925', 'Қызылорда']],
+    qpill: 'ҰБТ СҰРАҒЫ', q: ['Ақмешітті', '1853 жылы кім алды?'], opts: [['А', 'Колпаковский'], ['Ә', 'Черняев'], ['Б', 'Перовский']],
+    s8: ['Сілтеме', 'профиль шапкасында'], cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз']
+  },
+  ru: {
+    kzl: 'КЫЗЫЛОРДА', prv: 'ПЕРОВСК', ak: 'АҚМЕШІТ', fort: ['ФОРТ', 'ПЕРОВСКИЙ'],
+    trap: 'ЛОВУШКА ЕНТ', q1: 'ПЕРОВСК = ?', river: 'Сырдарья', mosque: '«белая мечеть»',
+    st: [['', 'Ақмешіт'], ['1853', 'Перовский'], ['1856', 'Жанкожа'], ['1922', 'Ақмешіт'], ['1925', 'Кызылорда']],
+    perov: 'Перовский', ph: ['В. А. Перовский', 'оренбургский генерал-губернатор'], janq: 'Жанкожа', age: 'за 80 лет',
+    conq: 'имя захватчика', fort2: 'Перовск',
+    h: { s2: 'АҚМЕШІТ · КОКАНДСКАЯ КРЕПОСТЬ', s3: '1853 · ПЕРОВСКИЙ', s4: 'ФОРТ ПЕРОВСКИЙ › ПЕРОВСК', s5: '1856 · ЖАНКОЖА', s6: '1925 · КЫЗЫЛОРДА' },
+    ov: [['1853', 'Ақмешіт'], ['1853', 'Форт Перовский'], ['1856', 'Жанкожа'], ['1867', 'Перовск'], ['1922', 'Ақмешіт'], ['1925', 'Кызылорда']],
+    qpill: 'ВОПРОС ЕНТ', q: ['Кто взял Ақмешіт', 'в 1853 году?'], opts: [['А', 'Колпаковский'], ['Б', 'Черняев'], ['В', 'Перовский']],
+    s8: ['Ссылка', 'в шапке профиля'], cta: ['Перейдите по ссылке', 'в шапке профиля']
+  }
+}[LANG];
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const eob = x => { x = clamp(x); const c1 = 2.0, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };   // pop with a springy overshoot
+const lerp = (a, b, k) => a + (b - a) * k;
+const hash = (a, b = 0) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const win = (T, t0, d) => clamp((T - t0) / d);
+const pop = (T, t0, d = .45) => eob(win(T, t0, d));
+function tw(t, font) { ctx.save(); ctx.font = font; const w = ctx.measureText(t).width; ctx.restore(); return w; }
+function fitFont(t, base, maxW, face = 'MB') { const w = tw(t, `${base}px ${face}`); return Math.min(base, Math.floor(base * maxW / w)); }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); }
+// every flat shape gets the same soft one-tone shadow, offset down-right
+function shade(draw, sh = SH, dx = 10, dy = 12) { ctx.save(); ctx.translate(dx, dy); draw(sh); ctx.restore(); draw(null); }
+function scaled(x, y, s, f) { if (s <= 0.001) return; ctx.save(); ctx.translate(x, y); ctx.scale(s, s); f(); ctx.restore(); }
+function text(t, x, y, font, col, al = 'center', bl = 'middle') { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = al; ctx.textBaseline = bl; ctx.fillText(t, x, y); }
+function pill(t, x, y, font, bg, fg, padX = 28, h = 76, sh = SH) {
+  const w = tw(t, font) + padX * 2;
+  shade(s => { ctx.fillStyle = s || bg; rr(x - w / 2, y - h / 2, w, h, h / 2); ctx.fill(); }, sh, 6, 8);
+  text(t, x, y + 2, font, fg); return w;
+}
+
+// ---------- camera (world scenes) ----------
+let KEYS = [];
+function camKeys() {
+  const CY = 960;
+  KEYS = [[M.s2, -560, CY, 1], [M.s2 + 1.0, 0, CY, 1], [M.s3 - .15, 140, CY, 1],
+  [M.s3 + .9, 1300, CY, 1], [M.s4 - .15, 1360, CY, 1],
+  [M.s4 + .9, 2600, CY, 1], [M.s5 - .15, 2650, CY, 1],
+  [M.s5 + .9, 3640, CY, 1], [M.s6 - .15, 4150, CY, 1],
+  [M.s6 + 1.0, 5700, CY, .84], [M.s7, 5760, CY, .84]];
+}
+function camAt(T) {
+  if (T <= KEYS[0][0]) return { cx: KEYS[0][1], cy: KEYS[0][2], z: KEYS[0][3] };
+  for (let i = 0; i < KEYS.length - 1; i++) {
+    const a = KEYS[i], b = KEYS[i + 1];
+    if (T <= b[0]) { const k = (b[0] - a[0]) > 1.2 ? (T - a[0]) / (b[0] - a[0]) : ease((T - a[0]) / (b[0] - a[0])); return { cx: lerp(a[1], b[1], k), cy: lerp(a[2], b[2], k), z: lerp(a[3], b[3], k) }; }
+  }
+  const z = KEYS[KEYS.length - 1]; return { cx: z[1], cy: z[2], z: z[3] };
+}
+function shake(T) { let s = 0; for (const t of SHOTS) { const d = T - t; if (d >= 0 && d < .35) s += (1 - d / .35) * 14; } return s; }
+function worldT(T) { const s = shake(T); ctx.setTransform(CAM.z, 0, 0, CAM.z, OW / 2 - CAM.cx * CAM.z + Math.sin(T * 90) * s, OH / 2 - CAM.cy * CAM.z + Math.cos(T * 77) * s * .7); }
+function scrT() { ctx.setTransform(1, 0, 0, 1, 0, 0); }
+
+// ---------- flat figures ----------
+function fortress(x, y, s, o = {}) {   // clay fortress, ground line at y; o.crack 0..1, o.dome, o.pennant colour
+  scaled(x, y, s, () => {
+    shade(sh => {
+      ctx.fillStyle = sh || P.clay;
+      ctx.fillRect(-260, -170, 520, 170);                                   // wall
+      for (let i = 0; i < 11; i++) ctx.fillRect(-260 + i * 49, -196, 30, 30);   // crenellations
+      for (const tx of [-300, 220]) { ctx.fillStyle = sh || P.clayD; ctx.fillRect(tx, -250, 80, 250); if (!sh) ctx.fillStyle = P.clayD; for (let j = 0; j < 3; j++) ctx.fillRect(tx + j * 30, -276, 20, 28); }
+      if (o.dome !== false) {                                                // white mosque with a dome behind the wall
+        ctx.fillStyle = sh || P.cream; ctx.fillRect(-90, -270, 180, 100);
+        ctx.beginPath(); ctx.arc(0, -270, 90, Math.PI, 0); ctx.fill();
+        ctx.fillRect(120, -330, 26, 160); ctx.beginPath(); ctx.arc(133, -330, 13, Math.PI, 0); ctx.fill();
+      }
+    });
+    ctx.fillStyle = P.clayD; rr(-48, -110, 96, 110, [48, 48, 0, 0]); ctx.fill();          // gate opening
+    ctx.fillStyle = P.ink; rr(-34, -96, 68, 96, [34, 34, 0, 0]); ctx.fill();
+    if (o.pennant) { ctx.fillStyle = P.cream; ctx.fillRect(254, -360, 8, 90); ctx.fillStyle = o.pennant; poly([[262, -360], [330, -342], [262, -324]]); ctx.fill(); }
+    if (o.crack > 0) {                                                       // cracks grow with every hit
+      ctx.strokeStyle = P.ink; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const cr = [[[-150, -170], [-130, -120], [-160, -80], [-135, -30]], [[110, -170], [90, -130], [120, -95], [100, -50]], [[-30, -196], [-10, -150], [-40, -125]]];
+      cr.forEach((p, i) => { const k = clamp(o.crack * 3 - i); if (k <= 0) return; ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); const n = 1 + Math.floor(k * (p.length - 1) * .999); for (let j = 1; j <= n; j++) ctx.lineTo(p[j][0], p[j][1]); ctx.stroke(); });
+    }
+  });
+}
+function cannon(x, y, s, recoil = 0) {
+  scaled(x - recoil * 26, y, s, () => {
+    shade(sh => {
+      ctx.save(); ctx.translate(10, -70); ctx.rotate(-.2);
+      ctx.fillStyle = sh || P.yel; rr(-70, -26, 190, 52, 26); ctx.fill(); ctx.fillRect(100, -32, 26, 64);
+      ctx.restore();
+      ctx.fillStyle = sh || P.cream; ctx.beginPath(); ctx.arc(-10, -44, 44, 0, 7); ctx.fill();
+    });
+    ctx.fillStyle = P.navy; ctx.beginPath(); ctx.arc(-10, -44, 15, 0, 7); ctx.fill();
+  });
+}
+function person(x, y, s, o = {}) {   // icon person: round head, trapezoid body, eyebrows only
+  scaled(x, y, s, () => {
+    const face = o.face || '#F6CFA4', body = o.body || P.cor, dir = o.dir || 1;
+    shade(sh => {
+      ctx.fillStyle = sh || body; poly([[-44, 0], [44, 0], [30, -120], [-30, -120]]); ctx.fill();
+      ctx.fillStyle = sh || face; ctx.beginPath(); ctx.arc(0, -160, 38, 0, 7); ctx.fill();
+      if (o.cap) { ctx.fillStyle = sh || '#FFFFFF'; rr(-40, -206, 80, 30, 10); ctx.fill(); ctx.fillRect(-42 * dir, -180, 60 * dir, 10); }
+      if (o.borik) { ctx.fillStyle = sh || P.yel; ctx.beginPath(); ctx.arc(0, -184, 40, Math.PI, 0); ctx.fill(); ctx.fillStyle = sh || P.cream; rr(-46, -192, 92, 22, 11); ctx.fill(); }
+      if (o.beard) { ctx.fillStyle = sh || '#FFFFFF'; poly([[-34, -152], [34, -152], [0, -86]]); ctx.fill(); }
+    });
+    ctx.strokeStyle = P.ink; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    const br = o.brow || 0;   // brows: 0 calm, 1 stern
+    ctx.beginPath(); ctx.moveTo(-22 + 6 * dir, -168 - br * 4); ctx.lineTo(-6 + 6 * dir, -164 + br * 3); ctx.moveTo(6 + 6 * dir, -164 + br * 3); ctx.lineTo(22 + 6 * dir, -168 - br * 4); ctx.stroke();
+    if (o.rifle) { ctx.fillStyle = P.ink; ctx.save(); ctx.translate(36 * dir, -60); ctx.rotate(-1.25 * dir); ctx.fillRect(0, -5, 150, 10); ctx.restore(); }
+  });
+}
+function horse(x, y, s, T, ph = 0, col = P.clay) {   // flat horse with galloping legs
+  scaled(x, y, s, () => {
+    const g = Math.sin(T * 14 + ph);
+    shade(sh => {
+      ctx.fillStyle = sh || col;
+      rr(-110, -200, 220, 90, 45); ctx.fill();                                  // body
+      ctx.save(); ctx.translate(90, -180); ctx.rotate(-.75); rr(-10, -30, 120, 56, 26); ctx.fill(); ctx.restore();   // neck + head
+      ctx.beginPath(); ctx.ellipse(170, -262, 52, 28, -.35, 0, 7); ctx.fill();
+      for (const [lx, a] of [[-80, g], [-50, -g], [60, -g], [90, g]]) { ctx.save(); ctx.translate(lx, -125); ctx.rotate(a * .45); ctx.fillRect(-11, 0, 22, 125); ctx.restore(); }
+      ctx.save(); ctx.translate(-105, -180); ctx.rotate(.6 + g * .1); ctx.fillStyle = sh || P.ink; rr(-16, 0, 30, 100, 15); ctx.fill(); ctx.restore();   // tail
+    });
+    ctx.fillStyle = P.ink; ctx.beginPath(); ctx.moveTo(110, -250); ctx.lineTo(150, -300); ctx.lineTo(160, -250); ctx.fill();   // mane tuft
+  });
+}
+function rider(x, y, s, T, ph, o) { horse(x, y, s, T, ph, o.horse); person(x - 6 * s, y - 175 * s + Math.sin(T * 14 + ph) * 5 * s, s * .9, { dir: 1, ...o }); }
+function gate(x, y, s, sign, o = {}) {   // city gate with a name sign; o.col tint, o.ghost text under the sign, o.signK pop
+  scaled(x, y, s, () => {
+    const col = o.col || P.clay, colD = o.colD || P.clayD;
+    shade(sh => {
+      ctx.fillStyle = sh || colD; ctx.fillRect(-330, -560, 170, 560); ctx.fillRect(160, -560, 170, 560);
+      for (let j = 0; j < 3; j++) { ctx.fillRect(-330 + j * 62, -600, 46, 44); ctx.fillRect(160 + j * 62, -600, 46, 44); }
+      ctx.fillStyle = sh || col; ctx.fillRect(-170, -470, 340, 470);
+    }, o.sh || SH);
+    ctx.fillStyle = P.ink; rr(-110, -300, 220, 300, [110, 110, 0, 0]); ctx.fill();
+    ctx.fillStyle = colD; ctx.fillRect(-170, -470, 340, 24);
+    if (o.ghost) { ctx.save(); ctx.globalAlpha = o.ghostA ?? 1; signPlate(0, -265 + (o.ghostY || 0), o.ghost, P.cor, P.cream, o.ghostRot || 0); ctx.restore(); }
+    if (sign) { const k = o.signK ?? 1; ctx.save(); ctx.translate(o.dx || 0, -400 + (o.dy || 0)); ctx.rotate(o.rot || 0); ctx.scale(k, k); signPlate(0, 0, sign, o.signBg || P.navy, o.signFg || P.cream, 0, o.sub); ctx.restore(); }
+  });
+}
+function signPlate(x, y, t, bg, fg, rot = 0, sub) {
+  const f = `${fitFont(t, 92, 560)}px MB`, w = Math.max(360, tw(t, f) + 90), h = sub ? 170 : 140;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = 'rgba(8,12,34,.25)'; rr(-w / 2 + 10, -h / 2 + 12, w, h, 22); ctx.fill();
+  ctx.fillStyle = bg; rr(-w / 2, -h / 2, w, h, 22); ctx.fill();
+  ctx.fillStyle = P.yel; ctx.beginPath(); ctx.arc(-w / 2 + 26, -h / 2 + 26, 9, 0, 7); ctx.arc(w / 2 - 26, -h / 2 + 26, 9, 0, 7); ctx.fill();
+  text(t, 0, sub ? -18 : 4, f, fg);
+  if (sub) text(sub, 0, 50, '44px MX', P.yel);
+  ctx.restore();
+}
+function river(x0, x1, y, T) {
+  ctx.fillStyle = P.tq; rr(x0, y, x1 - x0, 70, 35); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.35)';
+  for (let i = 0; i < 14; i++) { const xx = x0 + ((i * 197 + T * 60) % (x1 - x0 - 120)) + 40; rr(xx, y + 22 + (i % 2) * 18, 70, 8, 4); ctx.fill(); }
+}
+
+// ---------- world: axis, stations ----------
+const ST = [[0, 'ak'], [1300, 's3'], [3900, 'rd'], [5200, 's6'], [6200, 'n6']];
+function stT(i) { const m = M[ST[i][1]]; return i === 1 ? M.s3 + .4 : i === 3 ? M.s6 + .6 : m; }
+function axis(T) {
+  const k = ease(win(T, M.s2 - .35, 1.4)), x1 = lerp(-1100, 6900, ease(win(T, M.s2 - .3, 30)));
+  ctx.fillStyle = P.cream; rr(-1200, LY - 7, (x1 + 1200) * clamp(k * 4), 14, 7); ctx.fill();
+  for (let i = 0; i < ST.length; i++) {
+    const t0 = stT(i); if (T < t0) continue;
+    const x = ST[i][0], s = pop(T, t0, .5), [yr, nm] = L.st[i];
+    scaled(x, LY, s, () => {
+      ctx.fillStyle = P.cream; ctx.fillRect(-6, -130, 12, 130);
+      const fw = yr ? 190 : 120;
+      shade(sh => { ctx.fillStyle = sh || P.yel; poly([[6, -130], [6 + fw, -130], [6 + fw - 26, -97], [6 + fw, -64], [6, -64]]); ctx.fill(); }, SH, 6, 8);
+      if (yr) text(yr, 6 + (fw - 26) / 2, -96, '50px MB', P.navy);
+      ctx.fillStyle = P.yel; ctx.beginPath(); ctx.arc(0, 0, 20, 0, 7); ctx.fill(); ctx.fillStyle = P.navy; ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
+      text(nm, 0, 66, '48px MB', P.cream);
+    });
+  }
+}
+// scene 2: Ақмешіт fortress on the Syr Darya
+function stage2(T) {
+  if (T > M.s4 + 1) return;
+  river(-700, 2100, LY - 120, T);
+  ctx.save(); ctx.globalAlpha = clamp(win(T, M.s2 + 1.6, .5)); text(L.river, -430, LY - 85, '40px MB', P.navy); ctx.restore();
+  fortress(0, LY - 135, pop(T, M.s2 + .5, .55) * .95, {});
+  if (T > M.mq) {   // white mosque highlighted
+    const s = pop(T, M.mq, .45); scaled(-20, LY - 560, s, () => pill(L.mosque, 0, 0, '42px MB', P.cream, P.navy));
+  }
+}
+// scene 3: siege of 1853
+function stage3(T) {
+  if (T < M.s3 - 1 || T > M.s5) return;
+  const t0 = M.s3, k = SHOTS.filter(t => T > t).length;
+  fortress(1640, LY - 135, .9, { crack: k / SHOTS.length, pennant: T > M.s4 - .4 ? P.cor : null });
+  // fortress pennant changes owner just before scene 4
+  const sl = 1 - eo(win(T, t0 + .1, .9));
+  ctx.save(); ctx.translate(-sl * 900, 0);
+  for (let i = 0; i < 2; i++) { const st = SHOTS.filter(t => T > t && (SHOTS.indexOf(t) % 2) === i).map(t => T - t); const rc = st.length ? Math.max(0, 1 - st[st.length - 1] / .3) : 0; cannon(1070 + i * 160, LY - 135, .8, rc); }
+  for (let i = 0; i < 4; i++) person(800 + i * 90 + (i % 2) * 20, LY - 140 + (i % 2) * 6, .75, { cap: true, body: P.cor, rifle: true, brow: 1 });
+  const ps = pop(T, t0 + .7, .45); scaled(960, LY - 560, ps, () => pill(L.perov, 0, 0, '46px MB', P.cor, P.cream));
+  ctx.restore();
+  // cannonballs: coral dots flying in an arc to the wall, puff on impact
+  SHOTS.forEach((ts, j) => {
+    const d = T - ts; if (d < 0 || d > .9) return;
+    const sx = 1070 + (j % 2) * 160 + 110, sy = LY - 250, ex = 1560 + (j * 37 % 140) - 40, ey = LY - 260 + (j * 53 % 90);
+    if (d < .45) { const f = d / .45; ctx.fillStyle = P.cor; ctx.beginPath(); ctx.arc(lerp(sx, ex, f), lerp(sy, ey, f) - Math.sin(f * Math.PI) * 140, 18, 0, 7); ctx.fill(); }
+    else { const f = (d - .45) / .45; ctx.fillStyle = `rgba(255,243,214,${.8 * (1 - f)})`; for (let q = 0; q < 6; q++) { ctx.beginPath(); ctx.arc(ex + Math.cos(q) * 50 * f, ey + Math.sin(q * 2) * 40 * f, 30 + 30 * f, 0, 7); ctx.fill(); } }
+    if (d < .25) { ctx.fillStyle = `rgba(255,210,63,${1 - d / .25})`; ctx.beginPath(); ctx.arc(sx + 20, sy, 50 * (1 - d / .25) + 20, 0, 7); ctx.fill(); }
+  });
+}
+// scene 4: the sign on the gate is rewritten
+function stage4(T) {
+  if (T < M.s4 - 1 || T > M.s5 + 1) return;
+  const names = [[M.s4 - 5, L.ak, null], [M.n2, L.fort.join(' '), null], [M.n3, L.prv, '1867']];
+  let id = 0; names.forEach((n, i) => { if (T >= n[0]) id = i; });
+  const n = names[id], k = id ? pop(T, n[0], .5) : 1;
+  gate(2600, LY - 135, .82, n[1], { signK: k, sub: n[2] });
+  if (T > M.n4) { const s = pop(T, M.n4, .45); scaled(2600, LY - 700, s, () => pill(L.conq, 0, 0, '46px MB', P.cor, P.cream)); }
+}
+// scene 5: Жанқожа batyr with riders, 1856
+function stage5(T) {
+  if (T < M.s5 - 1 || T > M.s6 + 1) return;
+  fortress(4560, LY - 135, .7, { dome: false, pennant: P.cor });
+  ctx.save(); ctx.globalAlpha = clamp(win(T, M.s5 + .6, .4)); scaled(4560, LY - 470, 1, () => pill(L.fort2, 0, 0, '40px MB', P.navy, P.cream, 24, 64, 'rgba(0,0,0,0)')); ctx.restore();
+  const g = M.s6 - M.s5, f = ease(win(T, M.s5 + .3, g)), bx = lerp(3150, 4050, f);
+  const rs = [[-420, 40, P.clayD, P.tq], [-300, -10, '#B97845', P.cream], [-200, 50, P.clayD, P.tq]];
+  rs.forEach(([dx, dy, h, b], i) => rider(bx + dx, LY - 130 + dy * .2, .62, T, i * 1.7, { horse: h, body: b, borik: true, brow: 1 }));
+  rider(bx, LY - 130, .8, T, .4, { horse: P.cream, body: P.tq, borik: true, beard: true, brow: 1 });
+  const ps = pop(T, M.rd + .3, .45); scaled(bx + 20, LY - 640, ps, () => pill(L.janq, 0, 0, '50px MB', P.yel, P.navy));
+  if (T > M.age) { const s = pop(T, M.age, .45); scaled(bx + 20, LY - 545, s, () => pill(L.age, 0, 0, '38px MB', P.cream, P.navy, 22, 60)); }
+}
+// scene 6: 1922 Ақмешіт again, 1925 Қызылорда, gate turns turquoise
+function stage6(T) {
+  if (T < M.s6 - 1) return;
+  let sign = L.prv, k = 1, col, colD;
+  if (T >= M.n5) { sign = L.ak; k = pop(T, M.n5, .5); }
+  if (T >= M.n6) { sign = L.kzl; k = pop(T, M.n6, .5); }
+  const tq = ease(win(T, M.n6 + .1, .6));
+  col = mix(P.clay, P.tq, tq); colD = mix(P.clayD, '#1FA396', tq);
+  gate(5700, LY - 135, .82, sign, { signK: k, col, colD, signBg: tq > .5 ? P.yel : P.navy, signFg: tq > .5 ? P.navy : P.cream });
+  if (tq > 0) { ctx.save(); ctx.globalAlpha = tq * (.5 + .5 * Math.sin(T * 5)); ctx.fillStyle = P.yel; for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283 + T * .4; ctx.beginPath(); ctx.arc(5700 + Math.cos(a) * 460, LY - 520 + Math.sin(a) * 380, 9, 0, 7); ctx.fill(); } ctx.restore(); }
+}
+function mix(a, b, k) { const h = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16)); const A = h(a), Bc = h(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, Bc[i], k))).join(',')})`; }
+
+// screen-space overview of the whole line (end of scene 6)
+function overview(T) {
+  const t0 = M.n6 + 1.4; if (T < t0 || T > M.s7 + .4) return;
+  scrT(); const a = clamp(win(T, t0, .4)) * (1 - win(T, M.s7, .35));
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = 'rgba(29,43,83,.92)'; ctx.fillRect(0, 0, OW, OH);
+  const y0 = 470, dy = 150;
+  ctx.fillStyle = P.cream; ctx.fillRect(196, y0, 10, dy * 5 * ease(win(T, t0, 1.0)));
+  L.ov.forEach(([yr, nm], i) => {
+    const s = pop(T, t0 + .12 + i * .14, .4), y = y0 + i * dy, last = i === 5, bad = i === 1 || i === 3;
+    scaled(201, y, s, () => {
+      ctx.fillStyle = last ? P.tq : bad ? P.cor : P.yel; ctx.beginPath(); ctx.arc(0, 0, 26, 0, 7); ctx.fill();
+      text(yr, 60, 0, '50px MB', P.yel, 'left');
+      text(nm, 250, 0, `${fitFont(nm, 62, 560)}px MB`, last ? P.tq : bad ? P.cor : P.cream, 'left');
+    });
+  });
+  ctx.restore();
+}
+
+// ---------- scenes 1 and 8: the gate on cream ----------
+function gateScene1(T) {
+  const e = M.s2; if (T > e + .2) return;
+  scrT(); ctx.fillStyle = P.cream; ctx.fillRect(0, 0, OW, OH);
+  ctx.fillStyle = '#F3E2BE'; ctx.fillRect(0, 1360, OW, OH - 1360);   // ground
+  const z = 1 + .22 * ease(win(T, .2, e - 1)), out = win(T, e - .6, .6);
+  // the plate shakes, then slips down and shows «ПЕРОВСК» under it
+  const sh = T > 1.0 && T < M.kz ? Math.sin(T * 60) * 6 * clamp((T - 1) / .4) : 0;
+  const slip = ease(win(T, M.kz - .9, .6));
+  ctx.save(); ctx.translate(OW / 2, 1360); ctx.scale(z, z); ctx.translate(0, 120 * (z - 1));
+  ctx.globalAlpha = 1 - out;
+  gate(0, 0, 1, L.kzl, { sh: SHc, ghost: slip > 0 ? L.prv : null, ghostA: slip, dx: sh, rot: sh * .004 + slip * .32, dy: slip * 300 });
+  ctx.restore();
+  // ҰБТ trap pill and the question
+  const p1 = pop(T, .5, .45); scaled(OW / 2, 330, p1, () => pill(L.trap, 0, 0, '52px MB', P.yel, P.navy, 34, 86, SHc));
+  if (T > M.kz - .5) { const p2 = pop(T, M.kz - .5, .45); scaled(OW / 2, 470, p2 * (1 - out), () => text(L.q1, 0, 0, '96px MB', P.navy)); }
+  // transition: cream wipes away to navy along the coming time axis
+  if (out > 0) { ctx.fillStyle = P.navy; ctx.globalAlpha = 1; ctx.fillRect(0, 0, OW, OH * ease(out)); }
+}
+function gateScene8(T) {
+  const t0 = M.s8; if (T < t0 - .1) return;
+  scrT(); const a = ease(win(T, t0 - .1, .45));
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = P.cream; ctx.fillRect(0, 0, OW, OH); ctx.fillStyle = '#F3E2BE'; ctx.fillRect(0, 1360, OW, OH - 1360);
+  ctx.translate(OW / 2, 1360); ctx.scale(.74, .74);
+  gate(0, 0, 1, L.kzl, { sh: SHc, col: P.tq, colD: '#1FA396', signBg: P.yel, signFg: P.navy, ghost: L.prv, ghostA: .28, ghostY: 0, ghostRot: .06 });
+  ctx.restore();
+  // yellow arrow up to the profile header
+  const ak = pop(T, M.cta - .3, .5), bo = Math.sin(T * 6) * 14;
+  scaled(OW / 2, 430 + bo, ak, () => {
+    shade(s => { ctx.fillStyle = s || P.yel; poly([[0, -150], [110, -30], [40, -30], [40, 120], [-40, 120], [-40, -30], [-110, -30]]); ctx.fill(); }, SHc, 8, 10);
+  });
+  if (T > M.cta) { const s = pop(T, M.cta, .45); scaled(OW / 2, 660, s, () => { text(L.s8[0], 0, 0, '64px MB', P.navy); text(L.s8[1], 0, 80, '64px MB', P.navy); }); }
+  ctx.restore();
+}
+
+// ---------- scene 7: ҰБТ quiz ----------
+function quiz(T) {
+  const t0 = M.s7; if (T < t0 - .4 || T > M.s8 + .3) return;
+  scrT(); const a = ease(win(T, t0 - .4, .4));
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = P.navy; ctx.fillRect(0, 0, OW, OH);
+  const cs = pop(T, t0 - .1, .5), cy = 830;
+  scaled(OW / 2, cy, cs, () => {
+    shade(s => { ctx.fillStyle = s || P.cream; rr(-450, -520, 900, 1040, 48); ctx.fill(); }, SH, 12, 16);
+    pill(L.qpill, 0, -520, '50px MB', P.yel, P.navy, 34, 88, 'rgba(0,0,0,0)');
+    text(L.q[0], 0, -380, `${fitFont(L.q[0], 66, 780)}px MB`, P.navy); text(L.q[1], 0, -300, `${fitFont(L.q[1], 66, 780)}px MB`, P.navy);
+    const ans = T >= M.ans;
+    L.opts.forEach(([lt, nm], i) => {
+      const s = pop(T, M.op + i * .55, .4), y = -150 + i * 170, good = i === 2;
+      scaled(0, y, s, () => {
+        const on = ans && good, dim = ans && !good ? .35 : 1;
+        ctx.save(); ctx.globalAlpha *= dim;
+        ctx.fillStyle = on ? P.tq : '#F1E0BD'; rr(-380, -64, 760, 128, 64); ctx.fill();
+        ctx.fillStyle = on ? P.cream : P.navy; ctx.beginPath(); ctx.arc(-316, 0, 46, 0, 7); ctx.fill();
+        text(lt, -316, 3, '52px MB', on ? P.tq : P.yel);
+        text(nm, -240, 3, '56px MB', on ? P.cream : P.navy, 'left');
+        if (on) { const k = pop(T, M.ans, .4); scaled(320, 0, k, () => { ctx.strokeStyle = P.cream; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(-6, 22); ctx.lineTo(30, -24); ctx.stroke(); }); }
+        ctx.restore();
+      });
+    });
+    // donut timer 3-2-1 during the pause before the answer
+    const tt0 = M.ans - 3.0;
+    if (T > tt0 - .3) {
+      const k = clamp((T - tt0) / 3), ds = pop(T, tt0 - .3, .4) * (ans ? 1 - win(T, M.ans, .3) : 1);
+      scaled(0, 400, ds, () => {
+        ctx.lineWidth = 26; ctx.strokeStyle = '#EAD7AE'; ctx.beginPath(); ctx.arc(0, 0, 70, 0, 7); ctx.stroke();
+        ctx.strokeStyle = P.cor; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, 70, -Math.PI / 2, -Math.PI / 2 + 6.283 * (1 - k)); ctx.stroke();
+        text(String(Math.max(1, 3 - Math.floor(k * 3))), 0, 4, '78px MB', P.navy);
+      });
+    }
+  });
+  ctx.restore();
+}
+
+// ---------- photo overlay: the real portrait ----------
+function photo(T) {
+  const t0 = M.ph - .1, hold = 3.8; if (T < t0 || T > t0 + hold + .6 || !IMG.ph) return;
+  scrT(); const kin = eo(win(T, t0, .55)), kout = ease(win(T, t0 + hold, .5));
+  const x = lerp(-420, 300, kin) - kout * 720, y = 560, w = 380, h = 470;
+  ctx.save();
+  ctx.fillStyle = SH; ctx.beginPath(); ctx.ellipse(x + 12, y + 14, w / 2 + 18, h / 2 + 18, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = P.yel; ctx.beginPath(); ctx.ellipse(x, y, w / 2 + 18, h / 2 + 18, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y, w / 2, h / 2, 0, 0, 7); ctx.clip();
+  const im = IMG.ph, fc = IMG.phFace || [.5, .32, .62];   // face centre (fractions) and crop width
+  const cw = im.width * fc[2], ch = cw * h / w, sx = clamp(im.width * fc[0] - cw / 2, 0, im.width - cw), sy = clamp(im.height * fc[1] - ch * .38, 0, im.height - ch);
+  ctx.drawImage(im, sx, sy, cw, ch, x - w / 2, y - h / 2, w, h);
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = kin * (1 - kout);
+  pill(L.ph[0], x, y + h / 2 + 50, '44px MB', P.navy, P.cream, 26, 72);
+  { const f = `${fitFont(L.ph[1], 32, 520, 'MX')}px MX`, w2 = tw(L.ph[1], f) + 36; ctx.fillStyle = 'rgba(19,28,58,.92)'; rr(x - w2 / 2, y + h / 2 + 98, w2, 50, 14); ctx.fill(); text(L.ph[1], x, y + h / 2 + 124, f, P.cream); }
+  ctx.restore();
+}
+
+// ---------- screen texts ----------
+const HEADS = ['s2', 's3', 's4', 's5', 's6'];
+function headline(T) {
+  scrT();
+  let id = null; for (const h of HEADS) if (T >= M[h] + .25) id = h; if (!id || T > M.s7 - .3) return;
+  const nx = HEADS[HEADS.indexOf(id) + 1], t0 = M[id] + .25, out = win(T, (nx ? M[nx] : M.s7) - .35, .3);
+  const txt = L.h[id], f = `${fitFont(txt, 62, 940)}px MB`, s = eob(win(T, t0, .45)), w = tw(txt, f);
+  ctx.save(); ctx.translate(-out * 1100, 0);
+  scaled(OW / 2, 280, s, () => {
+    text(txt, 0, 0, f, P.cream);
+    ctx.fillStyle = P.yel; rr(-w / 2, 46, w * ease(win(T, t0 + .3, .4)), 12, 6); ctx.fill();
+  });
+  ctx.restore();
+}
+function captions(T) {
+  if (T > B.end - 2.4) return;
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  scrT(); const k = clamp((T - cp.t0) / .14);
+  ctx.save(); let sz = 64; ctx.font = `${sz}px MB`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase() })), sp = 20;
+  let wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  if (wd > 960) { sz = Math.floor(sz * 960 / wd); ctx.font = `${sz}px MB`; wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - wd / 2; const y = 1640 - (1 - k) * 14;
+  ctx.globalAlpha *= k; ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.lineWidth = 14; ctx.strokeStyle = 'rgba(19,28,58,.96)'; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? P.yel : '#fff'; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+function onCream(T) { return T < M.s2 - .4 || (T > M.s8 + .3 && T < B.end - 2.2); }
+function logo(T) {   // bigger corner logo (anti-crop): ~120 px high
+  scrT(); const im = onCream(T) ? IMG.logoN : IMG.logo, lh = 120, lw = lh * im.width / im.height;
+  ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(im, OW - 44 - lw, 44, lw, lh); ctx.restore();
+}
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  scrT(); const a = clamp((T - t0) / .35);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 440, lh = lw * IMG.logo.height / IMG.logo.width, s = .9 + .1 * eob(clamp((T - t0) / .45));
+  ctx.drawImage(IMG.logo, OW / 2 - lw * s / 2, 690 - lh * s / 2, lw * s, lh * s);
+  ctx.font = '62px MB'; ctx.fillStyle = BR.amber; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  L.cta.forEach((t, i) => ctx.fillText(t, OW / 2, 1080 + i * 82));
+  const bo = Math.sin(T * 6) * 10; ctx.strokeStyle = BR.amber; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(OW / 2, 1420 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.moveTo(OW / 2 - 50, 1320 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.lineTo(OW / 2 + 50, 1320 + bo); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- frame ----------
+window.render = function (T) {
+  CAM = camAt(T);
+  scrT(); ctx.fillStyle = P.navy; ctx.fillRect(0, 0, OW, OH);
+  // soft dots in the navy sky
+  ctx.fillStyle = 'rgba(255,243,214,.06)'; for (let i = 0; i < 40; i++) { ctx.beginPath(); ctx.arc(hash(i) * OW, hash(i, 2) * 1100, 4 + hash(i, 3) * 6, 0, 7); ctx.fill(); }
+  if (T > M.s2 - .9 && T < M.s7 + .2) {
+    worldT(T);
+    ctx.fillStyle = '#18244A'; ctx.fillRect(-2000, LY, 10000, 900);   // ground under the axis
+    stage2(T); stage3(T); stage4(T); stage5(T); stage6(T); axis(T);
+  }
+  gateScene1(T);
+  overview(T); quiz(T); gateScene8(T); photo(T);
+  headline(T); captions(T); logo(T); endCard(T);
+  scrT();
+  if (T < .2) { ctx.fillStyle = `rgba(19,28,58,${1 - T / .2})`; ctx.fillRect(0, 0, OW, OH); }
+};
+
+// ---------- load ----------
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = (await (await fetch('beats.json')).json())[LANG]; M = B.m;
+  camKeys();
+  const a = M.s3 + 1.3, b = M.s4 - .5, n = Math.max(3, Math.round((b - a) / .85));
+  SHOTS = Array.from({ length: n }, (_, i) => a + (b - a) * i / (n - 1));
+  [IMG.logo, IMG.logoN, IMG.ph] = await Promise.all(['brand/logo_white_transparent.png', 'brand/logo_navy_transparent.png', 'photos/perovsky.jpg'].map(load));
+  try { IMG.phFace = (await (await fetch('photos/face.json')).json()); } catch (e) { }
+  await Promise.all(['60px MB', '40px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІ')));
+  window.ready = true;
+})();
+</script></body></html>
