@@ -1,0 +1,521 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#000}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Орыс хан — атасы қазақ хандарының»: Flat Vector (flat shapes, no outlines, one-tone soft shadow, «pop & slide»).
+// Scene 2 is a satellite map (project rule: every map is a "from space" map). render(T) is deterministic.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OW = 1080, OH = 1920;
+const NV = '#1D2B53', NV2 = '#16213F', TQ = '#2EC4B6', TQ2 = '#239E93', Y = '#FFD23F', Y2 = '#E0B21F', CO = '#EF476F', CO2 = '#C9375A', CR = '#FFF3D6', CR2 = '#EADBB8';
+const SKIN = '#E9B88C', FUR = '#6B4A35', BROW = '#2A1E1A';
+const BR = { navy: '#130B54', amber: '#FEB300' };
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+let B, M, IMG = {}, SH, SYR;
+
+const L = {
+  kk: {
+    t1: 'ОРЫС ХАН = ?', w1: 'ОРЫС', trap: 'ҰБТ ТҰЗАҒЫ',
+    h: { s2: 'XIV ғ. · АҚ ОРДА', s3: 'ОРЫС ХАН vs ТОҚТАМЫС', s4: 'КЕРЕЙ · ЖӘНІБЕК', s5: 'БҰЛ — ЖАЙ ЕСІМ', s6: 'ҰБТ-ҒА ЕСТЕ САҚТА', s7: 'ҰБТ СҰРАҒЫ', s8: 'Сілтеме профиль шапкасында' },
+    syg: 'Сығанақ', ao: 'Ақ Орда', syr: 'Сырдария', kz: 'ҚАЗАҚСТАН', age: 'XIV ғасыр',
+    khan: 'ОРЫС ХАН', jochi: 'Жошы ұрпағы', a1: 'Тоқтамыс', a2: 'Әмір Темір',
+    tree: { orys: 'Орыс хан', bol: 'Болат', kuy: 'Құйыршық', bar: 'Барақ', ker: 'Керей', jan: 'Жәнібек' }, found: 'Қазақ хандығының негізін қалаушылар',
+    q5: 'ОРЫС', no: 'ЖОҚ', tagw: 'есім', tags: ['Темір', 'Едіге', 'Тоқтамыс'], tagsub: 'дала есімдері',
+    card: 'ҰБТ', rows: ['Ақ Орда — XIV ғ.', 'Астанасы — Сығанақ', 'Керей мен Жәнібек — Орыс ұрпағы'],
+    ph: ['Керей мен Жәнібек ескерткіші', '«Қазақ хандығына 550 жыл» монетасы, 2015', 'ҚР Ұлттық банкі · public domain'],
+    q: ['Ақ Орданың', 'астанасы?'], opts: [['А', 'Сарайшық'], ['Ә', 'Сығанақ'], ['Б', 'Түркістан']], ok: 1,
+    end: 'ОРЫС ХАН', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз']
+  },
+  ru: {
+    t1: 'ОРЫС ХАН = ?', w1: 'ОРЫС', trap: 'ЛОВУШКА ЕНТ',
+    h: { s2: 'XIV в. · АҚ ОРДА', s3: 'ОРЫС-ХАН vs ТОХТАМЫШ', s4: 'КЕРЕЙ · ЖАНИБЕК', s5: 'ЭТО ПРОСТО ИМЯ', s6: 'ЗАПОМНИ ДЛЯ ЕНТ', s7: 'ВОПРОС С ЕНТ', s8: 'Ссылка в шапке профиля' },
+    syg: 'Сыганак', ao: 'Ақ Орда', syr: 'Сырдарья', kz: 'КАЗАХСТАН', age: 'XIV век',
+    khan: 'ОРЫС-ХАН', jochi: 'потомок Джучи', a1: 'Тохтамыш', a2: 'Тимур',
+    tree: { orys: 'Орыс-хан', bol: 'Болат', kuy: 'Куйыршык', bar: 'Барак', ker: 'Керей', jan: 'Жанибек' }, found: 'основатели Казахского ханства',
+    q5: 'ОРЫС', no: 'НЕТ', tagw: 'имя', tags: ['Тимур', 'Едиге', 'Тохтамыш'], tagsub: 'степные имена',
+    card: 'ЕНТ', rows: ['Ақ Орда — XIV век', 'Столица — Сыганак', 'Керей и Жанибек — потомки Орыса'],
+    ph: ['Памятник Керею и Жанибеку', 'монета «550 лет Казахскому ханству», 2015', 'Нацбанк РК · public domain'],
+    q: ['Столица', 'Ақ Орды?'], opts: [['А', 'Сарайшык'], ['Б', 'Сыганак'], ['В', 'Туркестан']], ok: 1,
+    end: 'ОРЫС-ХАН', cta: ['Перейдите по ссылке', 'в шапке профиля']
+  }
+}[LANG];
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const ei = x => Math.pow(clamp(x), 3);
+const eob = x => { x = clamp(x); const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const win = (T, t0, d) => clamp((T - t0) / d);
+const pop = (T, t0, d = .45) => T < t0 ? 0 : eob(win(T, t0, d));            // spring pop-in 0 -> 1 (overshoots)
+const out = (T, t0, d = .35) => 1 - ei(win(T, t0, d));                        // 1 -> 0
+const live = (T, a, b) => T >= a && T < b;
+
+// ---------- flat drawing ----------
+function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function shadowed(fn, dy = 12, col = 'rgba(8,12,30,.28)') { ctx.save(); ctx.translate(0, dy); fn(col); ctx.restore(); fn(null); }
+function box(x, y, w, h, r, fill, sh = 12, shc) { shadowed(cc => { rr(x, y, w, h, r); ctx.fillStyle = cc || fill; ctx.fill(); }, sh, shc); }
+function circ(x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fillStyle = fill; ctx.fill(); }
+function circS(x, y, r, fill, sh = 10) { shadowed(cc => circ(x, y, r, cc || fill), sh); }
+function txt(t, x, y, size, col, o = {}) {
+  ctx.save(); ctx.font = `${size}px ${o.f || 'MB'}`; ctx.fillStyle = col; ctx.textAlign = o.align || 'center'; ctx.textBaseline = 'middle';
+  if (o.sh) { ctx.fillStyle = o.sh; ctx.fillText(t, x, y + (o.shd || 6)); ctx.fillStyle = col; }
+  ctx.fillText(t, x, y); ctx.restore();
+}
+function tw(t, size, f = 'MB') { ctx.save(); ctx.font = `${size}px ${f}`; const w = ctx.measureText(t).width; ctx.restore(); return w; }
+function fit(t, base, maxW, f = 'MB') { return Math.min(base, Math.floor(base * maxW / tw(t, base, f))); }
+function pill(t, x, y, size, bg, fg, o = {}) {           // rounded label, centred on x,y
+  const w = tw(t, size, o.f || 'MB') + size * 1.1, h = size * 1.75;
+  box(x - w / 2, y - h / 2, w, h, h / 2, bg, o.sh ?? 8); txt(t, x, y + size * .04, size, fg, { f: o.f }); return w;
+}
+function scaleAt(x, y, s, r = 0) { ctx.translate(x, y); if (r) ctx.rotate(r); ctx.scale(s, s); ctx.translate(-x, -y); }
+
+// ---------- flat icons ----------
+function crown(x, y, s, col = Y, gem = CO) {          // Turkic khan crown: fur rim + gold top with three points; (x,y) = bottom centre
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  shadowed(cc => {
+    ctx.beginPath(); ctx.moveTo(-90, -40); ctx.lineTo(-100, -150); ctx.lineTo(-48, -96); ctx.lineTo(0, -178); ctx.lineTo(48, -96); ctx.lineTo(100, -150); ctx.lineTo(90, -40); ctx.closePath();
+    ctx.fillStyle = cc || col; ctx.fill();
+    rr(-112, -52, 224, 56, 28); ctx.fillStyle = cc || FUR; ctx.fill();
+  }, 10);
+  ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.beginPath(); ctx.moveTo(-90, -40); ctx.lineTo(-100, -150); ctx.lineTo(-48, -96); ctx.lineTo(-30, -60); ctx.closePath(); ctx.fill();
+  circ(0, -120, 15, gem); circ(-100, -150, 10, col); circ(100, -150, 10, col); circ(0, -178, 12, col);
+  ctx.restore();
+}
+function khan(x, y, s, T, o = {}) {                    // flat character; (x,y) = feet centre. Turkic robe (shapan), belt, fur-rim crown, brows only
+  const robe = o.robe || TQ, robe2 = o.robe2 || TQ2, bob = Math.sin(T * 2.4) * 4;
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(8,12,30,.25)'; ctx.beginPath(); ctx.ellipse(0, 6, 200, 30, 0, 0, 7); ctx.fill();
+  ctx.translate(0, bob);
+  shadowed(cc => {
+    ctx.beginPath(); ctx.moveTo(-95, -430); ctx.lineTo(95, -430); ctx.lineTo(185, 0); ctx.lineTo(-185, 0); ctx.closePath(); ctx.fillStyle = cc || robe; ctx.fill();
+  }, 12);
+  ctx.fillStyle = robe2; ctx.beginPath(); ctx.moveTo(-10, -430); ctx.lineTo(70, -430); ctx.lineTo(40, 0); ctx.lineTo(-110, 0); ctx.closePath(); ctx.fill();   // overlapping lapel
+  ctx.fillStyle = Y; ctx.beginPath(); ctx.moveTo(10, -430); ctx.lineTo(30, -430); ctx.lineTo(-40, 0); ctx.lineTo(-62, 0); ctx.closePath(); ctx.fill();          // gold trim
+  rr(-140, -250, 280, 38, 10); ctx.fillStyle = Y2; ctx.fill(); rr(-26, -258, 52, 54, 10); ctx.fillStyle = Y; ctx.fill();                                   // belt + buckle
+  rr(-120, -470, 240, 60, 30); ctx.fillStyle = FUR; ctx.fill();                                                                                           // fur collar
+  // head
+  circS(0, -560, 110, SKIN, 8);
+  ctx.fillStyle = BROW; const bw = o.angry ? .22 : .08;
+  [[-1, 1], [1, -1]].forEach(([sx, r]) => { ctx.save(); ctx.translate(sx * 42, -585); ctx.rotate(r * bw * sx * sx); rr(-30, -9, 60, 18, 9); ctx.fill(); ctx.restore(); });
+  ctx.beginPath(); ctx.moveTo(-46, -505); ctx.quadraticCurveTo(0, -530, 46, -505); ctx.quadraticCurveTo(0, -515, -46, -505); ctx.fill();                  // moustache
+  ctx.beginPath(); ctx.moveTo(-18, -470); ctx.quadraticCurveTo(0, -430, 18, -470); ctx.closePath(); ctx.fill();                                          // small beard
+  crown(0, -630, .95);
+  ctx.restore();
+}
+function headIcon(x, y, r, T, col) {                  // mini khan inside a tree node
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip();
+  circ(x, y, r, col);
+  ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.beginPath(); ctx.moveTo(x - r * .7, y + r); ctx.lineTo(x - r * .45, y + r * .45); ctx.lineTo(x + r * .45, y + r * .45); ctx.lineTo(x + r * .7, y + r); ctx.fill();
+  circ(x, y + r * .02, r * .36, SKIN);
+  ctx.fillStyle = BROW; rr(x - r * .26, y - r * .1, r * .2, r * .07, 3); ctx.fill(); rr(x + r * .06, y - r * .1, r * .2, r * .07, 3); ctx.fill();
+  ctx.restore();
+  crown(x, y - r * .3, r * .0036, Y, CO);
+}
+function yurt(x, y, s) {                              // flat yurt with a flag; (x,y) = bottom centre
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  shadowed(cc => {
+    ctx.beginPath(); ctx.moveTo(-120, 0); ctx.lineTo(-120, -80); ctx.quadraticCurveTo(-60, -170, 0, -175); ctx.quadraticCurveTo(60, -170, 120, -80); ctx.lineTo(120, 0); ctx.closePath();
+    ctx.fillStyle = cc || CR; ctx.fill();
+  }, 10);
+  ctx.fillStyle = CR2; ctx.fillRect(-120, -80, 240, 22);
+  ctx.fillStyle = CO; ctx.fillRect(-120, -92, 240, 12);
+  rr(-30, -70, 60, 70, 8); ctx.fillStyle = CO2; ctx.fill();
+  ctx.fillStyle = FUR; ctx.fillRect(-4, -270, 8, 100);
+  ctx.fillStyle = CR; ctx.beginPath(); ctx.moveTo(4, -270); ctx.lineTo(110, -248); ctx.lineTo(4, -222); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function arrowShape(x, y, len, h, col, col2) {         // pointing left, tip at (x,y)
+  shadowed(cc => {
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + h * .9, y - h * .75); ctx.lineTo(x + h * .9, y - h * .32); ctx.lineTo(x + len, y - h * .32);
+    ctx.lineTo(x + len, y + h * .32); ctx.lineTo(x + h * .9, y + h * .32); ctx.lineTo(x + h * .9, y + h * .75); ctx.closePath(); ctx.fillStyle = cc || col; ctx.fill();
+  }, 10);
+  ctx.fillStyle = col2; ctx.fillRect(x + len - 40, y - h * .32, 22, h * .64);
+}
+function check(x, y, r, col, k) {                      // flat check badge
+  if (k <= 0) return; ctx.save(); scaleAt(x, y, k); circS(x, y, r, col, 6);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = r * .26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(x - r * .45, y + r * .02); ctx.lineTo(x - r * .1, y + r * .36); ctx.lineTo(x + r * .48, y - r * .34); ctx.stroke(); ctx.restore();
+}
+
+// ---------- backgrounds ----------
+function bgNavy(T) {
+  ctx.fillStyle = NV; ctx.fillRect(0, 0, OW, OH);
+  // a few soft flat discs drifting (depth without gradients)
+  ctx.fillStyle = 'rgba(255,255,255,.035)';
+  [[160, 300, 260], [940, 760, 340], [220, 1500, 300], [900, 1750, 200]].forEach(([x, y, r], i) => circ(x + Math.sin(T * .3 + i) * 30, y + Math.cos(T * .25 + i) * 30, r, 'rgba(255,255,255,.035)'));
+}
+function bgCream(T) {
+  ctx.fillStyle = CR; ctx.fillRect(0, 0, OW, OH);
+  [[150, 360, 240], [960, 1300, 330], [300, 1650, 200]].forEach(([x, y, r], i) => circ(x + Math.sin(T * .3 + i) * 25, y + Math.cos(T * .25 + i) * 25, r, 'rgba(29,43,83,.05)'));
+}
+
+// ---------- scene 1: «ОРЫС» ----------
+function scene1(T) {
+  const tEnd = M.s2; if (T > tEnd + .1) return;
+  const z = 1 + .05 * ease(win(T, 0, tEnd));                     // slow push-in on the word
+  const slide = ease(win(T, tEnd - .55, .55));                   // everything slides out to the left
+  ctx.save(); ctx.translate(-OW * 1.1 * slide, 0); scaleAt(540, 900, z);
+  // title
+  const kt = pop(T, .1, .5); ctx.save(); scaleAt(540, 330, kt); txt(L.t1, 540, 330, fit(L.t1, 96, 900), NV, { sh: 'rgba(29,43,83,.15)' }); ctx.restore();
+  // crown
+  const kc = pop(T, .3, .55), hit = M.orys, sq = T > hit ? Math.exp(-(T - hit) * 7) * Math.sin((T - hit) * 30) * .06 : 0;
+  ctx.save(); scaleAt(540, 760, kc * (1 + sq)); crown(540, 760, 1.7); ctx.restore();
+  // the word
+  const kw = pop(T, hit - .05, .5), hit2 = M.orys2, sh2 = T > hit2 ? Math.exp(-(T - hit2) * 6) * Math.sin((T - hit2) * 38) * 16 : 0;
+  if (kw > 0) { ctx.save(); scaleAt(540, 960, kw); ctx.translate(sh2, 0); const f = fit(L.w1, 300, 960); txt(L.w1, 540, 980, f, NV, { sh: Y, shd: 14 }); ctx.restore(); }
+  // trap badge slides in from the right
+  const kb = eo(win(T, 1.2, .5)), bx = lerp(1400, 640, kb) + (kb >= 1 ? Math.sin(T * 5) * 4 : 0);
+  ctx.save(); ctx.translate(bx, 1230); ctx.rotate(-.05); pill(L.trap, 0, 0, 58, Y, NV, { sh: 10 }); ctx.restore();
+  ctx.restore();
+}
+
+// ---------- scene 2: satellite map ----------
+let CAM = { lon: 67, lat: 47, ppd: 30 };
+const KX = () => Math.cos(CAM.lat * Math.PI / 180);
+const P = (lon, lat) => [OW / 2 + (lon - CAM.lon) * CAM.ppd * KX(), OH / 2 - (lat - CAM.lat) * CAM.ppd];
+const SYG = [66.961, 44.157];
+function mapCam(T) {
+  const a = M.s2, K = [[a - .6, 67.5, 48.2, 30], [M.xiv, 67.0, 47.4, 28], [M.syg - .3, 66.9, 45.6, 44], [M.syg + 1.6, 66.96, 44.4, 92], [M.s3 + .5, 66.96, 44.3, 100]];
+  let i = 0; while (i < K.length - 2 && T >= K[i + 1][0]) i++;
+  const p = K[i], q = K[i + 1], k = ease((T - p[0]) / Math.max(.01, q[0] - p[0]));
+  return { lon: lerp(p[1], q[1], k), lat: lerp(p[2], q[2], k), ppd: Math.exp(lerp(Math.log(p[3]), Math.log(q[3]), k)) };
+}
+function texPart(im, l0, l1, b0, b1) {
+  if (!im) return; const [x0, y0] = P(l0, b1), [x1, y1] = P(l1, b0);
+  const sx0 = Math.max(0, x0), sy0 = Math.max(0, y0), sx1 = Math.min(OW, x1), sy1 = Math.min(OH, y1); if (sx1 <= sx0 || sy1 <= sy0) return;
+  const fx = im.width / (x1 - x0), fy = im.height / (y1 - y0);
+  ctx.drawImage(im, (sx0 - x0) * fx, (sy0 - y0) * fy, (sx1 - sx0) * fx, (sy1 - sy0) * fy, sx0, sy0, sx1 - sx0, sy1 - sy0);
+}
+function drawTex() { ctx.fillStyle = '#0d2236'; ctx.fillRect(0, 0, OW, OH); texPart(IMG.world, -180, 180, -90, 90); texPart(IMG.ca, 40, 90, 30, 58); }
+function pathRings(rings) { ctx.beginPath(); for (const r of rings) r.forEach((p, i) => { const [x, y] = P(p[0], p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); }
+function polyPart(pts, k) {
+  const S = pts.map(p => P(p[0], p[1])); let tot = 0; const d = [0];
+  for (let i = 1; i < S.length; i++) { tot += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(tot); }
+  const lim = tot * clamp(k); ctx.beginPath(); ctx.moveTo(S[0][0], S[0][1]);
+  for (let i = 1; i < S.length; i++) { if (d[i] <= lim) ctx.lineTo(S[i][0], S[i][1]); else { const f = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1); ctx.lineTo(lerp(S[i - 1][0], S[i][0], f), lerp(S[i - 1][1], S[i][1], f)); break; } }
+}
+function scene2(T) {
+  if (T < M.s2 - .6 || T > M.s3 + .7) return;
+  CAM = mapCam(T);
+  drawTex();
+  ctx.fillStyle = 'rgba(6,12,30,.30)'; ctx.fillRect(0, 0, OW, OH);
+  // Kazakhstan: soft amber glow along the border, very light fill
+  const kz = SH.cty.KAZ, ka = win(T, M.s2 + .1, .8);
+  ctx.save(); ctx.globalAlpha = ka; pathRings(kz); ctx.fillStyle = 'rgba(254,179,0,.10)'; ctx.fill('evenodd');
+  ctx.shadowColor = BR.amber; ctx.shadowBlur = 22; ctx.strokeStyle = BR.amber; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+  // country label
+  const kl = win(T, M.s2 + .5, .6) * (1 - win(T, M.ao - .2, .3));
+  if (kl > 0) { ctx.save(); ctx.globalAlpha = kl; const [x, y] = P(67.5, 48.6); txt(L.kz, x, y, 64, 'rgba(255,255,255,.9)', { sh: 'rgba(0,0,0,.5)', shd: 4 }); ctx.restore(); }
+  // Syr Darya draws in, turquoise
+  const ks = ease(win(T, M.ao - .4, 1.6));
+  if (ks > 0) {
+    ctx.save(); polyPart(SYR, ks); ctx.strokeStyle = TQ; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = TQ; ctx.shadowBlur = 18; ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+    const lk = win(T, M.syg + .6, .5); if (lk > 0) { ctx.save(); ctx.globalAlpha = lk; const [x, y] = P(63.0, 46.0); pill(L.syr, x, y, 34, 'rgba(19,11,84,.85)', TQ, { sh: 0 }); ctx.restore(); }
+  }
+  // Ak Orda: big flat label over the steppe
+  const ak = pop(T, M.ao, .5) * (1 - win(T, M.syg + .2, .5));
+  if (ak > 0) { const [x, y] = P(66.5, 47.2); ctx.save(); scaleAt(x, y, ak); pill(L.ao.toUpperCase(), x, y, 72, Y, NV, { sh: 10 }); txt(L.age, x, y + 105, 44, '#fff', { sh: 'rgba(0,0,0,.5)', shd: 4 }); ctx.restore(); }
+  // Sygnak: glow + ping + yurt with the Ak Orda flag + name pill
+  const sk = pop(T, M.syg, .5);
+  if (sk > 0) {
+    const [x, y] = P(SYG[0], SYG[1]);
+    const pr = (T - M.syg) % 1.6 / 1.6; ctx.save(); ctx.globalAlpha = (1 - pr) * .8; ctx.strokeStyle = BR.amber; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 14 + pr * 90, 0, 7); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.shadowColor = BR.amber; ctx.shadowBlur = 30; circ(x, y, 14 * sk, BR.amber); ctx.restore(); circ(x, y, 6 * sk, '#fff');
+    ctx.save(); scaleAt(x, y - 30, sk); yurt(x + 150, y - 40, .95);
+    const fw = tw(L.ao, 30) + 30; ctx.fillStyle = CO; rr(x + 150 + 6, y - 40 - 268, fw, 50, 10); ctx.fill(); txt(L.ao, x + 156 + fw / 2, y - 40 - 242, 30, '#fff');
+    ctx.restore();
+    ctx.save(); const pk = pop(T, M.syg + .25, .45); scaleAt(x, y + 80, pk); pill(L.syg, x, y + 80, 50, 'rgba(19,11,84,.88)', '#fff', { sh: 0 }); ctx.restore();
+  }
+  // vignette
+  let g = ctx.createLinearGradient(0, 0, 0, 380); g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, OW, 380);
+  g = ctx.createLinearGradient(0, OH - 520, 0, OH); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.6)'); ctx.fillStyle = g; ctx.fillRect(0, OH - 520, OW, 520);
+}
+
+// ---------- scene 3: the khan and two arrows ----------
+const KH = { x: 400, y: 1430, s: .9 };
+function khanPose(T) {      // scene 3 standing; in scene 4 he shrinks into the top node of the tree
+  const k = ease(win(T, M.s4, .8));
+  return { x: lerp(KH.x, TR.orys[0], k), y: lerp(KH.y, TR.orys[1] + 95 * .62, k), s: lerp(KH.s, .17, k), k };
+}
+function scene3(T) {
+  if (T < M.s3 - .2 || T > M.s4 + .9) return;
+  const p = khanPose(T); if (p.k >= 1) return;
+  const ka = pop(T, M.s3 + .15, .55);
+  // hits: arrow 1 at tokh+.45, arrow 2 at tim+.45
+  const h1 = M.tokh + .45, h2 = M.tim + .45;
+  const jolt = t0 => T > t0 ? Math.exp(-(T - t0) * 6) * Math.sin((T - t0) * 28) * 14 : 0;
+  ctx.save(); ctx.globalAlpha = 1 - p.k * .0;
+  ctx.save(); scaleAt(p.x, p.y, ka); ctx.translate(-jolt(h1) - jolt(h2), 0); khan(p.x, p.y, p.s, T, { angry: T > h1 }); ctx.restore();
+  // name plate above the khan
+  const kp = pop(T, M.s3 + .45, .5) * (1 - win(T, M.s4, .3));
+  if (kp > 0) { ctx.save(); scaleAt(KH.x, 500, kp); pill(L.khan, KH.x, 480, 64, Y, NV, { sh: 10 }); txt(L.jochi, KH.x, 580, 40, CR); ctx.restore(); }
+  ctx.restore();
+  // arrows: fly in from the right, hit, bounce back and wobble
+  const arrow = (t0, y, label, len) => {
+    if (T < t0) return; const hit = t0 + .45, gone = out(T, M.s4 - .1, .4);
+    let x = T < hit ? lerp(1250, 600, ei(win(T, t0, .45))) : 600 + 90 * Math.sin(Math.PI * clamp((T - hit) / .5)) * Math.exp(-(T - hit) * 1.5) + 20 * eo(win(T, hit, .5));
+    ctx.save(); ctx.globalAlpha = gone; ctx.translate(0, Math.sin(T * 3 + y) * 4);
+    arrowShape(x, y, len, 120, CO, CO2); txt(label, x + 90 + (len - 90) / 2, y + 2, fit(label, 46, len - 130), '#fff');
+    ctx.restore();
+    // impact star
+    const ik = win(T, hit, .35); if (ik > 0 && ik < 1) { ctx.save(); ctx.globalAlpha = 1 - ik; ctx.translate(590, y); ctx.rotate(ik); ctx.fillStyle = Y; ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 22 : 60 * (.6 + ik); ctx.lineTo(Math.cos(i * Math.PI / 5) * r, Math.sin(i * Math.PI / 5) * r); } ctx.fill(); ctx.restore(); }
+  };
+  arrow(M.tokh, 960, L.a1, 400); arrow(M.tim, 1200, L.a2, 400);
+}
+
+// ---------- scene 4: family tree ----------
+const TR = { orys: [540, 480], bol: [280, 770], kuy: [800, 770], bar: [800, 1045], ker: [280, 1320], jan: [800, 1320] };
+const EDGES = [['orys', 'bol'], ['orys', 'kuy'], ['kuy', 'bar'], ['bol', 'ker'], ['bar', 'jan']];
+let TT;   // appearance time of each node
+function treeY(T) { return lerp(60, -20, ease(win(T, M.s4 + .8, M.s5 - M.s4 - .8))); }   // slow pan down the tree
+function scene4(T) {
+  if (T < M.s4 + .3 || T > M.s5 + .6) return;
+  const zk = ease(win(T, M.s5 - .55, .6));                         // zoom into Janibek at the end
+  ctx.save();
+  const dy = treeY(T); ctx.translate(0, dy);
+  if (zk > 0) { const [jx, jy] = TR.jan; ctx.translate(jx, jy); ctx.scale(1 + zk * 7, 1 + zk * 7); ctx.translate(-jx, -jy); }
+  // edges grow from parent to child
+  EDGES.forEach(([a, b]) => {
+    const k = ease(win(T, TT[b] - .25, .4)); if (k <= 0) return;
+    const [x0, y0] = TR[a], [x1, y1] = TR[b], ym = (y0 + y1) / 2;
+    ctx.save(); ctx.strokeStyle = 'rgba(255,243,214,.35)'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const pts = [[x0, y0], [x0, ym], [x1, ym], [x1, y1]]; let tot = 0; const d = [0]; for (let i = 1; i < 4; i++) { tot += Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]); d.push(tot); }
+    const lim = tot * k; ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let i = 1; i < 4; i++) { if (d[i] <= lim) ctx.lineTo(...pts[i]); else { const f = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1); ctx.lineTo(lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)); break; } }
+    ctx.stroke(); ctx.restore();
+  });
+  // nodes
+  for (const id of Object.keys(TR)) {
+    const t0 = TT[id]; if (T < t0) continue;
+    const [x, y] = TR[id], gold = id === 'ker' || id === 'jan', top = id === 'orys';
+    const k = top ? 1 : pop(T, t0, .45), puls = gold && T > M.both ? 1 + .07 * Math.sin((T - M.both) * 8) : 1;
+    const r = top ? 95 : 82;
+    ctx.save(); scaleAt(x, y, k * puls);
+    if (gold && T > M.both) { ctx.save(); ctx.globalAlpha = .35 + .25 * Math.sin((T - M.both) * 8); circ(x, y, r + 26, Y); ctx.restore(); }
+    circS(x, y, r + 10, gold ? Y : top ? TQ : CR, 10);
+    headIcon(x, y, r, T, gold ? '#FFE48A' : top ? '#7FE0D6' : CR2);
+    const name = L.tree[id], fs = fit(name, 40, 300);
+    pill(name, x, y + r + 52, fs, gold ? Y : top ? TQ : CR, NV, { sh: 6 });
+    ctx.restore();
+  }
+  // caption pill: founders of the Kazakh Khanate
+  const fk = pop(T, M.both + .3, .5) * (1 - zk);
+  if (fk > 0) { ctx.save(); scaleAt(540, 1580, fk); pill(L.found, 540, 1580, fit(L.found, 40, 900), CO, '#fff', { sh: 8 }); ctx.restore(); }
+  ctx.restore();
+  // the khan figure lands in the top node (drawn by scene3 until then); after landing the node shows the mini head
+  if (zk > .6) { ctx.fillStyle = `rgba(29,43,83,${(zk - .6) / .4})`; ctx.fillRect(0, 0, OW, OH); }
+}
+
+// ---------- scene 5: «so are we Russian?» ----------
+function scene5(T) {
+  if (T < M.s5 - .1 || T > M.s6 + .5) return;
+  const k = pop(T, M.s5 + .05, .5), gone = out(T, M.s6 - .2, .45);
+  const tag = ease(win(T, M.name, .5));                              // the word turns into a name tag
+  const cx = 540, cy = 880;
+  ctx.save(); ctx.globalAlpha = gone;
+  // tag body appears behind the word
+  if (tag > 0) {
+    const w = lerp(560, 700, tag), h = lerp(220, 260, tag);
+    ctx.save(); scaleAt(cx, cy, tag); ctx.rotate(0);
+    shadowed(cc => { ctx.beginPath(); ctx.moveTo(cx - w / 2 + 80, cy - h / 2); ctx.lineTo(cx + w / 2, cy - h / 2); ctx.lineTo(cx + w / 2, cy + h / 2); ctx.lineTo(cx - w / 2 + 80, cy + h / 2); ctx.lineTo(cx - w / 2, cy); ctx.closePath(); ctx.fillStyle = cc || Y; ctx.fill(); }, 12);
+    circ(cx - w / 2 + 70, cy, 18, NV);
+    txt(L.tagw, cx + 40, cy - h / 2 - 10, 40, NV, {}); ctx.restore();
+    ctx.save(); scaleAt(cx + 40, cy - h / 2 - 2, pop(T, M.name + .2, .4)); pill(L.tagw, cx + 40, cy - h / 2 - 4, 40, CO, '#fff', { sh: 6 }); ctx.restore();
+  }
+  ctx.save(); scaleAt(cx, cy, k); const f = fit(L.q5, 210, 600); txt(L.q5, cx + (tag > 0 ? 30 * tag : 0), cy + 8, f * lerp(1, .62, tag), tag > .5 ? NV : CR, { sh: tag > .5 ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,.25)', shd: 10 }); ctx.restore();
+  // question badge -> «НЕТ» stamp
+  const qk = pop(T, M.s5 + .5, .45) * (1 - win(T, M.no, .2)), nk = pop(T, M.no, .4) * (1 - win(T, M.name, .3));
+  if (qk > 0) { ctx.save(); scaleAt(850, 660, qk); circS(850, 660, 95, CO, 10); txt('?', 850, 668, 140, '#fff'); ctx.restore(); }
+  if (nk > 0) { ctx.save(); scaleAt(800, 640, nk, -.12); pill(L.no, 800, 640, 96, CO, '#fff', { sh: 12 }); ctx.restore(); }
+  // other steppe names pop around
+  const pos = [[260, 1210, -.08, TQ], [800, 1240, .07, CR], [530, 1400, -.03, TQ]];
+  L.tags.forEach((t, i) => {
+    const t0 = M.tags + i * .55; if (T < t0) return; const kk = pop(T, t0, .45), [x, y, r, col] = pos[i];
+    ctx.save(); scaleAt(x, y, kk, r); ctx.translate(0, Math.sin(T * 2 + i) * 6); pill(t, x, y, 56, col, NV, { sh: 10 }); ctx.restore();
+  });
+  const sk = pop(T, M.tags + 1.9, .4);
+  if (sk > 0) { ctx.save(); scaleAt(540, 1520, sk); txt(L.tagsub, 540, 1520, 44, CR); ctx.restore(); }
+  ctx.restore();
+}
+
+// ---------- scene 6: ENT card + photo ----------
+const CARD = { x: 110, y: 760, w: 860, h: 660 };
+function card(T, kIn, flip) {                              // the sheet with a folded corner; flip 0..1 = horizontal squash
+  const { x, y, w, h } = CARD, cx = x + w / 2;
+  ctx.save(); scaleAt(cx, y + h / 2, kIn); ctx.translate(cx, 0); ctx.scale(Math.max(.001, Math.abs(Math.cos(flip * Math.PI))), 1); ctx.translate(-cx, 0);
+  shadowed(cc => { ctx.beginPath(); ctx.moveTo(x + 28, y); ctx.lineTo(x + w - 110, y); ctx.lineTo(x + w, y + 110); ctx.lineTo(x + w, y + h - 28); ctx.arcTo(x + w, y + h, x + w - 28, y + h, 28); ctx.lineTo(x + 28, y + h); ctx.arcTo(x, y + h, x, y + h - 28, 28); ctx.lineTo(x, y + 28); ctx.arcTo(x, y, x + 28, y, 28); ctx.closePath(); ctx.fillStyle = cc || CR; ctx.fill(); }, 16);
+  ctx.fillStyle = CR2; ctx.beginPath(); ctx.moveTo(x + w - 110, y); ctx.lineTo(x + w - 110, y + 90); ctx.quadraticCurveTo(x + w - 110, y + 110, x + w - 90, y + 110); ctx.lineTo(x + w, y + 110); ctx.closePath(); ctx.fill();
+  return () => ctx.restore();
+}
+function scene6(T) {
+  if (T < M.s6 - .1 || T > M.s7 + .6) return;
+  const kIn = pop(T, M.s6 + .05, .5), flip = win(T, M.s7 - .1, .5);
+  if (flip >= .5) return;
+  const done = card(T, kIn, flip); const { x, y, w } = CARD;
+  pill(L.card, x + 130, y + 80, 44, NV, Y, { sh: 0 });
+  L.rows.forEach((r, i) => {
+    const t0 = M['r' + (i + 1)], yy = y + 230 + i * 150, k = win(T, t0 - .05, .35);
+    if (k <= 0) return; ctx.save(); ctx.globalAlpha = k; ctx.translate(lerp(40, 0, eo(k)), 0);
+    txt(r, x + 150, yy, fit(r, 46, w - 210), NV, { align: 'left' }); ctx.restore();
+    check(x + 85, yy, 38, TQ, pop(T, t0 + .1, .4));
+  });
+  done();
+  // polaroid photo drops from the top, tilts, holds ~3.8 s
+  const t0 = M.s6 + 1.0, hold = 3.8; if (T < t0 || T > t0 + hold + .6 || !IMG.ph) return;
+  const fall = eob(win(T, t0, .7)), gone = out(T, t0 + hold, .5), im = IMG.ph;
+  const pw = 470, ph = pw * im.height / im.width, fw = pw + 40, fh = ph + 170;
+  const cx = 560, cy = lerp(-600, 560, fall), rot = lerp(-.35, .06, fall) + Math.sin((T - t0) * 2) * .01;
+  ctx.save(); ctx.globalAlpha = gone; ctx.translate(cx, cy); ctx.rotate(rot);
+  ctx.fillStyle = 'rgba(8,12,30,.35)'; rr(-fw / 2 + 10, -fh / 2 + 18, fw, fh, 8); ctx.fill();
+  ctx.fillStyle = '#fff'; rr(-fw / 2, -fh / 2, fw, fh, 8); ctx.fill();
+  ctx.drawImage(im, -pw / 2, -fh / 2 + 20, pw, ph);
+  txt(L.ph[0], 0, -fh / 2 + 20 + ph + 44, fit(L.ph[0], 32, pw), NV, { f: 'MX' }); txt(L.ph[1], 0, -fh / 2 + 20 + ph + 86, fit(L.ph[1], 26, pw, 'MX'), 'rgba(29,43,83,.65)', { f: 'MX' });
+  txt(L.ph[2], 0, -fh / 2 + 20 + ph + 122, 20, 'rgba(29,43,83,.45)', { f: 'MX' });
+  ctx.fillStyle = 'rgba(255,210,63,.85)'; ctx.save(); ctx.translate(0, -fh / 2); ctx.rotate(-.06); ctx.fillRect(-80, -22, 160, 44); ctx.restore();   // tape
+  ctx.restore();
+}
+
+// ---------- scene 7: quiz ----------
+function scene7(T) {
+  if (T < M.s7 + .15 || T > M.s8 + .6) return;
+  const flip = win(T, M.s7 - .1, .5); if (flip < .5) return;
+  const gone = out(T, M.s8 - .1, .45);
+  ctx.save(); ctx.globalAlpha = gone;
+  const done = card(T, 1, flip); const { x, y, w, h } = CARD;
+  pill(L.card, x + 130, y + 80, 44, NV, Y, { sh: 0 });
+  const kq = win(T, M.q - .1, .4);
+  ctx.save(); ctx.globalAlpha *= kq; L.q.forEach((s, i) => txt(s, x + w / 2, y + 190 + i * 76, fit(s, 66, w - 120), NV)); ctx.restore();
+  const ans = T >= M.ans;
+  L.opts.forEach(([a, b], i) => {
+    const t0 = M.o1 + i * .55, k = pop(T, t0, .4); if (k <= 0) return;
+    const yy = y + 380 + i * 100, ok = i === L.ok, dim = ans && !ok;
+    ctx.save(); scaleAt(x + w / 2, yy, k * (ans && ok ? 1 + .06 * eob(win(T, M.ans, .4)) : 1) * (dim ? .96 : 1)); ctx.globalAlpha *= dim ? .45 : 1;
+    const bg = ans && ok ? TQ : '#fff', ow = w - 140;
+    box(x + 70, yy - 40, ow, 80, 40, bg, 6);
+    circ(x + 115, yy, 30, ans && ok ? '#fff' : NV); txt(a, x + 115, yy + 2, 34, ans && ok ? TQ2 : Y);
+    txt(b, x + 170, yy + 2, 44, NV, { align: 'left' });
+    if (ans && ok) check(x + w - 120, yy, 30, NV, pop(T, M.ans + .1, .4));
+    if (dim) { ctx.strokeStyle = CO; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + 170, yy + 2); ctx.lineTo(x + 170 + tw(b, 44), yy + 2); ctx.stroke(); }
+    ctx.restore();
+  });
+  done();
+  // donut timer over the card: 3-2-1 eaten away
+  if (T >= M.qa - .3 && T < M.ans + .4) {
+    const k = pop(T, M.qa - .3, .4) * out(T, M.ans, .35), f = clamp((T - M.qa) / (M.qb - M.qa)), n = Math.max(1, 3 - Math.floor(f * 3));
+    const tx = 540, ty = 560;
+    ctx.save(); scaleAt(tx, ty, k);
+    circS(tx, ty, 120, NV2, 10); circ(tx, ty, 120, CR2);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.arc(tx, ty, 120, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - f)); ctx.closePath(); ctx.fillStyle = Y; ctx.fill();
+    circ(tx, ty, 66, NV);
+    const pulse = 1 + .15 * Math.exp(-((f * 3) % 1) * 8); ctx.save(); scaleAt(tx, ty, pulse); txt(String(n), tx, ty + 4, 76, '#fff'); ctx.restore();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- scene 8: loop back to the crown + arrow up ----------
+function scene8(T) {
+  if (T < M.s8 - .1) return;
+  const sl = ease(win(T, M.s8 - .1, .55));
+  ctx.save(); ctx.translate(OW * (1 - sl), 0);
+  bgCream(T);
+  ctx.save(); scaleAt(540, 1010, pop(T, M.s8 + .3, .55)); crown(540, 1010, 1.4); ctx.restore();
+  ctx.save(); scaleAt(540, 1180, pop(T, M.s8 + .55, .5)); txt(L.end, 540, 1180, fit(L.end, 150, 900), NV, { sh: Y, shd: 12 }); ctx.restore();
+  // yellow arrow up, bouncing towards the profile header
+  const ka = pop(T, M.cta - .2, .5), bo = Math.sin((T - M.cta) * 6) * 18;
+  if (ka > 0) {
+    ctx.save(); scaleAt(540, 560, ka); ctx.translate(0, -Math.abs(bo));
+    shadowed(cc => { ctx.beginPath(); ctx.moveTo(540, 380); ctx.lineTo(660, 520); ctx.lineTo(590, 520); ctx.lineTo(590, 680); ctx.lineTo(490, 680); ctx.lineTo(490, 520); ctx.lineTo(420, 520); ctx.closePath(); ctx.fillStyle = cc || Y; ctx.fill(); }, 12);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- headline, captions, logo, end card ----------
+const HEADS = ['s2', 's3', 's4', 's5', 's6', 's7', 's8'];
+function onCream(T) { return T < M.s2 - .3 || T >= M.s8 + .3; }
+function headline(T) {
+  let id = null; for (const h of HEADS) if (T >= M[h] + .25) id = h; if (!id || T > B.end - 2.3) return;
+  const nx = HEADS[HEADS.indexOf(id) + 1], t0 = M[id] + .25, o = nx ? out(T, M[nx] - .15, .25) : 1;
+  let hide = 1; if (id === 's6') hide = 1 - win(T, M.s6 + .9, .3) * (1 - win(T, M.s6 + 1 + 3.8, .4));   // photo covers the top
+  const txtH = L.h[id], f = fit(txtH, 58, 760), k = pop(T, t0, .45) * o * hide; if (k <= 0) return;
+  const cream = id === 's8';
+  ctx.save(); ctx.globalAlpha = clamp(k); scaleAt(470, 268, k);
+  const wdt = tw(txtH, f) + 60;
+  box(470 - wdt / 2, 268 - 52, wdt, 104, 52, cream ? NV : Y, 8);
+  txt(txtH, 470, 271, f, cream ? Y : NV);
+  ctx.restore();
+}
+function captions(T) {
+  if (T > B.end - 2.3) return;
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  const k = clamp((T - cp.t0) / .12), cream = onCream(T);
+  ctx.save(); let sz = 64; ctx.font = `${sz}px MB`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase() })), sp = 20;
+  let wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  if (wd > 960) { sz = Math.floor(sz * 960 / wd); ctx.font = `${sz}px MB`; wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - wd / 2; const y = 1700, s = .85 + .15 * eob(k);
+  ctx.globalAlpha = k; ctx.translate(OW / 2, y); ctx.scale(s, s); ctx.translate(-OW / 2, -y); ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.fillStyle = 'rgba(8,12,30,.55)'; ctx.fillText(w.t, x, y + 6);
+    ctx.lineWidth = 12; ctx.strokeStyle = NV; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? Y : '#fff'; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+function logo(T) {
+  const im = onCream(T) ? IMG.logoN : IMG.logo, lh = 120, lw = lh * im.width / im.height;
+  ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(im, OW - 44 - lw, 44, lw, lh); ctx.restore();
+}
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  const a = clamp((T - t0) / .35);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 440, lh = lw * IMG.logo.height / IMG.logo.width, s = .9 + .1 * eob(clamp((T - t0) / .45));
+  ctx.drawImage(IMG.logo, OW / 2 - lw * s / 2, 700 - lh * s / 2, lw * s, lh * s);
+  L.cta.forEach((t, i) => txt(t, OW / 2, 1080 + i * 84, 62, BR.amber));
+  const bo = Math.sin(T * 6) * 10; ctx.fillStyle = BR.amber;
+  ctx.beginPath(); ctx.moveTo(540, 1250 + bo); ctx.lineTo(610, 1330 + bo); ctx.lineTo(570, 1330 + bo); ctx.lineTo(570, 1420 + bo); ctx.lineTo(510, 1420 + bo); ctx.lineTo(510, 1330 + bo); ctx.lineTo(470, 1330 + bo); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ---------- frame ----------
+window.render = function (T) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  bgNavy(T);
+  if (T >= M.s2 - .6 && T < M.s3 + .7) scene2(T);
+  // scene 1 on cream, sliding out to the left over the map
+  if (T < M.s2 + .1) { const sl = ease(win(T, M.s2 - .55, .55)); ctx.save(); ctx.translate(-OW * sl, 0); bgCream(T); ctx.restore(); scene1(T); }
+  // scenes 3-7 on navy; the navy panel slides up over the map at s3
+  if (T >= M.s3 - .3) {
+    const up = ease(win(T, M.s3 - .3, .55)); ctx.save(); ctx.translate(0, OH * (1 - up));
+    bgNavy(T); scene3(T); scene4(T); scene5(T); scene6(T); scene7(T);
+    ctx.restore();
+  }
+  scene8(T);
+  headline(T); captions(T); logo(T); endCard(T);
+  if (T < .15) { ctx.fillStyle = `rgba(255,243,214,${1 - T / .15})`; ctx.fillRect(0, 0, OW, OH); }
+};
+
+// ---------- load ----------
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = (await (await fetch('beats.json')).json())[LANG]; M = B.m;
+  SH = await (await fetch('shapes.json')).json();
+  const syr = await (await fetch('syr.json')).json(); SYR = syr.sort((a, b) => b.p.length - a.p.length)[0].p;   // upstream -> Aral
+  TT = { orys: M.s4 + .6, bol: M.bol, ker: M.ker, kuy: M.kuy, bar: M.kuy + .75, jan: M.jan };
+  [IMG.logo, IMG.logoN, IMG.ca, IMG.ph, IMG.world] = await Promise.all(['brand/logo_white_transparent.png', 'brand/logo_navy_transparent.png', 'tex/ca.jpg', 'photos/monument.jpg', 'tex/world.jpg'].map(load));
+  await Promise.all(['60px MB', '40px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІ')));
+  window.ready = true;
+})();
+</script></body></html>
