@@ -366,7 +366,7 @@ function quiz(T) {
 function photo(T) {
   const t0 = M.ph - .1, hold = 3.8; if (T < t0 || T > t0 + hold + .6 || !IMG.ph) return;
   scrT(); const kin = eo(win(T, t0, .55)), kout = ease(win(T, t0 + hold, .5));
-  const x = lerp(-420, 300, kin) - kout * 720, y = 640, w = 380, h = 470;
+  const x = lerp(-420, 300, kin) - kout * 720, y = 560, w = 380, h = 470;
   ctx.save();
   ctx.fillStyle = SH; ctx.beginPath(); ctx.ellipse(x + 12, y + 14, w / 2 + 18, h / 2 + 18, 0, 0, 7); ctx.fill();
   ctx.fillStyle = P.yel; ctx.beginPath(); ctx.ellipse(x, y, w / 2 + 18, h / 2 + 18, 0, 0, 7); ctx.fill();
@@ -377,7 +377,7 @@ function photo(T) {
   ctx.restore();
   ctx.save(); ctx.globalAlpha = kin * (1 - kout);
   pill(L.ph[0], x, y + h / 2 + 50, '44px MB', P.navy, P.cream, 26, 72);
-  text(L.ph[1], x, y + h / 2 + 120, `${fitFont(L.ph[1], 32, 520, 'MX')}px MX`, P.cream);
+  { const f = `${fitFont(L.ph[1], 32, 520, 'MX')}px MX`, w2 = tw(L.ph[1], f) + 36; ctx.fillStyle = 'rgba(19,28,58,.92)'; rr(x - w2 / 2, y + h / 2 + 98, w2, 50, 14); ctx.fill(); text(L.ph[1], x, y + h / 2 + 124, f, P.cream); }
   ctx.restore();
 }
 

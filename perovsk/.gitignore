@@ -8,3 +8,4 @@ vo_??.wav
 rec_*.log
 wr.log
 wk.log
+build_*.log
