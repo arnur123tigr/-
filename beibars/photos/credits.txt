@@ -1,0 +1,7 @@
+local file | Commons title | author | licence | note
+01_mosque_cairo_nw_entrance.jpg | File:Al-Zahir Baybars Mosque in Cairo DSCF4253.jpg | R Prazeres | CC BY-SA 4.0 | Cairo mosque, northwest entrance (2019)
+02_mosque_cairo_ne_entrance.jpg | File:Al-Zahir Baybars Mosque in Cairo DSCF1925.jpg | R Prazeres | CC BY-SA 4.0 | Cairo mosque, northeast entrance (2012)
+03_mosque_cairo_sw_entrance.jpg | File:Al-Zahir Baybars Mosque in Cairo DSCF4259.jpg | R Prazeres | CC BY-SA 4.0 | Cairo mosque, southwest entrance (2019)
+04_mosque_cairo_exterior.jpg | File:Mosque of sultan al zahir baybars.jpg | Martyn Smith | CC BY 2.0 | Cairo mosque exterior
+05_baybars_gold_dinar.jpg | File:Baybars I Mamluk gold coin.jpg | Waleedcop2 | CC BY-SA 4.0 | Gold dinar of Baybars I, struck in Cairo c.1262-1277
+06_baybars_bust_cairo.jpg | File:تمثال للسلطان الظاهر بيبرس (cropped).JPG | Ahmed yousri elmamlouk | CC BY-SA 4.0 | Bronze bust of Baybars, National Military Museum, Cairo
