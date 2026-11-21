@@ -213,7 +213,7 @@ function manuscript(cx, cy, w, h) {   // drawn page used when no photo is provid
 function msCard(t) {   // manuscript card: appears in the corner, then "sticks" to Sygnak
   const t0 = V('ulus') - .3, t1 = V('cap') + .9; const a = win(t, t0, t1 + .3, .3); if (a <= 0) return;
   const [px, py] = P(...PT.syg); const k = ease(ap(t, V('cap') - .2, 1.0));
-  const w0 = 380, h0 = 500, cx = lerp(W - 250, px, k), cy = lerp(H * .33, py - 40, k), sc = lerp(1, .18, k);
+  const w0 = 380, h0 = 500, cx = lerp(W - 250, px, k), cy = lerp(H * .44, py - 40, k), sc = lerp(1, .18, k);
   ctx.save(); ctx.globalAlpha = clamp(a * 1.5); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.rotate(-.04 * (1 - k));
   const p = back(clamp(ap(t, t0, .45))); ctx.scale(p, p);
   ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; rr(-w0 / 2 - 10, -h0 / 2 - 10, w0 + 20, h0 + 20, 12); ctx.fillStyle = GOLD; ctx.fill(); ctx.shadowBlur = 0;
@@ -223,8 +223,8 @@ function msCard(t) {   // manuscript card: appears in the corner, then "sticks" 
   else manuscript(0, 0, w0, h0);
   ctx.restore();
   const q = clamp(a * 1.5) * (1 - k);
-  if (q > 0) { pill(TXT.ms, W - 250, H * .33 + h0 / 2 + 50, 36, q, { line: GOLD }); txt(TXT.ms2, W - 250, H * .33 + h0 / 2 + 106, 26, '#fff', 'MS', { blur: 8 });
-    if (PHOTO.credit) { ctx.save(); ctx.globalAlpha = q * .8; txt(PHOTO.credit, W - 250, H * .33 + h0 / 2 + 142, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  if (q > 0) { pill(TXT.ms, W - 250, H * .44 + h0 / 2 + 50, 36, q, { line: GOLD }); ctx.save(); ctx.globalAlpha = q; txt(TXT.ms2, W - 250, H * .44 + h0 / 2 + 106, 26, '#fff', 'MS', { blur: 8 }); ctx.restore();
+    if (PHOTO.credit) { ctx.save(); ctx.globalAlpha = q * .8; txt(PHOTO.credit, W - 250, H * .44 + h0 / 2 + 142, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
 }
 function bigWord(s, x, y, size, a, col = '#fff', glow = GOLD) {
   if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
@@ -330,8 +330,8 @@ function render(t) {
       datePlate(TXT.c15, a * ap(t, V('c15'), .35) * (1 - ap(t, V('abul'), .3)));
       datePlate(TXT.khan, a * ap(t, V('abul'), .35));
       khanDisc(...P(...PT.abk), 74, a * ap(t, V('abul'), .4), { name: TXT.abk });
-      label2(TXT.ulus, 63.6, 51.6, a * ap(t, V('ulus'), .35) * (1 - ap(t, V('cap') - .4, .4)), GOLD, 66);
-      { const q = a * ap(t, V('nomad'), .35) * (1 - ap(t, V('cap') - .4, .4)); if (q > 0) pill(TXT.nomad, P(63.6, 49.4)[0], P(63.6, 49.4)[1], 40, q, { scale: back(clamp(ap(t, V('nomad'), .4))) }); }
+      { const q = a * (1 - ap(t, V('cap') - .4, .4)); head(TXT.ulus.join(' · '), q * ap(t, V('ulus'), .35), GOLD, H * .2, 72);
+        if (q > 0) pill(TXT.nomad, W / 2, H * .262, 40, q * ap(t, V('nomad'), .35), { scale: back(clamp(ap(t, V('nomad'), .4))) }); }
       place(...PT.syg, TXT.syg, a * ap(t, V('cap') + .1, .3), { glow: 1, size: 42, dy: -66 });
       { const q = a * ap(t, V('cap') + .6, .3); if (q > 0) { const [x, y] = P(...PT.syg); txt(TXT.syg2, x, y + 64, 32, GOLD, 'MX', { blur: 8 }); } }
       msCard(t);
