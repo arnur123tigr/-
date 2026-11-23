@@ -1,0 +1,363 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Жүз жылдық соғыс 100 жыл емес» / «Столетняя война длилась не 100 лет» — KZ + RU. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], WORDS = [], END = 90, SH = null;
+const V = k => B[k] + OFF;
+const WT = (re, k0, k1, fb) => { const r = new RegExp(re, 'i'), a = B[k0], b = k1 ? B[k1] : 1e9; const w = WORDS.find(w => w[0] >= a - .05 && w[0] < b && r.test(w[2])); return w ? w[0] + OFF : (fb !== undefined ? fb : V(k0)); };
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'reg', l0: -14, l1: 18, b0: 38, b1: 62, minppd: 22 });
+TEX.push({ k: 'det', l0: -6, l1: 9, b0: 42, b1: 52.5, minppd: 70 });
+const GOLD = BR.acc, RED = BR.red, BLUE = '#4FA8FF', TURQ = '#4FD1C5';
+const LON = [-0.13, 51.5], PAR = [2.35, 48.86], ORL = [1.909, 47.902], DOM = [5.69, 48.44], CHI = [0.24, 47.17], ROU = [1.1, 49.44], CAL = [1.86, 50.95],
+  BEAU = [2.08, 49.43], KENT = [0.55, 51.25], MARS = [5.37, 43.3], BORD = [-0.58, 44.84];
+const TXT = {
+  ru: { t1: 'Столетняя война', big0: '100', big1: '116', no: '100? НЕТ — 116', years: 'лет', trap: 'ЛОВУШКА ЕНТ', span: '= 116 лет', lands: 'Война за земли', throne: 'Трон Франции',
+    norm: 'Нормандия', anjou: 'Анжу', aquit: 'Аквитания', fland: 'Фландрия', eng: 'Англия', fra: 'Франция', lon: 'Лондон', par: 'Париж',
+    truce: 'Были перемирия', war: 'война', tr: 'перемирие', plague: 'Чёрная смерть · 1347', jac: '1358 · Жакерия', tyl: '1381 · Уот Тайлер',
+    lose: 'Франция проигрывает', orl: 'Орлеан', siege: 'в осаде', joan: 'Жанна · 17 лет', dom: 'Домреми', chi: 'Шинон',
+    f6: '1429 · Орлеан', f7a: '1431 · Руан', f7b: '19 лет', win: '1453 · Франция победила', cal: 'Кале', roses: 'Война Алой и Белой розы', rosy: '1455–1485',
+    ent: 'ЕНТ', q: ['Где и когда было', 'восстание Жакерия?'], opts: [['А', 'Англия, 1381'], ['Б', 'Франция, 1358'], ['В', 'Германия, 1525']],
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Снимки: NASA Blue Marble · границы: Natural Earth · владения примерные' },
+  kk: { t1: 'Жүз жылдық соғыс', big0: '100', big1: '116', no: '100? ЖОҚ — 116', years: 'жыл', trap: 'ҰБТ ТҰЗАҒЫ', span: '= 116 жыл', lands: 'Жер үшін соғыс', throne: 'Франция тағы',
+    norm: 'Нормандия', anjou: 'Анжу', aquit: 'Аквитания', fland: 'Фландрия', eng: 'Англия', fra: 'Франция', lon: 'Лондон', par: 'Париж',
+    truce: 'Арада бітімдер болды', war: 'соғыс', tr: 'бітім', plague: 'Қара өлім · 1347', jac: '1358 · Жакерия', tyl: '1381 · Уот Тайлер',
+    lose: 'Франция жеңіліп жатыр', orl: 'Орлеан', siege: 'қоршауда', joan: 'Жанна · 17 жас', dom: 'Домреми', chi: 'Шинон',
+    f6: '1429 · Орлеан', f7a: '1431 · Руан', f7b: '19 жас', win: '1453 · Франция жеңді', cal: 'Кале', roses: 'Ақ және Қызыл раушандар соғысы', rosy: '1455–1485',
+    ent: 'ҰБТ', q: ['Жакерия көтерілісі', 'қай елде, қай жылы болды?'], opts: [['А', 'Англия, 1381'], ['Ә', 'Франция, 1358'], ['Б', 'Германия, 1525']],
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Түсірілім: NASA Blue Marble · шекаралар: Natural Earth · иеліктер шартты' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  const sw = Math.max(280, tw(s, 80, 'MB') + 90); rr(-sw / 2, -66, sw, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+drawMap = function (dark = 0) {   // textures fade in with zoom (no pop between Blue Marble and Sentinel)
+  ctx.fillStyle = '#183a4e'; ctx.fillRect(0, 0, W, H);
+  for (const T of TEX) { const m = T.minppd || 0, a = m ? clamp((CAM.ppd - m * .7) / (m * .3)) : 1; if (a <= 0) continue;
+    ctx.save(); ctx.globalAlpha = a; drawTex(T); ctx.restore(); }
+  if (dark > 0) { ctx.fillStyle = `rgba(4,10,20,${dark})`; ctx.fillRect(0, 0, W, H); }
+};
+function feather(im, f = .07) {   // soft alpha edge so close-up textures melt into the one below
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  g.globalCompositeOperation = 'destination-in'; const fx = im.width * f, fy = im.height * f;
+  const m = document.createElement('canvas'); m.width = im.width; m.height = im.height; const h = m.getContext('2d');
+  let gr = h.createLinearGradient(0, 0, im.width, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f, '#000'); gr.addColorStop(1 - f, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  h.fillStyle = gr; h.fillRect(0, 0, im.width, im.height); h.globalCompositeOperation = 'destination-in';
+  gr = h.createLinearGradient(0, 0, 0, im.height); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f, '#000'); gr.addColorStop(1 - f, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  h.fillStyle = gr; h.fillRect(0, 0, im.width, im.height); g.drawImage(m, 0, 0); return c;
+}
+function smooth(pts, n = 3) { let p = pts; for (let k = 0; k < n; k++) p = p.map((q, i) => i === 0 || i === p.length - 1 ? q : [(p[i - 1][0] + 2 * q[0] + p[i + 1][0]) / 4, (p[i - 1][1] + 2 * q[1] + p[i + 1][1]) / 4]); return p; }
+function along(pts, u) {   // point + heading (screen) at fraction u of a lon/lat polyline (by screen length)
+  const S = pts.map(c => P(c[0], c[1])); const d = [0]; for (let i = 1; i < S.length; i++) d.push(d[i - 1] + Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]));
+  const L = d[d.length - 1] * clamp(u); let i = 1; while (i < S.length - 1 && d[i] < L) i++;
+  const k = (L - d[i - 1]) / (d[i] - d[i - 1] || 1); return [lerp(S[i - 1][0], S[i][0], k), lerp(S[i - 1][1], S[i][1], k), Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0])];
+}
+function plate(x, y, w, h, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; rr(x - w / 2, y - h / 2, w, h, 30); ctx.fillStyle = 'rgba(19,11,84,.86)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(254,179,0,.45)'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); }
+
+function rivers(a = .5) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = TURQ; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.shadowColor = TURQ; ctx.shadowBlur = 6;
+  for (const l of SH.rivers) { ctx.beginPath(); l.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); } ctx.restore();
+}
+function crown(x, y, s, a, glow = 1) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.moveTo(-40, 22); ctx.lineTo(-46, -18); ctx.lineTo(-22, 2); ctx.lineTo(0, -30); ctx.lineTo(22, 2); ctx.lineTo(46, -18); ctx.lineTo(40, 22); ctx.closePath();
+  ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 20 + 25 * glow; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff'; [[-46, -18], [0, -30], [46, -18]].forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); });
+  ctx.fillStyle = BR.navy; rr(-40, 12, 80, 10, 3); ctx.fill(); ctx.restore();
+}
+function arrowLine(pts, p, a, col, lw = 10) {   // polyline drawn on with p, with an arrow head at its tip
+  if (p <= 0 || a <= 0) return; polyPartial(pts, p, { col: '#140c30', lw: lw + 7, blur: 0, a: a * .6 }); polyPartial(pts, p, { col, lw, glow: col, blur: 18, a });
+  const [x, y, an] = along(pts, p); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(an); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 16;
+  ctx.beginPath(); ctx.moveTo(lw * 2.6, 0); ctx.lineTo(-lw * .8, -lw * 2); ctx.lineTo(-lw * .8, lw * 2); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function bigDot(x, y, r, a, fill = GOLD, line = '#fff') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = fill; ctx.shadowColor = fill === '#fff' ? GOLD : fill; ctx.shadowBlur = 20; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = r * .32; ctx.strokeStyle = line; ctx.stroke(); ctx.restore();
+}
+function eyeIcon(x, y, s, a) {   // eye with a white cloudy spot (bельмо / ақ дақ)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(0, -48, 60, 0); ctx.quadraticCurveTo(0, 48, -60, 0); ctx.closePath(); ctx.fillStyle = '#f3efe6'; ctx.fill();
+  ctx.save(); ctx.clip(); ctx.beginPath(); ctx.arc(0, 0, 24, 0, 7); ctx.fillStyle = '#6b4a2b'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); ctx.fillStyle = '#140c0a'; ctx.fill();
+  const g = ctx.createRadialGradient(6, -4, 0, 6, -4, 20); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(6, -4, 20, 0, 7); ctx.fill(); ctx.restore();
+  ctx.lineWidth = 5; ctx.strokeStyle = GOLD; ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(0, -48, 60, 0); ctx.quadraticCurveTo(0, 48, -60, 0); ctx.stroke(); ctx.restore();
+}
+function photoCard(im, cx, cy, w, a, rise, cap, cr) {   // real photo in a thin gold frame, rising from a map point
+  if (!im || a <= 0) return; const h = w * im.height / im.width, p = eout(rise);
+  ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(cx, cy + (1 - p) * 220); const s = .55 + .45 * p; ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 40; ctx.fillStyle = BR.navy; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.lineWidth = 4; ctx.strokeStyle = GOLD; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.stroke();
+  if (cap) txt(cap, 0, h / 2 + 34, 30, '#fff', 'MX', { blur: 0, dy: 0 }); if (cr) txt(cr, 0, h / 2 + 96, 18, 'rgba(255,255,255,.8)', 'MS', { blur: 6 }); ctx.restore();
+}
+function flash(t0, a = 1) { const q = (1 - ap(TT, t0, .5)) * ap(TT, t0 - .05, .05) * a; if (q <= 0) return; ctx.save(); ctx.globalAlpha = q * .85; const [x, y] = P(...AIN);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 700); g.addColorStop(0, '#fff'); g.addColorStop(.3, 'rgba(254,179,0,.6)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+function ptsOf(pts, u0, u1) { const o = []; for (let i = 0; i <= 30; i++) { const [x, y] = along(pts, lerp(u0, u1, i / 30)); o.push([x, y]); } return o; }
+// ---------- reel-specific drawing ----------
+function cen(rings) { let x = 0, y = 0, n = 0; for (const r of rings) for (const c of r) { x += c[0]; y += c[1]; n++; } return [x / n, y / n]; }
+function crownC(x, y, s, a, col) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-40, 22); ctx.lineTo(-46, -18); ctx.lineTo(-22, 2); ctx.lineTo(0, -30); ctx.lineTo(22, 2); ctx.lineTo(46, -18); ctx.lineTo(40, 22); ctx.closePath();
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 26; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff'; [[-46, -18], [0, -30], [46, -18]].forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); }); ctx.restore();
+}
+function throneIcon(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 30;
+  rr(-34, -86, 68, 96, 12); ctx.fill(); rr(-48, 6, 96, 22, 6); ctx.fill(); rr(-44, 26, 12, 44, 4); ctx.fill(); rr(32, 26, 12, 44, 4); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = BR.navy; rr(-20, -70, 40, 64, 8); ctx.fill(); ctx.restore();
+}
+function fire(lon, lat, a, s = 1) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(x, y); ctx.scale(s, s);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 150); g.addColorStop(0, 'rgba(255,140,30,.65)'); g.addColorStop(1, 'rgba(255,60,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 150, 0, 7); ctx.fill();
+  for (let k = 0; k < 3; k++) { const f = 1 - k * .28, w = Math.sin(TT * (9 + k * 3) + k) * 6;
+    ctx.beginPath(); ctx.moveTo(-30 * f, 10); ctx.quadraticCurveTo(-36 * f, -30 * f, w, -86 * f + Math.sin(TT * 13 + k) * 6); ctx.quadraticCurveTo(36 * f, -30 * f, 30 * f, 10); ctx.closePath();
+    ctx.fillStyle = ['#E8502F', '#FF8A2B', '#FEE38A'][k]; ctx.shadowColor = '#FF6A00'; ctx.shadowBlur = 24; ctx.fill(); }
+  ctx.restore();
+}
+function plague(p, a) {   // dark shadow creeping north from Marseille (1347-48)
+  if (a <= 0 || p <= 0) return; const r = rng(31); ctx.save(); ctx.globalAlpha = a;
+  for (let i = 0; i < 70; i++) { const lon = -5 + r() * 15, lat = 42.5 + r() * 12, d = Math.hypot((lon - MARS[0]) * .7, lat - MARS[1]), q = clamp((p * 13 - d) / 2.5); if (q <= 0) continue;
+    const [x, y] = P(lon, lat), rad = (60 + r() * 90) * CAM.ppd / 80; const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, `rgba(5,3,10,${.55 * q})`); g.addColorStop(1, 'rgba(5,3,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function walker(pts, u, a) {   // Joan: a glowing dot with a little white banner, walking along a path
+  if (a <= 0) return; polyPartial(pts, u, { col: '#fff', lw: 5, glow: GOLD, blur: 12, a: a * .9, dash: [14, 12], dashOff: -TT * 30 });
+  const [x, y] = along(pts, Math.max(.001, u)); ctx.save(); ctx.globalAlpha = a; const bob = Math.abs(Math.sin(TT * 8)) * 5;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x + 10, y - bob); ctx.lineTo(x + 10, y - 70 - bob); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.shadowColor = GOLD; ctx.shadowBlur = 16; ctx.beginPath(); ctx.moveTo(x + 10, y - 70 - bob); ctx.lineTo(x + 50 + Math.sin(TT * 7) * 4, y - 58 - bob); ctx.lineTo(x + 10, y - 44 - bob); ctx.fill();
+  ctx.restore(); bigDot(x, y - bob, 16, a, GOLD);
+}
+function siegeRing(lon, lat, r, a) { if (a <= 0) return; const [x, y] = P(lon, lat); ctx.save(); ctx.globalAlpha = a; ctx.setLineDash([16, 12]); ctx.lineDashOffset = -TT * 40;
+  ctx.strokeStyle = RED; ctx.lineWidth = 7; ctx.shadowColor = RED; ctx.shadowBlur = 16; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.restore(); }
+function timeline(t0, a) {   // 1337-1453 bar: red = war, white gaps = truces
+  if (a <= 0) return; const x0 = 110, x1 = W - 110, y = H * .27, X = yr => lerp(x0, x1, (yr - 1337) / 116);
+  plate(W / 2, y + 8, W - 140, 200, a);
+  const segs = [[1337, 1360, 1], [1360, 1369, 0], [1369, 1389, 1], [1389, 1415, 0], [1415, 1453, 1]];
+  segs.forEach(([s, e, w], i) => { const p = clamp((ap(TT, t0, 1.6) * 116 - (s - 1337)) / (e - s)); if (p <= 0) return;
+    ctx.save(); ctx.globalAlpha = a; rr(X(s) + 2, y - 18, (X(e) - X(s) - 4) * p, 36, 10); ctx.fillStyle = w ? RED : '#f2f2f2'; ctx.shadowColor = w ? RED : '#fff'; ctx.shadowBlur = 14; ctx.fill(); ctx.restore();
+    if (!w && p >= 1) txt(TXT.tr, (X(s) + X(e)) / 2, y - 48, 30, '#fff', 'MX', { blur: 0 }); });
+  ctx.save(); ctx.globalAlpha = a; txt('1337', x0 + 20, y + 52, 32, GOLD, 'MB', { blur: 0 }); txt('1453', x1 - 20, y + 52, 32, GOLD, 'MB', { blur: 0 }); ctx.restore();
+}
+function occColor(o, i, t) {   // per department: red from the 1428 spread, blue again in the reconquest
+  const n = SH.occ.length, fl = o.c[1] > 50.75 && o.c[0] > 2.55;
+  const red = ap(t, V('lose') + .2 + (n - 1 - i) * .045, .4);
+  const span = (V('y1453') + .8) - (V('turn') + .2), blue = ap(t, V('turn') + .2 + i / n * span, .35);
+  return { red: red * (1 - blue), blue: fl ? 0 : blue };
+}
+function mapLayers(t) {
+  const on = win(t, V('why') - .3, V('ent') + .4, .5); if (on <= 0) return;
+  ctx.save(); ctx.globalAlpha = on;
+  glowFill(SH.fra, BLUE, .9, { fill: .3, blur: 18, lw: 3 });
+  glowFill(SH.bre, '#cfd6df', .7, { fill: .2, blur: 8, lw: 2 });
+  glowFill(SH.eng, RED, .95, { fill: .45, blur: 20, lw: 3.5 });
+  if (t >= V('lose')) SH.occ.forEach((o, i) => { const c = occColor(o, i, t); if (c.red > 0) glowFill(o.r, RED, c.red, { fill: .55, blur: 6, lw: 1.5 }); if (c.blue > 0 && c.red <= 0) glowFill(o.r, BLUE, c.blue * (1 - ap(t, V('y1453') + 1.5, .8)) * .9, { fill: .25, blur: 10, lw: 2 }); });
+  ctx.restore();
+}
+// ---------- film shots (Higgsfield): stills with a slow push until the clips exist ----------
+let CL = {};
+async function filmImg(k, u) {
+  if (!CL[k]) return IM[k]; const i = Math.min(CL[k] - 1, Math.max(0, Math.floor(u * 30))), key = k + '_' + i;
+  if (!IM[key]) { for (const q of Object.keys(IM)) if (q.startsWith(k + '_')) delete IM[q]; await loadImg(key, `clips/${k}/${String(i + 1).padStart(4, '0')}.jpg`); } return IM[key];
+}
+async function film(k, t, t0, t1) {
+  const a = win(t, t0, t1, .25); if (a <= 0) return; const im = await filmImg(k, t - t0); if (!im) return;
+  const sc = Math.max(W / im.width, H / im.height) * (CL[k] ? 1 : 1.02 + .06 * ap(t, t0, t1 - t0)), w = im.width * sc, h = im.height * sc;
+  ctx.save(); ctx.globalAlpha = a; ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+  const g = ctx.createLinearGradient(0, H * .62, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.6)'); ctx.fillStyle = g; ctx.fillRect(0, H * .62, W, H * .38); ctx.restore();
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  CK = [[0, 1.5, 48.6, 34], [V('why') - .05, 1.5, 48.6, 40, 'l'], [V('lands') + .2, 1.2, 48.4, 82], [V('throne') - .05, 1.0, 48.6, 86, 'l'], [V('throne') + 1.2, 1.0, 49.4, 96],
+    [V('truce') - .05, 1.1, 49.4, 98, 'l'], [V('truce') + 1.0, 1.6, 47.6, 74], [V('jac') - .05, 2.0, 47.8, 76, 'l'], [V('jac') + .9, 1.8, 49.6, 112], [V('tyler') - .05, 1.6, 49.8, 112, 'l'],
+    [V('tyler') + .9, 0.8, 50.4, 112], [V('lose') - .05, 0.8, 50.4, 114, 'l'], [V('lose') + 1.0, 1.4, 48.4, 84], [V('orl') + .2, 1.5, 48.3, 86, 'l'], [V('orl') + 1.3, 1.9, 48.0, 140],
+    [V('girl') - .05, 1.9, 48.0, 144, 'l'], [V('girl') + 1.2, 3.0, 47.9, 112], [V('y1429') + .3, 2.4, 47.9, 120, 'l'],
+    [V('turn') - .2, 1.4, 48.3, 84], [V('calais') - .05, 1.4, 48.3, 86, 'l'], [V('calais') + 1.0, 1.6, 50.2, 120], [V('roses') - .05, 1.5, 50.4, 122, 'l'],
+    [V('roses') + 1.2, -1.6, 52.4, 92], [V('ent') + .3, -1.4, 52.3, 94, 'l'], [V('cta') - .05, -1.4, 52.3, 96, 'l'], [V('cta') + 1.2, 1.5, 48.6, 50], [V('vend') + 3, 1.5, 48.6, 54, 'l']];
+}
+async function render(t) {
+  TT = t; CAM = camAt(CK, t);
+  drawMap(.3); rivers(.4);
+  // ---- S1 hook: 100 cracks and turns into 116
+  { const a = win(t, 0, V('trap') + .3, .3), tf = WT('116', 'rec0', 'trap', V('trap') - 1.0);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a * .45; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      head(TXT.t1, a * ap(t, .2, .4), GOLD, H * .2, 92);
+      const fl = ap(t, tf - .1, .3), sy = Math.abs(Math.cos(fl * Math.PI)), s = fl < .5 ? TXT.big0 : TXT.big1;
+      ctx.save(); ctx.globalAlpha = a * ap(t, .3, .3); ctx.translate(W / 2, H * .44); ctx.scale(1 + .06 * Math.sin(t * 2), sy * (1 + .06 * Math.sin(t * 2)));
+      txt(s, 0, 0, 400, fl < .5 ? '#fff' : GOLD, 'MB', { shadow: fl < .5 ? 'rgba(0,0,0,.8)' : GOLD, blur: 40, dy: 0, stroke: 14, sc: 'rgba(0,0,0,.5)' });
+      if (fl < .5) { const cp = ap(t, tf - .8, .6); if (cp > 0) { ctx.strokeStyle = '#05060f'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath();
+        const cr = [[-260, -40], [-120, 10], [-40, -60], [60, 40], [150, -20], [270, 30]]; cr.forEach((q, i) => { if (i / (cr.length - 1) <= cp) i ? ctx.lineTo(...q) : ctx.moveTo(...q); }); ctx.stroke(); } }
+      ctx.restore(); txt(TXT.years, W / 2, H * .44 + 230, 70, '#fff', 'MX', { blur: 10 });
+      pill(TXT.no, W / 2, H * .66, 54, a * ap(t, tf + .2, .3), { bg: GOLD, col: BR.navy, line: '#fff', scale: back(clamp(ap(t, tf + .2, .4))) }); } }
+  // ---- S2 the ENT trap: 1337-1453
+  { const a = win(t, V('trap'), V('lands') - .1, .3);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a * .4 * (1 - ap(t, V('why'), .8)); ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      stamp(TXT.trap.split(' ')[1] ? TXT.trap : TXT.trap, W / 2, H * .22, a, ap(t, V('trap') + .05, .35));
+      const ya = a * ap(t, V('rem') + .3, .35) * (1 - ap(t, V('why') + .2, .4));
+      if (ya > 0) { const p = back(clamp(ap(t, V('rem') + .3, .45))); ctx.save(); ctx.globalAlpha = ya; ctx.translate(W / 2, H * .45); ctx.scale(p, p);
+        txt('1337 – 1453', 0, 0, 150, GOLD, 'MB', { shadow: 'rgba(0,0,0,.8)', blur: 26, stroke: 12, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+        pill(TXT.span, W / 2, H * .56, 52, ya * ap(t, V('rem') + 1.6, .3), { line: GOLD, scale: back(clamp(ap(t, V('rem') + 1.6, .4))) }); } } }
+  // ---- map layers (England red, France blue, 1428 occupation, reconquest)
+  mapLayers(t);
+  // ---- S3 four lands + two crowns, one throne
+  { const a = win(t, V('lands') - .2, V('truce') + .2, .3);
+    if (a > 0) { const R = [['norm', '^норм'], ['anjou', '^анж'], ['aquit', '^аквит'], ['fland', '^фланд']];
+      R.forEach(([k, re], i) => { const t0 = WT(re, 'lands', 'throne', V('lands') + 1.5 + i * .7), q = a * ap(t, t0 - .1, .35) * (1 - .5 * ap(t, V('throne'), .5));
+        glowFill(SH[k], RED, q, { fill: .6, blur: 22, lw: 4 }); const c = cen(SH[k]); lab(TXT[k], c[0], c[1], q * (1 - ap(t, V('throne'), .4)), { size: 38, line: RED, sc: ap(t, t0, .4) }); });
+      lab(TXT.eng, -1.6, 52.6, a * ap(t, V('lands') + .3, .3) * (1 - ap(t, V('throne'), .4)), { size: 32, line: RED });
+      lab(TXT.fra, 2.6, 46.6, a * ap(t, V('lands') + .5, .3) * (1 - ap(t, V('throne'), .4)), { size: 32, line: BLUE });
+      head(TXT.lands, a * ap(t, V('lands'), .35) * (1 - ap(t, V('throne') - .2, .3)), RED, H * .16, 92);
+      const ta = win(t, V('throne'), V('truce') + .2, .3);
+      if (ta > 0) { const [px, py] = P(...PAR), [lx, ly] = P(...LON), m = ease(ap(t, V('throne') + .4, 1.6));
+        throneIcon(px, py - 40, 1.1, ta * ap(t, V('throne'), .4)); glowSpot(...PAR, ta * .7, GOLD, 40);
+        crownC(lerp(lx, px - 70, m), lerp(ly, py - 150, m), .9, ta, RED); crownC(lerp(px + 150, px + 70, m), lerp(py + 60, py - 150, m), .9, ta, BLUE);
+        head(TXT.throne, ta * ap(t, V('throne') + .2, .35), GOLD, H * .16, 92); } } }
+  // ---- S4 truces timeline, Black Death, Jacquerie, Wat Tyler
+  { const a = win(t, V('truce'), V('lose') + .1, .3);
+    if (a > 0) { timeline(V('truce') + .1, a * (1 - ap(t, V('plague') + .2, .4)));
+      head(TXT.truce, a * ap(t, V('truce'), .35) * (1 - ap(t, V('plague') - .2, .3)), '#fff', H * .14, 80);
+      const pa = win(t, V('plague'), V('lose') + .3, .4); plague(ap(t, V('plague'), 2.6), pa * .95);
+      if (pa > 0) pill(TXT.plague, W / 2, H * .17, 52, pa * (1 - ap(t, V('jac') - .2, .3)), { bg: 'rgba(8,6,14,.9)', line: 'rgba(255,255,255,.5)', scale: back(clamp(ap(t, V('plague'), .4))) });
+      const ja = win(t, V('jac') + .3, V('lose') + .1, .3); fire(...BEAU, ja * ap(t, V('jac') + .5, .3), 1.0);
+      lab(TXT.jac, BEAU[0], BEAU[1], ja * ap(t, V('jac') + .7, .3), { size: 40, dy: 70, line: RED, sc: ap(t, V('jac') + .7, .4) });
+      const tya = win(t, V('tyler') + .3, V('lose') + .1, .3); fire(...KENT, tya * ap(t, V('tyler') + .5, .3), 1.0);
+      lab(TXT.tyl, KENT[0], KENT[1], tya * ap(t, V('tyler') + .7, .3), { size: 40, dy: -150, line: RED, sc: ap(t, V('tyler') + .7, .4) }); } }
+  // ---- S5 1428: the north is English, Orléans besieged, Joan sets out
+  { const a = win(t, V('lose'), V('y1429') + .1, .3);
+    if (a > 0) { pill('1428', W / 2, H * .085, 50, a * ap(t, V('lose') + .2, .3), { line: GOLD, col: GOLD });
+      head(TXT.lose, a * ap(t, V('lose') + .3, .35) * (1 - ap(t, V('orl'), .3)), RED, H * .16, 84);
+      const oa = a * ap(t, V('orl') + .5, .35); glowSpot(...ORL, oa, BLUE, 40); siegeRing(...ORL, 95 * CAM.ppd / 140, oa * ap(t, V('orl') + .9, .3));
+      dot(...ORL, oa, BLUE); lab(TXT.orl + ' · ' + TXT.siege, ORL[0], ORL[1], oa, { size: 34, dy: 130, line: BLUE, sc: ap(t, V('orl') + .5, .4) });
+      const ga = a * ap(t, V('girl') + .2, .3); if (ga > 0) { dot(...DOM, ga, GOLD); lab(TXT.dom, DOM[0], DOM[1], ga * (1 - ap(t, V('name') + .5, .3)), { size: 28, dy: -55 });
+        walker([DOM, [3.8, 47.9], [1.6, 47.4], CHI, [1.0, 47.6], ORL], ease(ap(t, V('girl') + .5, V('y1429') - V('girl') - .2)) * .999, ga);
+        pill(TXT.joan, W / 2, H * .7, 54, a * ap(t, V('name'), .3), { bg: GOLD, col: BR.navy, line: '#fff', scale: back(clamp(ap(t, V('name'), .4))) }); } } }
+  // ---- S8 reconquest, Calais, Wars of the Roses
+  { const a = win(t, V('turn'), V('ent') + .3, .3);
+    if (a > 0) { head(TXT.win, a * ap(t, V('y1453') + .2, .35) * (1 - ap(t, V('roses'), .3)), BLUE, H * .16, 84);
+      const ca = a * ap(t, V('calais'), .3); glowSpot(...CAL, ca, RED, 30); dot(...CAL, ca, RED); lab(TXT.cal, CAL[0], CAL[1], ca, { size: 36, dy: 62, line: RED, sc: ap(t, V('calais'), .4) });
+      const ra = a * ap(t, V('roses') + .4, .35); if (ra > 0) { const [x, y] = P(-1.6, 52.6); rose(x - 70, y, 1.1, ra, '#D6283A'); rose(x + 70, y, 1.1, ra, '#F4F1EA');
+        pill(TXT.roses, W / 2, H * .2, Math.min(48, 48 * 900 / tw(TXT.roses, 48, 'MX')), ra, { line: GOLD, scale: back(clamp(ap(t, V('roses') + .4, .4))) });
+        pill(TXT.rosy, W / 2, H * .27, 40, ra * ap(t, V('roses') + .9, .3), { line: GOLD, col: GOLD }); } } }
+  // ---- film shots
+  await film('s6', t, V('y1429') - .15, V('burn') - .05);
+  { const a = win(t, V('y1429'), V('burn') - .05, .3); pill(TXT.f6, W / 2, H * .14, 56, a * ap(t, V('y1429') + .2, .3), { line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('y1429') + .2, .4))) }); }
+  await film('s7', t, V('burn') - .05, V('turn') + .05);
+  { const a = win(t, V('burn'), V('turn') + .05, .3); pill(TXT.f7a, W / 2, H * .14, 56, a * ap(t, V('burn') + .2, .3), { line: GOLD, col: GOLD });
+    const b = a * ap(t, V('age19'), .35); if (b > 0) { const p = back(clamp(ap(t, V('age19'), .45))); ctx.save(); ctx.globalAlpha = b; ctx.translate(W / 2, H * .3); ctx.scale(p, p);
+      txt(TXT.f7b, 0, 0, 130, GOLD, 'MB', { shadow: 'rgba(0,0,0,.9)', blur: 30, stroke: 12, sc: 'rgba(0,0,0,.55)' }); ctx.restore(); } }
+  // ---- S9 ENT quiz
+  { const a = win(t, V('ent'), V('cta'), .35);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a * .62; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      stamp(TXT.ent, W / 2, H * .2, a, ap(t, V('ent') + .05, .35));
+      const qa = a * ap(t, V('q'), .35); if (qa > 0) { plate(W / 2, H * .4, 940, 260, qa); TXT.q.forEach((l, i) => txt(l, W / 2, H * .4 - 50 + i * 100, Math.min(60, 60 * 860 / tw(l, 60, 'MB')), '#fff', 'MB', { blur: 0 })); }
+      const ok = ap(t, V('ans') + .1, .3);
+      TXT.opts.forEach(([k, v], i) => { const oa = a * ap(t, V('q') + .8 + i * .5, .3); if (oa <= 0) return; const y = H * .57 + i * 140, good = i === 1;
+        ctx.save(); ctx.globalAlpha = oa * (good ? 1 : 1 - .6 * ok); rr(W / 2 - 380, y - 52, 760, 104, 30); ctx.fillStyle = good && ok > 0 ? `rgba(254,179,0,${.25 + .7 * ok})` : 'rgba(19,11,84,.9)';
+        ctx.shadowColor = good && ok > 0 ? GOLD : 'rgba(0,0,0,.5)'; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(254,179,0,.6)'; ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.globalAlpha = oa * (good ? 1 : 1 - .6 * ok); txt(k + ')', W / 2 - 300, y + 3, 54, good && ok > .5 ? BR.navy : GOLD, 'MB', { blur: 0 }); txt(v, W / 2 + 40, y + 3, 58, good && ok > .5 ? BR.navy : '#fff', 'MB', { blur: 0 }); ctx.restore(); });
+      const t0 = V('ans') - 3.1, tp = ap(t, t0, 3.0), ta = a * win(t, t0, V('ans') + .2, .2);
+      if (ta > 0) { const n = Math.max(1, 3 - Math.floor(t - t0)); ctx.save(); ctx.globalAlpha = ta; ctx.beginPath(); ctx.arc(W / 2, H * .9 - 40, 62, 0, 7); ctx.fillStyle = BR.navy; ctx.fill(); ctx.restore();
+        ring(W / 2, H * .9 - 40, 62, 1 - tp, ta); txt(String(n), W / 2, H * .9 - 36, 64, '#fff', 'MB', { blur: 0 }); } } }
+  // ---- S10 loop: 116 again + CTA
+  { const a = ap(t, V('cta'), .4);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      head(TXT.t1, a, GOLD, H * .16, 92); const p = back(clamp(ap(t, V('cta'), .5)));
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * .36); ctx.scale(p, p); txt('116', 0, 0, 300, GOLD, 'MB', { shadow: GOLD, blur: 40, dy: 0, stroke: 12, sc: 'rgba(0,0,0,.5)' }); ctx.restore();
+      txt(TXT.years, W / 2, H * .36 + 175, 64, '#fff', 'MX', { blur: 10 }); ctaEnd(t); } }
+  { const q = Math.min(win(t, V('lands'), V('ent'), .3), 1) * (1 - win(t, V('y1429') - .2, V('turn') + .1, .2)); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55); captions(t); logo(.9); endCard(t, V('vend') + .4);
+}
+function rose(x, y, s, a, col) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s); ctx.rotate(TT * .3);
+  ctx.fillStyle = '#3c8a3c'; for (let i = 0; i < 5; i++) { ctx.save(); ctx.rotate(i * 1.2566 + .6); ctx.beginPath(); ctx.ellipse(0, -46, 9, 18, 0, 0, 7); ctx.fill(); ctx.restore(); }
+  for (let i = 0; i < 5; i++) { ctx.save(); ctx.rotate(i * 1.2566); ctx.beginPath(); ctx.arc(0, -22, 22, 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10; ctx.fill(); ctx.restore(); }
+  ctx.beginPath(); ctx.arc(0, 0, 14, 0, 7); ctx.fillStyle = GOLD; ctx.fill(); ctx.restore();
+}
+function ctaEnd(t) {
+  const t0 = V('cta'), pk = back(ap(t, t0 + .4, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .68); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(s, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .58 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  WORDS = await (await fetch(`words_${LANG}.json`)).json().catch(() => []);
+  SH = await (await fetch('shapes.json')).json();
+  try { CL = await (await fetch('clips/clips.json')).json(); } catch (e) { CL = {}; }
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all(['world', 'reg', 'det'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png'), loadImg('s6', 'hf/s6.jpg'), loadImg('s7', 'hf/s7.jpg')]));
+  for (const T of TEX) if (T.minppd) IM[T.k] = feather(IM[T.k], .04);
+  window.END = END; await render(0); return true;
+})();
+</script></body></html>
