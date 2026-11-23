@@ -1,0 +1,797 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Abai real names quiz (chalkboard)</title>
+<style>
+@font-face{font-family:Chalk;src:url(fonts/Caveat.ttf);font-weight:400 700}
+@font-face{font-family:Mont;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Chalkboard quiz reel «Абайдың шын аты» / «Абая звали не Абай» (KZ + RU, ?lang=kk|ru)
+// Deterministic: render(T) draws the frame for time T; timing from timeline_<lang>.json (timing.py).
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const main = document.getElementById('c');
+const M = main.getContext('2d');
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// ---------- seeded random ----------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+// ---------- colours ----------
+const BOARD = '#24332d';
+const CHALK = 'rgb(238,236,226)';
+const YEL = 'rgb(255,204,80)';   // amber chalk (JAS #FEB300, softened)
+const PINK = 'rgb(255,170,160)';
+const BLUE = 'rgb(170,215,255)';
+
+// ---------- board background (baked once) ----------
+const bg = mk();
+(function bakeBoard() {
+  const g = bg.getContext('2d');
+  g.fillStyle = BOARD; g.fillRect(0, 0, W, H);
+  const r = rng(7);
+  // big soft eraser clouds
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W, y = r() * H, rad = 180 + r() * 420;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, `rgba(255,255,255,${0.025 + r() * 0.03})`);
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // eraser swipe arcs
+  g.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.012 + r() * 0.02})`;
+    g.lineWidth = 60 + r() * 90;
+    g.beginPath();
+    const x = r() * W, y = r() * H;
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + (r() - .5) * 600, y + (r() - .5) * 200, x + (r() - .5) * 800, y + (r() - .5) * 300);
+    g.stroke();
+  }
+  // fine dust
+  const id = g.getImageData(0, 0, W, H), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (r() - 0.5) * 14;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    if (r() < 0.0025) { d[i] += 40; d[i + 1] += 40; d[i + 2] += 40; }
+  }
+  g.putImageData(id, 0, 0);
+  // vignette
+  const v = g.createRadialGradient(CX, CY, H * 0.25, CX, CY, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  // wooden frame
+  const fr = 26;
+  const wood = g.createLinearGradient(0, 0, W, 0);
+  wood.addColorStop(0, '#5a3b22'); wood.addColorStop(.5, '#6e4a2c'); wood.addColorStop(1, '#4e3320');
+  g.fillStyle = wood;
+  g.fillRect(0, 0, W, fr); g.fillRect(0, H - fr, W, fr); g.fillRect(0, 0, fr, H); g.fillRect(W - fr, 0, fr, H);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 4; g.strokeRect(fr, fr, W - 2 * fr, H - 2 * fr);
+})();
+
+// ---------- chalk grain mask (holes punched out of chalk) ----------
+const grain = mk();
+(function bakeGrain() {
+  const g = grain.getContext('2d');
+  const id = g.createImageData(W, H), d = id.data, r = rng(99);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = r();
+    d[i] = d[i + 1] = d[i + 2] = 0;
+    d[i + 3] = v < 0.32 ? 255 * (0.35 + r() * 0.65) : (v < 0.5 ? 70 : 0);
+  }
+  g.putImageData(id, 0, 0);
+  // horizontal drag streaks
+  g.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `rgba(0,0,0,${0.3 + r() * 0.5})`;
+    g.fillRect(r() * W, r() * H, 3 + r() * 16, 1.2);
+  }
+})();
+
+// ---------- layers ----------
+const L = mk(), LC = L.getContext('2d');     // chalk (world space)
+const U = mk(), UC = U.getContext('2d');     // ui text
+const T = mk(), TC = T.getContext('2d');     // temp (eraseable figure)
+const A = mk(), AC = A.getContext('2d');     // scene frame A
+const B = mk(), BC = B.getContext('2d');     // scene frame B
+let glows = [];                               // drawn additively after grain
+
+// ---------- geometry helpers ----------
+function catmull(cp, n = 10) {
+  if (cp.length < 3) return cp.slice();
+  const out = [];
+  for (let i = 0; i < cp.length - 1; i++) {
+    const p0 = cp[Math.max(0, i - 1)], p1 = cp[i], p2 = cp[i + 1], p3 = cp[Math.min(cp.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  out.push(cp[cp.length - 1]);
+  return out;
+}
+function ell(cx, cy, rx, ry, a0 = 0, a1 = Math.PI * 2, n = 36) {
+  const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return o;
+}
+const S = (pts, extra = {}) => Object.assign({ pts: catmull(pts) }, extra);      // smooth stroke
+const P = (pts, extra = {}) => Object.assign({ pts }, extra);                       // poly stroke
+const E = (cx, cy, rx, ry, extra = {}, a0, a1) => Object.assign({ pts: ell(cx, cy, rx, ry, a0, a1) }, extra);
+
+function prep(strokes) {
+  let tot = 0;
+  for (const s of strokes) {
+    let l = 0; s.cum = [0];
+    for (let i = 1; i < s.pts.length; i++) { l += Math.hypot(s.pts[i][0] - s.pts[i - 1][0], s.pts[i][1] - s.pts[i - 1][1]); s.cum.push(l); }
+    s.len = l; s.start = tot; tot += l;
+  }
+  strokes.total = tot;
+  return strokes;
+}
+
+// draw a stroke set, progress 0..1 along total length
+function drawStrokes(ctx, strokes, prog = 1, o = {}) {
+  const lw = o.lw || 7, col = o.color || CHALK;
+  const upto = strokes.total * clamp(prog);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const s of strokes) {
+    if (s.start >= upto) break;
+    const avail = upto - s.start;
+    ctx.save();
+    if (s.g === 'head' && o.head) o.head(ctx);
+    ctx.strokeStyle = s.color || col;
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha) * (pass ? 0.45 : 1);
+      ctx.lineWidth = (s.lw || lw) * (pass ? 0.55 : 1);
+      ctx.beginPath();
+      const ox = pass ? 1.6 : 0, oy = pass ? -1.2 : 0;
+      ctx.moveTo(s.pts[0][0] + ox, s.pts[0][1] + oy);
+      for (let i = 1; i < s.pts.length; i++) {
+        if (s.cum[i] <= avail) ctx.lineTo(s.pts[i][0] + ox, s.pts[i][1] + oy);
+        else {
+          const f = (avail - s.cum[i - 1]) / (s.cum[i] - s.cum[i - 1]);
+          ctx.lineTo(lerp(s.pts[i - 1][0], s.pts[i][0], f) + ox, lerp(s.pts[i - 1][1], s.pts[i][1], f) + oy);
+          break;
+        }
+      }
+      ctx.stroke();
+    }
+    if (s.fill && avail >= s.len) { ctx.globalAlpha = 0.9; ctx.fillStyle = s.color || col; ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// ---------- text helpers ----------
+function font(px, w = 700, fam = 'Chalk') { return `${w} ${px}px ${fam}`; }
+// write-on text revealed left->right (or right->left for rtl)
+function chalkText(ctx, txt, x, y, px, prog = 1, o = {}) {
+  if (prog <= 0) return;
+  ctx.save();
+  ctx.font = font(px, o.w || 700, o.fam || 'Chalk');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (o.rtl) ctx.direction = 'rtl';
+  const w = ctx.measureText(txt).width;
+  ctx.beginPath();
+  const pw = (w + px) * clamp(prog);
+  if (o.rtl) ctx.rect(x + w / 2 + px / 2 - pw, y - px * 1.2, pw, px * 2.4);
+  else ctx.rect(x - w / 2 - px / 2, y - px * 1.2, pw, px * 2.4);
+  ctx.clip();
+  ctx.fillStyle = o.color || CHALK;
+  ctx.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  ctx.fillText(txt, x, y);
+  ctx.globalAlpha *= 0.4; ctx.fillText(txt, x + 1.5, y - 1.5);
+  ctx.restore();
+  return w;
+}
+function wrap(ctx, txt, px, maxW) {
+  ctx.font = font(px); const words = txt.split(' '); const lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  if (lines.length === 2) {           // balance two lines
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const l1 = words.slice(0, k).join(' '), l2 = words.slice(k).join(' ');
+      const m = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
+      if (m <= maxW && (!best || m < best[0])) best = [m, [l1, l2]];
+    }
+    if (best) return best[1];
+  }
+  return lines;
+}
+// headline at top (screen space), written on over `dur` seconds
+function headline(txt, t, o = {}) {
+  const px = o.px || 92, y0 = o.y || 210;
+  const lines = wrap(UC, txt, px, 940);
+  const tot = lines.reduce((a, l) => a + l.length, 0);
+  let acc = 0; const dur = o.dur || 0.9;
+  lines.forEach((ln, i) => {
+    const a = acc / tot, b = (acc + ln.length) / tot; acc += ln.length;
+    const p = seg(t, (o.t0 || 0) + a * dur, (o.t0 || 0) + b * dur);
+    chalkText(UC, ln, CX, y0 + i * px * 1.05, px, p, { color: o.color || YEL });
+  });
+  // underline
+  const ul = seg(t, (o.t0 || 0) + dur, (o.t0 || 0) + dur + 0.3);
+  if (ul > 0 && !o.noLine) {
+    const y = y0 + (lines.length - 1) * px * 1.05 + px * 0.62;
+    UC.save(); UC.strokeStyle = o.color || YEL; UC.lineWidth = 6; UC.lineCap = 'round'; UC.globalAlpha = .8;
+    UC.beginPath(); UC.moveTo(CX - 200, y); UC.quadraticCurveTo(CX, y + 10, CX - 200 + 400 * ul, y - 2); UC.stroke(); UC.restore();
+  }
+}
+function glowText(txt, x, y, px, alpha, color = YEL, fam = 'Chalk', rtl = false) {
+  glows.push({ txt, x, y, px, alpha, color, fam, rtl });
+}
+// multi-colour chalk text, centred at x: parts = [[txt, colour], ...]
+function chalkParts(ctx, parts, x, y, px, prog = 1) {
+  if (prog <= 0) return [];
+  ctx.save(); ctx.font = font(px);
+  const ws = parts.map(p => ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0);
+  let cx = x - tot / 2; const boxes = [];
+  ctx.beginPath(); ctx.rect(x - tot / 2 - px / 2, y - px * 1.2, (tot + px) * clamp(prog), px * 2.4); ctx.clip();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  parts.forEach((p, i) => {
+    ctx.fillStyle = p[1]; ctx.globalAlpha = 1; ctx.fillText(p[0], cx, y);
+    ctx.globalAlpha = 0.4; ctx.fillText(p[0], cx + 1.5, y - 1.5);
+    boxes.push([cx, ws[i]]); cx += ws[i];
+  });
+  ctx.restore();
+  return boxes;
+}
+// sponge path: zigzag rows across a box, returns points up to p
+function spongePath(p, x0 = 140, x1 = 940, top = 260, bot = 1760, rows = 7) {
+  const pts = [];
+  for (let r = 0; r <= rows; r++) pts.push([r % 2 ? x1 : x0, lerp(top, bot, r / rows)]);
+  const all = catmull(pts, 16);
+  return all.slice(0, Math.max(1, Math.floor(all.length * clamp(p))));
+}
+function sponge(ctx, q) {
+  ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(-0.15);
+  ctx.fillStyle = 'rgb(214,178,92)'; ctx.strokeStyle = 'rgb(120,90,40)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.roundRect(-120, -60, 240, 120, 24); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgb(90,70,50)'; ctx.beginPath(); ctx.roundRect(-120, 22, 240, 38, 14); ctx.fill();
+  ctx.restore();
+}
+function arrow(ctx, pts, prog, o = {}) {
+  const st = prep([S(pts, { color: o.color, lw: o.lw || 6 })]);
+  drawStrokes(ctx, st, prog);
+  if (prog >= 0.98) {
+    const a = pts[pts.length - 1], b = pts[pts.length - 2], ang = Math.atan2(a[1] - b[1], a[0] - b[0]), L = 34;
+    drawStrokes(ctx, prep([P([[a[0] - L * Math.cos(ang - 0.5), a[1] - L * Math.sin(ang - 0.5)], a, [a[0] - L * Math.cos(ang + 0.5), a[1] - L * Math.sin(ang + 0.5)]], { color: o.color, lw: o.lw || 6 })]), 1);
+  }
+}
+function timer(x, y, r, lt, t0, dur = 3, appear = 0) {
+  const ap = seg(lt, appear, appear + 0.4);
+  if (ap <= 0) return;
+  drawStrokes(LC, prep([E(x, y, r, r, { lw: 5, alpha: .6 })]), ap, { alpha: 0.55 });
+  const q = clamp((lt - t0) / dur), left = 1 - q;
+  if (lt >= t0) {
+    LC.save(); LC.strokeStyle = left < 0.34 ? PINK : YEL; LC.lineWidth = 14; LC.lineCap = 'round';
+    LC.beginPath(); LC.arc(x, y, r - 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); LC.stroke(); LC.restore();
+    if (q < 1) {
+      const n = Math.ceil(dur * left - 1e-6), fr = (dur * left) % 1, pop = 1 + 0.18 * Math.max(0, fr - 0.8) * 5;
+      chalkText(LC, String(n), x, y + 6, 120 * pop, 1, { color: left < 0.34 ? PINK : CHALK });
+      glowText(String(n), x, y + 6, 120 * pop, 0.25, left < 0.34 ? PINK : YEL);
+    }
+  } else chalkText(LC, '3', x, y + 6, 120, ap);
+}
+// rag wipe: erase left -> right on chalk, ui and photo layers
+function ragWipe(p) {
+  if (p <= 0) return;
+  const x = lerp(-200, W + 260, ease(p));
+  for (const c of [LC, UC, PC]) {
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out';
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(x, 0);
+    for (let y = 0; y <= H; y += 80) c.lineTo(x - 60 + 40 * Math.sin(y * 0.013 + 1), y);
+    c.lineTo(0, H); c.closePath(); c.fill(); c.restore();
+  }
+  LC.save(); LC.setTransform(1, 0, 0, 1, 0, 0); LC.fillStyle = 'rgba(240,240,230,0.05)'; LC.fillRect(0, 0, Math.max(0, x - 80), H); LC.restore();
+  if (p < 1) for (let k = 0; k < 4; k++) rag(UC, [x - 40, 260 + k * 460 + 60 * Math.sin(p * 9 + k)]);
+}
+function rag(ctx, q) {
+  ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(0.2);
+  ctx.fillStyle = 'rgb(214,178,92)'; ctx.strokeStyle = 'rgb(120,90,40)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.roundRect(-70, -130, 140, 260, 26); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgb(90,70,50)'; ctx.beginPath(); ctx.roundRect(22, -130, 48, 260, 16); ctx.fill();
+  ctx.restore();
+}
+function tick(x, y, s, p, col = YEL) { drawStrokes(LC, prep([P([[x - 40 * s, y], [x - 6 * s, y + 40 * s], [x + 60 * s, y - 56 * s]], { color: col, lw: 12 * s })]), p); }
+function fitPx(txt, px, maxW) { UC.font = font(px); const w = UC.measureText(txt).width; return w > maxW ? px * maxW / w : px; }
+// =============================================================
+// Epigenetics / Dutch Hunger Winter: texts, figures, scenes
+// =============================================================
+const LANG = new URLSearchParams(location.search).get('lang') || 'kk';
+const NAVY = '#130B54', AMBER = '#FEB300';
+const GREY = 'rgba(200,200,190,0.55)';
+const TX = {
+  kk: {
+    h1: ['ӘЖЕҢНІҢ ӨМІРІ', '→ СЕНІҢ ГЕНІҢ'], names: ['әже', 'ана', 'сен'], dnaOk: 'ДНҚ өзгермейді',
+    epi: 'ЭПИГЕНЕТИКА', epiSub: 'гендердің «үстіндегі» белгілер', ubt: 'ҰБТ · биология', newT: 'жаңа тақырып!',
+    film: 'НИДЕРЛАНД · 1944',
+    kcal: '400–800 ККАЛ', norm: 'қалыпты', perDay: 'күніне', years: '1944–1945', less: 'бірнеше есе аз!', preg: 'бала күткен аналар',
+    h5: '60 ЖЫЛДАН КЕЙІН', y2: '2000-жж.', ill: ['қант диабеті', 'артық салмақ', 'жүрек'], why: 'Бірақ неге?',
+    h6: 'ДНҚ МЕТИЛДЕНУІ', gene: 'ГЕН', off: 'өшірулі', on: 'қосулы', same: 'әріптері сол қалпы', piano: 'пернелер бірдей',
+    h7: '60 ЖЫЛ ӨТСЕ ДЕ', hungry: 'аштық тобы', control: 'бақылау тобы', grand: 'немерелер?', some: 'кейбір зерттеулер', rev: 'көбіне қайтымды',
+    q: 'Эпигенетикада не өзгереді?', ubtQ: 'ҰБТ сұрағы', o: ['А) ДНҚ тізбегі', 'Ә) ген белсенділігі', 'Б) хромосома саны'],
+    link: 'СІЛТЕМЕ ШАПКАДА', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'],
+  },
+  ru: {
+    h1: ['ЖИЗНЬ БАБУШКИ', '→ ТВОИ ГЕНЫ'], names: ['бабушка', 'мама', 'ты'], dnaOk: 'ДНК не меняется',
+    epi: 'ЭПИГЕНЕТИКА', epiSub: 'метки «поверх» генов', ubt: 'ЕНТ · биология', newT: 'новая тема!',
+    film: 'НИДЕРЛАНДЫ · 1944',
+    kcal: '400–800 ККАЛ', norm: 'норма', perDay: 'в день', years: '1944–1945', less: 'в несколько раз меньше!', preg: 'ждали детей',
+    h5: 'ЧЕРЕЗ 60 ЛЕТ', y2: '2000-е', ill: ['диабет', 'лишний вес', 'сердце'], why: 'Но почему?',
+    h6: 'МЕТИЛИРОВАНИЕ ДНК', gene: 'ГЕН', off: 'выключен', on: 'включён', same: 'буквы те же', piano: 'клавиши те же',
+    h7: 'ДАЖЕ СПУСТЯ 60 ЛЕТ', hungry: 'голодная группа', control: 'контрольная', grand: 'внуки?', some: 'по некоторым исследованиям', rev: 'часто обратимы',
+    q: 'Что меняется при эпигенетике?', ubtQ: 'Вопрос ЕНТ', o: ['А) последовательность ДНК', 'Б) активность генов', 'В) число хромосом'],
+    link: 'ССЫЛКА В ШАПКЕ', cta: ['Перейдите по ссылке', 'в шапке профиля'],
+  },
+}[LANG];
+
+// ---------- photo layer + images ----------
+const PH = mk(), PC = PH.getContext('2d');
+const IMG = {};
+function loadImg(k, src) { return new Promise(r => { const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = src; }); }
+
+let MK = {};
+const mk_ = k => MK[k] - SC.start;      // mark in scene-local time
+function figAt(Fg, x, y, s, p, o = {}) { LC.save(); LC.translate(x, y); LC.scale(s, s); drawStrokes(LC, Fg, p, o); LC.restore(); }
+
+// ---------- people (origin = feet centre, ~520 tall) ----------
+function person(kind) {
+  const st = [];
+  const hy = kind === 'kid' ? -250 : -430, hr = kind === 'kid' ? 50 : 58;
+  st.push(E(0, hy, hr, hr * 1.12));
+  if (kind === 'gran') {
+    st.push(E(0, hy - hr * 1.05, 30, 22));                                   // bun
+    st.push(S([[-hr, hy - 10], [-hr * 0.6, hy - hr * 0.9], [hr * 0.6, hy - hr * 0.9], [hr, hy - 10]], { lw: 5 }));
+    st.push(E(-20, hy + 2, 13, 10, { lw: 4 })); st.push(E(20, hy + 2, 13, 10, { lw: 4 }));   // glasses
+    st.push(S([[-hr * 0.7, hy + hr * 1.1], [-110, -240], [-120, 0]]));           // dress
+    st.push(S([[hr * 0.7, hy + hr * 1.1], [110, -240], [120, 0]]));
+    st.push(P([[-120, 0], [120, 0]], { lw: 5 }));
+    st.push(S([[-70, -300], [-130, -170], [-150, -150]], { lw: 6 }));            // arm to cane
+    st.push(P([[-150, -170], [-150, 0]], { lw: 7, color: YEL }));               // cane
+    st.push(S([[-168, -186], [-150, -200], [-132, -186]], { lw: 7, color: YEL }));
+    st.push(S([[70, -300], [100, -190]], { lw: 6 }));
+  } else if (kind === 'mom') {
+    st.push(S([[-hr, hy + 10], [-hr * 1.1, hy - hr * 0.6], [0, hy - hr * 1.25], [hr * 1.1, hy - hr * 0.6], [hr * 1.15, hy + hr * 1.3]], { lw: 6 }));  // hair
+    st.push(S([[-50, hy + hr * 1.1], [-100, -200], [-96, 0]]));
+    st.push(S([[50, hy + hr * 1.1], [100, -200], [96, 0]]));
+    st.push(P([[-96, 0], [96, 0]], { lw: 5 }));
+    st.push(S([[-60, -300], [-110, -180]], { lw: 6 })); st.push(S([[60, -300], [110, -180]], { lw: 6 }));
+  } else {
+    st.push(S([[-hr, hy - 10], [-hr * 0.5, hy - hr * 1.1], [hr * 0.3, hy - hr * 1.05], [hr, hy - 20]], { lw: 5 }));
+    st.push(S([[-38, hy + hr * 1.1], [-70, -110], [-60, -100]]));
+    st.push(S([[38, hy + hr * 1.1], [70, -110], [60, -100]]));
+    st.push(P([[-60, -100], [60, -100]], { lw: 5 }));
+    st.push(P([[-26, -100], [-30, 0]], { lw: 6 })); st.push(P([[26, -100], [30, 0]], { lw: 6 }));
+    st.push(S([[-40, -170], [-90, -110]], { lw: 6 })); st.push(S([[40, -170], [90, -110]], { lw: 6 }));
+  }
+  // simple faces: two dots + smile
+  st.push(E(-18, hy - 4, 3, 3, { lw: 6 })); st.push(E(18, hy - 4, 3, 3, { lw: 6 }));
+  st.push(E(0, hy + 14, 18, 12, { lw: 4 }, 0.3, Math.PI - 0.3));
+  return prep(st);
+}
+const GRAN = person('gran'), MOM = person('mom'), KID = person('kid');
+function pregnant() {
+  const hy = -430, hr = 56;
+  return prep([
+    E(0, hy, hr, hr * 1.12),
+    S([[-hr, hy + 10], [-hr * 1.1, hy - hr * 0.6], [0, hy - hr * 1.25], [hr * 1.1, hy - hr * 0.6], [hr * 1.1, hy + 40]], { lw: 6 }),
+    S([[-40, hy + hr * 1.1], [-70, -250], [-90, 0]]),
+    S([[40, hy + hr * 1.1], [70, -300], [150, -210], [120, -110], [90, 0]]),
+    P([[-90, 0], [90, 0]], { lw: 5 }),
+    S([[30, -330], [100, -250], [80, -190]], { lw: 6 }),
+    E(-18, hy - 4, 3, 3, { lw: 6 }), E(18, hy - 4, 3, 3, { lw: 6 }),
+    S([[-14, hy + 22], [0, hy + 18], [14, hy + 22]], { lw: 4 }),
+  ]);
+}
+const PREG = pregnant();
+
+// DNA double helix along x from x0..x1 at y, amplitude a, n turns
+function helix(x0, x1, y, a, turns, o = {}) {
+  const A = [], B = [], R = [], N = 90;
+  for (let i = 0; i <= N; i++) {
+    const f = i / N, x = lerp(x0, x1, f), ph = f * turns * Math.PI * 2;
+    A.push([x, y + Math.sin(ph) * a]); B.push([x, y - Math.sin(ph) * a]);
+  }
+  const rungs = Math.round(turns * 8);
+  for (let k = 1; k < rungs; k++) {
+    const f = k / rungs, x = lerp(x0, x1, f), ph = f * turns * Math.PI * 2, s = Math.sin(ph) * a;
+    if (Math.abs(s) > a * 0.15) R.push(P([[x, y + s], [x, y - s]], { lw: 4, color: o.rung || CHALK }));
+  }
+  return prep([P(A, { color: o.c1 || CHALK, lw: o.lw || 7 }), P(B, { color: o.c2 || BLUE, lw: o.lw || 7 }), ...R]);
+}
+// padlock (closed or open)
+function lock(x, y, s, p, open = 0) {
+  LC.save(); LC.translate(x, y); LC.scale(s, s);
+  if (p > 0) { LC.save(); LC.globalAlpha = clamp(p * 2) * 0.95; LC.fillStyle = BOARD; LC.fillRect(-58, -8, 116, 96); LC.restore(); }
+  drawStrokes(LC, prep([P([[-60, -10], [60, -10], [60, 90], [-60, 90], [-60, -10]], { color: YEL, lw: 8 }),
+    E(0, 30, 10, 10, { color: YEL, lw: 6 }), P([[0, 40], [0, 66]], { color: YEL, lw: 6 })]), p);
+  LC.translate(open * 50, -open * 40); LC.rotate(-open * 0.5);
+  drawStrokes(LC, prep([S([[-38, -10], [-40, -70], [0, -100], [40, -70], [38, -10]], { color: YEL, lw: 8 })]), seg(p, 0.5, 1) * 1.0001);
+  LC.restore();
+}
+// methyl cap: small circle with "CH3" dropping onto (x, y)
+function methyl(x, y, p, o = {}) {
+  if (p <= 0) return;
+  const dy = lerp(-260, 0, easeOut(p));
+  LC.save(); LC.globalAlpha = clamp(p * 3);
+  drawStrokes(LC, prep([E(x, y - 46 + dy, 44, 34, { color: PINK, lw: 6 })]), 1);
+  chalkText(LC, 'CH₃', x, y - 46 + dy, o.px || 38, 1, { color: PINK });
+  if (p > 0.95) drawStrokes(LC, prep([P([[x, y - 12], [x, y]], { color: PINK, lw: 5 })]), 1);
+  LC.restore();
+}
+function plate(x, y, s, p) {
+  figAt(prep([E(0, 0, 200, 70), E(0, 0, 140, 44, { lw: 4 }), P([[-300, -10], [-300, 60]], { lw: 5 }), P([[-320, -10], [-320, 20], [-280, 20], [-280, -10]], { lw: 4 }),
+    P([[300, -10], [300, 60]], { lw: 5 }), S([[290, -10], [300, -40], [310, -10]], { lw: 4 })]), x, y, s, p);
+}
+function crumb(x, y, p) { figAt(prep([S([[-40, 10], [-36, -16], [0, -24], [36, -16], [40, 10], [-40, 10]], { color: YEL, lw: 5 })]), x, y, 1, p); }
+function clock(x, y, r, t, p) {
+  drawStrokes(LC, prep([E(x, y, r, r, { lw: 6 })]), p);
+  if (p < 1) return;
+  const a = -Math.PI / 2 + Math.floor(t * 2) * Math.PI / 6;
+  LC.save(); LC.strokeStyle = YEL; LC.lineWidth = 6; LC.lineCap = 'round';
+  LC.beginPath(); LC.moveTo(x, y); LC.lineTo(x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.8); LC.stroke();
+  LC.beginPath(); LC.moveTo(x, y); LC.lineTo(x, y - r * 0.5); LC.stroke(); LC.restore();
+}
+function iconDrop(x, y, p) { figAt(prep([S([[0, -60], [-34, 0], [-30, 30], [0, 46], [30, 30], [34, 0], [0, -60]], { color: PINK, lw: 6 }), P([[-10, 6], [10, 6]], { color: PINK, lw: 4 }), P([[0, -4], [0, 16]], { color: PINK, lw: 4 })]), x, y, 1, p); }
+function iconScale(x, y, p) { figAt(prep([P([[-60, 40], [60, 40], [50, -30], [-50, -30], [-60, 40]], { color: PINK, lw: 6 }), E(0, 0, 22, 22, { color: PINK, lw: 4 }, Math.PI, Math.PI * 2), P([[0, 0], [14, -14]], { color: PINK, lw: 4 })]), x, y, 1, p); }
+function iconHeart(x, y, p) { figAt(prep([S([[0, 40], [-50, -6], [-44, -40], [-14, -44], [0, -20], [14, -44], [44, -40], [50, -6], [0, 40]], { color: PINK, lw: 6 })]), x, y, 1, p); }
+// piano keyboard; taped = indices of white keys that are taped shut
+function piano(x, y, w, p, tapeP, taped) {
+  const n = 10, kw = w / n, h = 230, x0 = x - w / 2;
+  const st = [P([[x0, y], [x0 + w, y], [x0 + w, y + h], [x0, y + h], [x0, y]], { lw: 6 })];
+  for (let i = 1; i < n; i++) st.push(P([[x0 + i * kw, y], [x0 + i * kw, y + h]], { lw: 4 }));
+  drawStrokes(LC, prep(st), p);
+  if (p >= 1) {                  // black keys
+    LC.save(); LC.fillStyle = 'rgba(235,233,222,0.85)';
+    for (let i = 1; i < n; i++) if (![3, 7].includes(i)) LC.fillRect(x0 + i * kw - kw * 0.28, y, kw * 0.56, h * 0.58);
+    LC.restore();
+  }
+  taped.forEach((k, j) => {
+    const q = seg(tapeP, j * 0.25, j * 0.25 + 0.35); if (q <= 0) return;
+    LC.save(); LC.translate(x0 + (k + 0.5) * kw, y + h * 0.8); LC.rotate(-0.5 + j * 0.3);
+    LC.fillStyle = `rgba(255,170,160,${0.8 * q})`; LC.fillRect(-kw * 0.75, -16, kw * 1.5 * q, 32); LC.restore();
+  });
+}
+// gene bar (rectangle on the strand) with label
+function geneBox(x, y, w, p, state, label) {
+  const col = state === 'off' ? GREY : YEL;
+  drawStrokes(LC, prep([P([[x - w / 2, y - 50], [x + w / 2, y - 50], [x + w / 2, y + 50], [x - w / 2, y + 50], [x - w / 2, y - 50]], { color: col, lw: 8 })]), p);
+  if (p >= 1) { LC.save(); LC.fillStyle = 'rgba(36,51,45,0.92)'; LC.fillRect(x - w / 2 + 8, y - 42, w - 16, 84); LC.restore(); chalkText(LC, label, x, y + 4, 64, 1, { color: col }); }
+}
+function dashed(ctx, pts, p, col = CHALK) {
+  ctx.save(); ctx.setLineDash([22, 18]); ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  const all = catmull(pts, 16), n = Math.floor(all.length * clamp(p));
+  if (n > 1) { ctx.beginPath(); ctx.moveTo(all[0][0], all[0][1]); for (let i = 1; i < n; i++) ctx.lineTo(all[i][0], all[i][1]); ctx.stroke(); }
+  ctx.restore();
+}
+// sponge wipe (erase along zig-zag, sponge drawn at the tip)
+function spongeWipe(p) {
+  if (p <= 0) return;
+  const pts = spongePath(p, 100, 980, 160, 1800, 6);
+  for (const c of [LC, UC, PC]) {
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out';
+    c.lineWidth = 380; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (const q of pts) c.lineTo(q[0], q[1]); c.stroke(); c.restore();
+  }
+  if (p < 1) { UC.save(); UC.setTransform(1, 0, 0, 1, 0, 0); sponge(UC, pts[pts.length - 1]); UC.restore(); }
+}
+function family(t, p0, o = {}) {
+  const xs = [230, 540, 850], F = [GRAN, MOM, KID], y = o.y || 1060;
+  F.forEach((f, i) => {
+    figAt(f, xs[i], y, 0.9, seg(t, p0 + i * 0.35, p0 + i * 0.35 + 1.0));
+    chalkText(LC, TX.names[i], xs[i], y + 70, 62, seg(t, p0 + i * 0.35 + 0.8, p0 + i * 0.35 + 1.2), { alpha: .9 });
+  });
+}
+const DNA1 = helix(110, 970, 1340, 60, 3.5);
+
+const SCN = {};
+SCN.s1 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.06, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    family(t, 0.0);
+    drawStrokes(LC, DNA1, seg(t, 0.9, 2.4));
+    const dt = mk_('dna');
+    lock(540, 1300, 0.9, seg(t, dt, dt + 0.8));
+    chalkText(LC, TX.dnaOk, 540, 1520, 72, seg(t, dt + 0.3, dt + 1.0), { color: YEL });
+    const ht = mk_('how');
+    chalkText(LC, '?', 860, 1640, 220, seg(t, ht, ht + 0.25), { color: PINK });
+    if (t > ht + 0.25) glowText('?', 860, 1640, 220, 0.3 + 0.1 * Math.sin(t * 7), PINK);
+    UC.save(); headline(TX.h1[0], t, { t0: 0.05, dur: 0.6, px: 100, y: 200, noLine: true });
+    headline(TX.h1[1], t, { t0: 0.7, dur: 0.6, px: 100, y: 315, color: CHALK }); UC.restore();
+    spongeWipe(seg(t, d - 0.55, d));
+  }
+};
+SCN.s2 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.08, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    const px = fitPx(TX.epi, 170, 940);
+    chalkText(LC, TX.epi, CX, 760, px, seg(t, 0.05, 1.2), { color: YEL });
+    if (t > 1.2) glowText(TX.epi, CX, 760, px, 0.25 + 0.06 * Math.sin(t * 4), YEL);
+    drawStrokes(LC, prep([S([[120, 870], [540, 890], [960, 865]], { color: YEL, lw: 7 })]), seg(t, 1.1, 1.5));
+    chalkText(LC, TX.epiSub, CX, 980, fitPx(TX.epiSub, 70, 920), seg(t, 1.4, 2.2));
+    drawStrokes(LC, helix(260, 820, 1160, 40, 2, { lw: 5 }), seg(t, 1.6, 2.6));
+    [360, 540, 720].forEach((x, i) => methyl(x, 1160 - 40 * Math.sin(((x - 260) / 560) * 4 * Math.PI) * 0 - 40, seg(t, 2.4 + i * 0.25, 2.9 + i * 0.25), { px: 30 }));
+    const ut = mk_('ubt');
+    chalkText(LC, TX.ubt, CX, 1420, 110, seg(t, ut, ut + 0.8));
+    drawStrokes(LC, prep([E(CX, 1428, 330, 110, { color: YEL, lw: 7 }, -Math.PI * 0.55, Math.PI * 1.45)]), seg(t, ut + 0.7, ut + 1.3));
+    chalkText(LC, TX.newT, 800, 1580, 66, seg(t, ut + 1.2, ut + 1.7), { color: PINK });
+    const wt = mk_('winter');
+    // a snowflake is drawn as the "dot" before the film
+    const fl = []; for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; fl.push(P([[CX, 1760], [CX + Math.cos(a) * 60, 1760 + Math.sin(a) * 60]], { lw: 5, color: BLUE })); }
+    drawStrokes(LC, prep(fl), seg(t, wt + 0.4, wt + 1.2));
+  }
+};
+// s3: film shot (Higgsfield clip frames), turns into chalk drawing at the end
+let FILM = { n: 0, fps: 24 }, filmFrame = null;
+SCN.s3 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    // chalk sketch of the last film frame appears under the film
+    const sk = IMG.sketch, chalkIn = seg(t, d - 1.3, d - 0.4);
+    if (sk) { PC.save(); PC.globalAlpha = 1; PC.drawImage(sk, 0, 0, W, H); PC.restore(); }
+    if (filmFrame) {
+      PC.save(); PC.globalAlpha = 1 - ease(chalkIn);
+      PC.drawImage(filmFrame, 0, 0, W, H);
+      // light vignette for text legibility
+      const g = PC.createLinearGradient(0, 0, 0, 600); g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      PC.fillStyle = g; PC.fillRect(0, 0, W, 600); PC.restore();
+    }
+    // title pill
+    const p = seg(t, 0.4, 0.9);
+    if (p > 0) {
+      UC.save(); UC.globalAlpha = ease(p); UC.font = '800 64px Mont'; const w = UC.measureText(TX.film).width + 90;
+      UC.fillStyle = 'rgba(19,11,84,0.82)'; UC.beginPath(); UC.roundRect(CX - w / 2, 250, w, 110, 55); UC.fill();
+      UC.fillStyle = AMBER; UC.textAlign = 'center'; UC.textBaseline = 'middle'; UC.fillText(TX.film, CX, 308); UC.restore();
+    }
+    spongeWipe(seg(t, d - 0.4, d));
+  }
+};
+SCN.s4 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.05, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    chalkText(LC, TX.years, CX, 430, 90, seg(t, 0.1, 0.7));
+    plate(CX, 760, 1, seg(t, 0.2, 1.2));
+    crumb(CX, 745, seg(t, 1.1, 1.4));
+    // counter 2000 -> 600 (shown as 400–800)
+    const kt = mk_('kcal');
+    const c = seg(t, 0.8, kt + 0.2), v = Math.round(lerp(2000, 600, easeOut(c)) / 10) * 10;
+    if (t < kt + 0.25) {
+      chalkText(LC, String(v), CX, 1010, 150, seg(t, 0.8, 1.1), { color: c > 0.5 ? PINK : CHALK });
+      chalkText(LC, `${TX.perDay} · ккал`, CX, 1110, 60, seg(t, 1.0, 1.4), { alpha: .85 });
+    } else {
+      chalkText(LC, '400–800', CX, 1010, 170, seg(t, kt + 0.25, kt + 0.6), { color: PINK });
+      if (t > kt + 0.6) glowText('400–800', CX, 1010, 170, 0.3, PINK);
+      chalkText(LC, `${TX.perDay} · ккал`, CX, 1120, 60, 1, { alpha: .85 });
+    }
+    // norm bar vs hunger bar
+    const lt = mk_('less');
+    drawStrokes(LC, prep([P([[180, 1250], [900, 1250]], { lw: 30, color: 'rgba(238,236,226,0.45)' })]), seg(t, lt, lt + 0.6));
+    chalkText(LC, `${TX.norm} ≈ 2000`, 540, 1320, 54, seg(t, lt + 0.3, lt + 0.8), { alpha: .8 });
+    drawStrokes(LC, prep([P([[180, 1250], [180 + 720 * 0.3, 1250]], { lw: 30, color: PINK })]), seg(t, lt + 0.6, lt + 1.0));
+    chalkText(LC, TX.less, CX, 1410, fitPx(TX.less, 70, 900), seg(t, lt + 0.8, lt + 1.5), { color: PINK });
+    const pt = mk_('preg');
+    figAt(PREG, 300, 1830, 0.5, seg(t, pt, pt + 1.3));
+    chalkText(LC, TX.preg, 680, 1660, fitPx(TX.preg, 62, 560), seg(t, pt + 0.8, pt + 1.4), { color: YEL });
+    clock(880, 430, 70, t, seg(t, 0.4, 0.9));
+    headline(TX.kcal, t, { t0: kt - SC.start * 0 + 0.2, dur: 0.6, px: 110, y: 200 });
+    // arrow "+60" teaser at the end
+    chalkText(LC, '+60', 860, 1820, 80, seg(t, d - 0.9, d - 0.5), { color: YEL });
+    ragWipe(seg(t, d - 0.45, d));
+  }
+};
+SCN.s5 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.05, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    headline(TX.h5, t, { t0: 0.05, dur: 0.6, px: 110, y: 200 });
+    arrow(LC, [[110, 820], [540, 815], [960, 820]], seg(t, 0.4, 1.6), { lw: 8 });
+    chalkText(LC, '1945', 200, 740, 72, seg(t, 0.6, 1.0));
+    chalkText(LC, TX.y2, 860, 740, 72, seg(t, 1.4, 1.8), { color: YEL });
+    // baby -> adult
+    const bt = 0.3;
+    figAt(prep([E(0, -60, 40, 40), S([[-50, -10], [0, 20], [50, -10], [40, 30], [-40, 30], [-50, -10]], { lw: 6 })]), 200, 1000, 1, seg(t, bt, bt + 1));
+    const wt = mk_('watch');
+    dashed(LC, [[260, 960], [540, 900], [760, 960]], seg(t, wt, wt + 1.2), YEL);
+    figAt(MOM, 860, 1380, 0.75, seg(t, wt + 0.6, wt + 1.8));
+    // magnifier "scientists watched"
+    figAt(prep([E(0, 0, 50, 50, { lw: 7 }), P([[36, 36], [90, 90]], { lw: 10 })]), 520, 1080, 1, seg(t, wt, wt + 0.6));
+    const it = mk_('ill');
+    const ys = [1520, 1660, 1800];
+    [iconDrop, iconScale, iconHeart].forEach((f, i) => {
+      const q = seg(t, it + i * 0.5, it + i * 0.5 + 0.5);
+      f(200, ys[i], q);
+      chalkText(LC, TX.ill[i], 500, ys[i], 66, q, { color: PINK });
+    });
+    const yt = mk_('why');
+    chalkText(LC, TX.why, 760, 1180, 96, seg(t, yt, yt + 0.5), { color: YEL });
+    if (t > yt + 0.5) glowText(TX.why, 760, 1180, 96, 0.3, YEL);
+    ragWipe(seg(t, d - 0.45, d));
+  }
+};
+const DNA6 = helix(110, 970, 640, 70, 3);
+SCN.s6 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.04, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    headline(TX.h6, t, { t0: 0.05, dur: 0.7, px: fitPx(TX.h6, 104, 940), y: 200 });
+    drawStrokes(LC, DNA6, seg(t, 0.2, 1.6));
+    const ot = mk_('off'), mt = mk_('meth');
+    const state = t > ot + 0.3 ? 'off' : 'on';
+    geneBox(CX, 640, 300, seg(t, 1.2, 1.7), state, TX.gene);
+    [CX - 100, CX, CX + 100].forEach((x, i) => methyl(x, 590, seg(t, mt + i * 0.35, mt + i * 0.35 + 0.6)));
+    if (t > 1.7) chalkText(LC, state === 'off' ? TX.off : TX.on, CX, 800, 70, seg(t, state === 'off' ? ot + 0.3 : 1.7, (state === 'off' ? ot + 0.3 : 1.7) + 0.4), { color: state === 'off' ? GREY : YEL });
+    const lt = mk_('letters');
+    const L4 = 'А Т Г Ц А Т Г Ц';
+    chalkText(LC, LANG === 'kk' ? L4 : 'А Т Г Ц А Т Г Ц', CX, 920, 70, seg(t, lt, lt + 0.8), { color: BLUE });
+    chalkText(LC, TX.same, CX, 1010, 60, seg(t, lt + 0.5, lt + 1.1));
+    tick(CX + 280, 1000, 0.8, seg(t, lt + 1.1, lt + 1.4));
+    const pt = mk_('piano'), kt = mk_('keys');
+    piano(CX, 1240, 860, seg(t, pt, pt + 0.9), seg(t, kt, kt + 1.2), [2, 5, 8]);
+    chalkText(LC, TX.piano, CX, 1560, 64, seg(t, kt - 0.6, kt), { alpha: .9 });
+    // muted notes: X over three keys
+    [2, 5, 8].forEach((k, j) => chalkText(LC, '×', CX - 430 + (k + 0.5) * 86, 1680, 90, seg(t, kt + 0.5 + j * 0.2, kt + 0.8 + j * 0.2), { color: PINK }));
+    ragWipe(seg(t, d - 0.45, d));
+  }
+};
+SCN.s7 = {
+  cam: (t, d) => ({ s: lerp(1.0, 1.04, ease(t / d)), x: 0, y: 0 }),
+  draw(t, d) {
+    chalkText(LC, '2008', CX, 210, 150, seg(t, 0.05, 0.6), { color: YEL });
+    if (t > 0.6) glowText('2008', CX, 210, 150, 0.25, YEL);
+    // two groups
+    const cols = [[300, TX.hungry, true], [780, TX.control, false]];
+    cols.forEach(([x, lbl, meth], i) => {
+      const t0 = 0.5 + i * 0.6;
+      chalkText(LC, lbl, x, 420, fitPx(lbl, 60, 420), seg(t, t0, t0 + 0.5), { color: i ? CHALK : PINK });
+      drawStrokes(LC, helix(x - 190, x + 190, 620, 40, 1.5, { lw: 5 }), seg(t, t0 + 0.2, t0 + 1.0));
+      geneBox(x, 620, 220, seg(t, t0 + 0.9, t0 + 1.3), 'on', 'IGF2');
+      if (meth) [x - 60, x + 60].forEach((mx, j) => methyl(mx, 570, seg(t, 2.2 + j * 0.3, 2.8 + j * 0.3), { px: 32 }));
+    });
+    drawStrokes(LC, prep([P([[540, 380], [540, 760]], { lw: 4, alpha: .5 })]), seg(t, 0.4, 1.0), { alpha: 0.5 });
+    const st = mk_('sixty');
+    UC.save(); headline(TX.h7, t, { t0: st, dur: 0.6, px: fitPx(TX.h7, 100, 940), y: 900 }); UC.restore();
+    // family line to grandchildren
+    const gt = mk_('grand');
+    figAt(GRAN, 200, 1500, 0.5, seg(t, gt, gt + 0.6));
+    figAt(MOM, 420, 1500, 0.5, seg(t, gt + 0.3, gt + 0.9));
+    dashed(LC, [[480, 1420], [600, 1380], [700, 1420]], seg(t, gt + 0.8, gt + 1.4), YEL);
+    chalkText(LC, '?', 800, 1400, 160, seg(t, gt + 1.3, gt + 1.6), { color: PINK });
+    chalkText(LC, TX.grand, 800, 1530, 60, seg(t, gt + 1.5, gt + 1.9), { color: PINK });
+    chalkText(LC, `(${TX.some})`, CX, 1620, fitPx(`(${TX.some})`, 48, 900), seg(t, gt + 1.8, gt + 2.4), { alpha: .7 });
+    const rt = mk_('rev');
+    // circular arrow + "reversible"
+    arrow(LC, ell(300, 1780, 60, 60, -0.3, Math.PI * 1.6, 20), seg(t, rt, rt + 0.7), { color: YEL, lw: 7 });
+    chalkText(LC, TX.rev, 640, 1780, fitPx(TX.rev, 80, 600), seg(t, rt + 0.4, rt + 1.0), { color: YEL });
+    if (t > rt + 1) glowText(TX.rev, 640, 1780, fitPx(TX.rev, 80, 600), 0.25, YEL);
+    ragWipe(seg(t, d - 0.45, d));
+  }
+};
+const OPT_Y = [820, 1010, 1200];
+SCN.s8 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  draw(t, d) {
+    chalkText(LC, TX.ubtQ, CX, 210, 80, seg(t, 0.05, 0.5), { color: PINK });
+    const qpx = fitPx(TX.q, 92, 960);
+    const lines = wrap(UC, TX.q, qpx, 940);
+    lines.forEach((ln, i) => chalkText(LC, ln, CX, 400 + i * qpx * 1.05, qpx, seg(t, 1.0 + i * 0.6, 1.6 + i * 0.6), { color: YEL }));
+    const at = mk_('ans');
+    const st = ['qa', 'qb', 'qc'].map(mk_);
+    const ws = TX.o.map((o, i) => {
+      const px = fitPx(o, 84, 900);
+      const dim = t > at && i !== 1 ? 1 - 0.55 * seg(t, at, at + 0.4) : 1;
+      chalkText(LC, o, CX, OPT_Y[i], px, seg(t, st[i], st[i] + 0.5), { alpha: dim });
+      LC.font = font(px); return LC.measureText(o).width;
+    });
+    timer(CX, 1520, 130, t, mk_('q1'), 3, st[2]);
+    if (t > at) {
+      const y = OPT_Y[1], w = ws[1];
+      drawStrokes(LC, prep([E(CX, y + 6, w / 2 + 50, 70, { color: YEL, lw: 8 }, -Math.PI * 0.6, Math.PI * 1.48)]), seg(t, at, at + 0.45));
+      tick(CX + Math.min(w / 2 + 80, 470), y, 1, seg(t, at + 0.45, at + 0.7));
+    }
+  }
+};
+SCN.s9 = {
+  cam: () => ({ s: 1, x: 0, y: 0 }),
+  fadeIn: true,
+  draw(t, d) {
+    family(t, 0.0, { y: 1000 });
+    drawStrokes(LC, DNA1, seg(t, 0.6, 1.4));
+    lock(540, 1300, 0.9, 1, ease(seg(t, 1.4, 2.0)));
+    if (t > 2.0) glowText('✓', 540, 1300, 1, 0);
+    arrow(LC, [[CX + 120, 560], [CX + 200, 420], [CX + 330, 250]], seg(t, 1.2, 1.8), { color: YEL, lw: 8 });
+    UC.save(); headline(TX.link, t, { t0: 0.3, dur: 0.7, px: 104, y: 330 }); UC.restore();
+    const ct = mk_('cta');
+    chalkText(LC, TX.cta[0], CX, 1540, 76, seg(t, ct, ct + 0.7));
+    chalkText(LC, TX.cta[1], CX, 1630, 76, seg(t, ct + 0.6, ct + 1.2), { color: YEL });
+  }
+};
+// end card (brand): navy, big logo, amber CTA
+function endCard(ctx, T, dur) {
+  const t0 = MK.voend + 0.05, p = seg(T, t0, t0 + 0.35);
+  if (p <= 0) return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = p; ctx.fillStyle = NAVY; ctx.fillRect(0, 0, W, H);
+  const lg = IMG.logo;
+  if (lg) { const s = lerp(0.92, 1, easeOut(seg(T, t0, t0 + 0.6))), h = 420 * s, w = h * lg.width / lg.height; ctx.drawImage(lg, CX - w / 2, 800 - h / 2, w, h); }
+  ctx.globalAlpha = p * seg(T, t0 + 0.2, t0 + 0.6);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = AMBER;
+  ctx.font = '800 58px Mont';
+  ctx.fillText(TX.cta[0], CX, 1210); ctx.fillText(TX.cta[1], CX, 1290);
+  ctx.restore();
+}
+function logoCorner(ctx) {
+  const lg = IMG.logo; if (!lg) return;
+  const h = 120, w = h * lg.width / lg.height;
+  ctx.save(); ctx.globalAlpha = 0.9; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12; ctx.drawImage(lg, W - 44 - w, 44, w, h); ctx.restore();
+}
+
+// ---------- timeline + frame render ----------
+let TL = null, SC = null;
+function renderScene(ctx, s, t, d) {
+  const sc = SCN[s.id]; SC = s;
+  glows = [];
+  for (const c of [LC, UC, PC]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H); }
+  const cam = sc.cam(t, d);
+  const camT = c => { c.translate(CX, CY); c.scale(cam.s, cam.s); c.translate(-CX + cam.x, -CY + cam.y); };
+  LC.save(); camT(LC); PC.save(); camT(PC);
+  sc.draw(t, d, s);
+  LC.restore(); PC.restore();
+  for (const c of [LC, UC]) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'destination-out'; c.drawImage(grain, 0, 0); c.restore(); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(bg, 0, 0);
+  ctx.drawImage(L, 0, 0);
+  ctx.drawImage(PH, 0, 0);
+  for (const g of glows) {
+    ctx.save(); if (!g.screen) camT(ctx); ctx.globalCompositeOperation = 'lighter';
+    ctx.font = font(g.px, 700, g.fam); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = g.color; ctx.shadowBlur = 40; ctx.fillStyle = g.color; ctx.globalAlpha = clamp(g.alpha) * 0.6;
+    ctx.fillText(g.txt, g.x, g.y); ctx.restore();
+  }
+  ctx.drawImage(U, 0, 0);
+}
+async function loadFilm(s, lt, d) {
+  filmFrame = null;
+  if (s.id !== 's3' || !FILM.n) return;
+  // play the 5 s clip stretched over the scene
+  const f = Math.min(FILM.n - 1, Math.floor(lt / d * FILM.n));
+  const key = 'f' + f;
+  if (!IMG[key]) { await loadImg(key, `clip/f${String(f + 1).padStart(4, '0')}.jpg`); }
+  filmFrame = IMG[key];
+  // drop old frames
+  for (const k of Object.keys(IMG)) if (/^f\d+$/.test(k) && Math.abs(+k.slice(1) - f) > 3) delete IMG[k];
+}
+window.render = async function (T) {
+  const sc = TL.scenes;
+  let i = sc.findIndex(s => T >= s.start && T < s.end); if (i < 0) i = sc.length - 1;
+  const s = sc[i], lt = T - s.start, d = s.end - s.start, sd = SCN[s.id];
+  await loadFilm(s, lt, d);
+  M.setTransform(1, 0, 0, 1, 0, 0); M.globalAlpha = 1;
+  renderScene(M, s, lt, d);
+  let fade = 0;
+  if (s.id === 's2') fade = Math.max(fade, seg(lt, d - 0.35, d));
+  if (s.id === 's3') fade = Math.max(fade, 1 - seg(lt, 0, 0.35));
+  if (s.id === 's8') fade = Math.max(fade, seg(lt, d - 0.4, d));
+  if (sd.fadeIn) fade = Math.max(fade, 1 - seg(lt, 0, 0.4));
+  if (fade > 0) { M.fillStyle = `rgba(0,0,0,${fade})`; M.fillRect(0, 0, W, H); }
+  logoCorner(M);
+  endCard(M, T, TL.dur);
+};
+window.ready = (async () => {
+  TL = await (await fetch(`timeline_${LANG}.json`)).json(); MK = TL.marks;
+  try { FILM = await (await fetch('clip/info.json')).json(); } catch (e) { FILM = { n: 0 }; }
+  await Promise.all([loadImg('logo', 'brand/logo_white_transparent.png'), loadImg('sketch', 'clip/sketch.png')]);
+  await document.fonts.load(font(80)); await document.fonts.load('800 58px Mont'); await document.fonts.ready;
+  await window.render(0); return true;
+})();
+</script>
+</body></html>
