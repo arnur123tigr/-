@@ -1,12 +1,13 @@
 """Replaces each «ҰБТ» in the Kazakh voice (vo_kk.wav, already timed) with one correctly voiced clip, without moving anything else.
 The clip is fitted into the same window (sped up a little if longer, centred with silence if shorter), so picture and captions stay in sync.
-Usage: python3 splice_ubt.py /mnt/project-files/animation/common/ubt_kk.mp3   (keeps vo_kk_orig.wav as the untouched copy)"""
+Usage: python3 splice_ubt.py /mnt/project-files/animation/common/ubt_kk_parts   (keeps vo_kk_orig.wav as the untouched copy)
+The parts folder holds «ҰБТ» said in context (ubt_da = «ҰБТ-да», ubt_surag = «ҰБТ сұрағы», ...); each window takes the whole phrase."""
 import json, subprocess, sys, os, wave
 import numpy as np
 
 SR = 48000
-# windows in the RAW take (vo_kk_take.mp3), from its energy envelope: «Ұ-Бе-Те» of «Ұ-Бе-Те-да» (the «-да» stays) and of «Ұ-Бе-Те сұрағы»
-RAW = [(11.45, 12.19), (69.93, 70.62)]
+# windows in the RAW take (vo_kk_take.mp3), from its energy envelope: the whole «ҰБТ-да» and the whole «ҰБТ сұрағы»
+RAW = [(11.45, 12.20, 'ubt_da.mp3'), (69.93, 70.88, 'ubt_surag.mp3')]
 B = json.load(open('beats.json'))['kk']; OFF = B['off']
 
 
@@ -25,10 +26,10 @@ def load(path):
 src = 'vo_kk_orig.wav' if os.path.exists('vo_kk_orig.wav') else 'vo_kk.wav'
 if src == 'vo_kk.wav': os.rename('vo_kk.wav', 'vo_kk_orig.wav'); src = 'vo_kk_orig.wav'
 a = load(src).copy()
-clip = load(sys.argv[1])
-nz = np.where(np.abs(clip) > .01)[0]; clip = clip[max(0, nz[0] - 240):nz[-1] + 480]   # trim silence
 rms = lambda x: np.sqrt((x ** 2).mean() + 1e-12)
-for r0, r1 in RAW:
+for r0, r1, name in RAW:
+    clip = load(os.path.join(sys.argv[1], name))
+    nz = np.where(np.abs(clip) > .01)[0]; clip = clip[max(0, nz[0] - 240):nz[-1] + 480]   # trim silence
     f0, f1 = raw_to_file(r0), raw_to_file(r1); i0, i1 = int(f0 * SR), int(f1 * SR); n = i1 - i0
     c = clip
     if len(c) > n:                                           # speed up to fit (pitch kept)
