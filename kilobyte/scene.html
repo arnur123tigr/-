@@ -1,0 +1,323 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Неге 1 килобайт = 1024 байт?» — 8-bit Pixel Art, KZ + RU (Ерсұлтан / Egor). JAS EDUCATION brand.
+// Everything is drawn on a 216x384 pixel canvas (g) and blown up x5 without smoothing, plus a soft bloom and scanlines.
+// Text uses Press Start 2P, thresholded so every glyph stays a hard pixel. Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 85;
+const V = k => B[k] + OFF;
+const LW = 216, LH = 384, SC = 5;
+const lo = document.createElement('canvas'); lo.width = LW; lo.height = LH; const g = lo.getContext('2d');
+const tl = document.createElement('canvas'); tl.width = LW; tl.height = LH; const tg = tl.getContext('2d', { willReadFrequently: true });
+const bl = document.createElement('canvas'); bl.width = LW; bl.height = LH; const bg_ = bl.getContext('2d');
+const C = { bk: '#05070a', gr: '#39ff6a', gd: '#0f5a24', gm: '#1e9e45', am: BR.acc, nv: BR.navy, nv2: '#2a1f8a', wh: '#ffffff', rd: '#ff3b3b', gy: '#3a3f4a', dg: '#1a1f26', yl: '#ffe45c' };
+const TX = {
+  ru: { top1: '1000? НЕТ — 1024', ent: 'ЗАДАЧА ЕНТ', plate: 'ЕНТ: ИНФОРМАТИКА', min: 'ЗА 1 МИНУТУ', bit: '1 БИТ', bitH: '0 / 1 = 1 БИТ', small: ['САМАЯ МАЛЕНЬКАЯ', 'ЕДИНИЦА'],
+    off: 'НЕТ ТОКА', on: 'ЕСТЬ ТОК', byteH: '8 БИТ = 1 БАЙТ', ways: 'СПОСОБОВ', main: 'ТЕПЕРЬ ГЛАВНОЕ', notp: 'НЕ 2ⁿ', bin: 'ДВОИЧНАЯ СИСТЕМА',
+    rows: [['1 БАЙТ', '8 БИТ'], ['1 КБАЙТ', '1024 БАЙТ'], ['1 МБАЙТ', '1024 КБАЙТ'], ['1 ГБАЙТ', '1024 МБАЙТ']], u: ['Б', 'КБ', 'МБ', 'ГБ'],
+    chkQ: '2 БАЙТ = ? БИТ', chkA: '2 БАЙТ = 16 БИТ', qT: 'ВОПРОС ЕНТ', qq: '1 КБАЙТ = ? БИТ', opts: [['А', '1000'], ['Б', '1024'], ['В', '8192']], ok: 'ВЕРНО!',
+    cta1: 'ССЫЛКА', cta2: 'В ШАПКЕ ПРОФИЛЯ', end1: 'Ссылка', end2: 'в шапке профиля', clear: 'УРОВЕНЬ ПРОЙДЕН' },
+  kk: { top1: '1000? ЖОҚ — 1024', ent: 'ҰБТ ЕСЕБІ', plate: 'ҰБТ: ИНФОРМАТИКА', min: '1 МИНУТТА', bit: '1 БИТ', bitH: '0 / 1 = 1 БИТ', small: ['ЕҢ КІШІ', 'БІРЛІК'],
+    off: 'ТОК ЖОҚ', on: 'ТОК БАР', byteH: '8 БИТ = 1 БАЙТ', ways: 'ТӘСІЛ', main: 'ЕНДІ ЕҢ БАСТЫСЫ', notp: 'НЕ 2ⁿ', bin: 'ЕКІЛІК ЖҮЙЕ',
+    rows: [['1 БАЙТ', '8 БИТ'], ['1 КБАЙТ', '1024 БАЙТ'], ['1 МБАЙТ', '1024 КБАЙТ'], ['1 ГБАЙТ', '1024 МБАЙТ']], u: ['Б', 'КБ', 'МБ', 'ГБ'],
+    chkQ: '2 БАЙТ = ? БИТ', chkA: '2 БАЙТ = 16 БИТ', qT: 'ҰБТ СҰРАҒЫ', qq: '1 КБАЙТ = ? БИТ', opts: [['А', '1000'], ['Ә', '1024'], ['Б', '8192']], ok: 'ДҰРЫС!',
+    cta1: 'СІЛТЕМЕ', cta2: 'ШАПКАДА', end1: 'Сілтеме', end2: 'профиль шапкасында', clear: 'ДЕҢГЕЙ ӨТТІ' } }[LANG];
+TX.notp = LANG === 'kk' ? '2-НІҢ ДӘРЕЖЕСІ ЕМЕС' : 'НЕ СТЕПЕНЬ ДВОЙКИ';
+let TT = 0;
+function rng(s) { return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
+const pop = (t, t0, d = .35) => back(ap(t, t0, d));
+const R = Math.round;
+// ---------- pixel text ----------
+function ptw(s, sz) { tg.font = `${sz}px PS`; return tg.measureText(s).width; }
+function ptxt(s, x, y, sz, col = C.wh, o = {}) {   // hard-pixel text on g; o.align, o.shadow (colour), o.a, o.fit (max width)
+  if ((o.a ?? 1) <= 0 || !s) return;
+  if (o.fit && ptw(s, sz) > o.fit) sz = Math.max(6, Math.floor(sz * o.fit / ptw(s, sz)));
+  tg.font = `${sz}px PS`; tg.textBaseline = 'middle'; const w = tg.measureText(s).width;
+  let x0 = o.align === 'left' ? x : o.align === 'right' ? x - w : x - w / 2; x0 = R(x0); const y0 = R(y);
+  const bx = Math.max(0, x0 - 2), by = Math.max(0, y0 - sz), bw = Math.min(LW - bx, R(w) + 6), bh = Math.min(LH - by, sz * 2 + 2);
+  if (bw <= 0 || bh <= 0) return;
+  tg.clearRect(bx, by, bw, bh);
+  if (o.shadow !== null) { tg.fillStyle = o.shadow || '#000'; tg.fillText(s, x0 + 1, y0 + 1 + (sz >= 16 ? 1 : 0)); if (sz >= 16) tg.fillText(s, x0 + 2, y0 + 2); }
+  tg.fillStyle = col; tg.fillText(s, x0, y0);
+  const im = tg.getImageData(bx, by, bw, bh), d = im.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 100 ? 255 : 0;
+  tg.putImageData(im, bx, by);
+  g.save(); g.globalAlpha = o.a ?? 1; g.drawImage(tl, bx, by, bw, bh, bx, by, bw, bh); g.restore();
+}
+function prect(x, y, w, h, col, a = 1) { if (a <= 0) return; g.save(); g.globalAlpha = a; g.fillStyle = col; g.fillRect(R(x), R(y), R(w), R(h)); g.restore(); }
+function pbox(x, y, w, h, fill, line, a = 1, lw = 1) {   // pixel panel with notched corners
+  if (a <= 0) return; x = R(x); y = R(y); w = R(w); h = R(h);
+  g.save(); g.globalAlpha = a; g.fillStyle = line; g.fillRect(x + 1, y, w - 2, h); g.fillRect(x, y + 1, w, h - 2);
+  g.fillStyle = fill; g.fillRect(x + 1 + lw - 1, y + lw, w - 2 * lw - (lw - 1) * 0, h - 2 * lw); g.fillRect(x + lw, y + 1 + lw - 1, w - 2 * lw, h - 2 * lw);
+  g.restore();
+}
+function sprite(rows, pal, x, y, k = 1, a = 1) {   // rows of chars, pal: char -> colour
+  if (a <= 0) return; g.save(); g.globalAlpha = a;
+  const w = rows[0].length; x = R(x - w * k / 2); y = R(y);
+  rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) { const c = pal[r[i]]; if (c) { g.fillStyle = c; g.fillRect(x + i * k, y + j * k, k, k); } } });
+  g.restore();
+}
+const BULB = ['   #####   ', '  #.....#  ', ' #.......# ', '#.........#', '#..f...f..#', '#...f.f...#', '#....f....#', ' #...f...# ', '  #..f..#  ',
+  '   #.f.#   ', '   bbbbb   ', '   #####   ', '   bbbbb   ', '    ###    '];
+function bulb(x, y, on, k = 1, a = 1) {
+  if (a <= 0) return;
+  if (on > 0) { g.save(); g.globalAlpha = a * on * .35; g.fillStyle = C.yl; g.beginPath(); g.arc(R(x), R(y + 5 * k), 9 * k, 0, 7); g.fill(); g.restore(); }
+  sprite(BULB, { '#': on > .5 ? '#fff7c0' : '#7a808c', '.': on > .5 ? C.yl : '#232833', f: on > .5 ? '#ffffff' : '#5a606c', b: '#9aa0aa' }, x, y, k, a);
+}
+const CALC = ['##########', '#........#', '#.gggggg.#', '#.gggggg.#', '#........#', '#.w.w.w.a#', '#........#', '#.w.w.w.a#', '#........#', '#.w.w.w.a#', '#........#', '#.w.w.w.r#', '#........#', '##########'];
+const ARROW = ['    #    ', '   ###   ', '  #####  ', ' ####### ', '#########', '   ###   ', '   ###   ', '   ###   ', '   ###   '];
+const HERO = [['  hhh  ', '  sss  ', ' bbbbb ', 's bbb s', '  bbb  ', '  l l  ', ' ll ll '], ['  hhh  ', '  sss  ', 's bbb s', ' bbbbb ', '  bbb  ', ' l   l ', 'll   ll']];
+const HPAL = { h: '#2a1f8a', s: '#f2c49b', b: BR.acc, l: '#1a1f26' };
+const CHECK = ['       ##', '      ## ', '#    ##  ', '##  ##   ', ' ####    ', '  ##     '];
+const CROSS = ['##     ##', ' ##   ## ', '  ## ##  ', '   ###   ', '  ## ##  ', ' ##   ## ', '##     ##'];
+// ---------- background: binary rain ----------
+const COLS = 27;
+function rain(t, a = 1, col = C.gd) {
+  if (a <= 0) return; const r = rng(11);
+  for (let c = 0; c < COLS; c++) {
+    const sp = 18 + r() * 30, ph = r() * 400, len = 6 + R(r() * 10), x = c * 8 + 4;
+    const head = (ph + t * sp) % (LH + len * 9) - len * 9;
+    for (let k = 0; k < len; k++) {
+      const y = head + k * 9; if (y < -8 || y > LH + 8) continue;
+      const ch = ((c * 7 + k * 13 + Math.floor(t * 6 + c)) % 3) ? '0' : '1';
+      g.globalAlpha = a * (k === len - 1 ? .9 : .25 + .45 * k / len); g.fillStyle = k === len - 1 ? C.gm : col;
+      g.font = '8px PS'; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillText(ch, x, R(y));
+    }
+  }
+  g.globalAlpha = 1; g.textAlign = 'start';
+}
+function clearBg(t, ra = .55) { g.fillStyle = C.bk; g.fillRect(0, 0, LW, LH); rain(t, ra); }
+// pixel dissolve at cuts (screen breaks into pixel blocks)
+function dissolve(t, cuts) {
+  for (const c of cuts) {
+    const k = 1 - Math.abs(t - c) / .3; if (k <= 0) continue; const r = rng(5 + R(c * 10));
+    g.fillStyle = C.bk; for (let y = 0; y < LH; y += 8) for (let x = 0; x < LW; x += 8) { const th = r(); if (th < k) g.fillRect(x, y + (t < c ? (1 - k) * 0 : 0), 8, 8); }
+    g.fillStyle = C.gr; for (let i = 0; i < 40 * k; i++) { g.globalAlpha = .7; g.fillRect(R(r() * LW / 4) * 4, R(r() * LH / 4) * 4, 4, 4); } g.globalAlpha = 1;
+  }
+}
+// ---------- scenes ----------
+function header(s, t, t0, col = C.am, y = 58, sz = 16) {
+  const p = ap(t, t0, .25); if (p <= 0) return; const blink = t - t0 < .5 ? (Math.floor((t - t0) * 16) % 2 ? .4 : 1) : 1;
+  ptxt(s, LW / 2, y, sz, col, { fit: 200, a: blink });
+}
+function scene1(t) {   // 1 KB = 1000 -> struck out -> 1024
+  clearBg(t, .5);
+  header(TX.top1, t, OFF + 1.6, C.wh, 58, 12);
+  const s = '1 KB = 1000', n = Math.floor(clamp((t - .05) / .9) * s.length);
+  pbox(20, 120, 176, 52, C.dg, C.gm, 1);
+  ptxt(s.slice(0, n) + (Math.floor(t * 4) % 2 && n < s.length + 1 ? '_' : ''), 108, 146, 16, C.gr, { shadow: '#000' });
+  const st = ap(t, OFF + .9, .25);   // strike
+  if (st > 0) { prect(28, 143, 160 * st, 5, C.rd); sprite(CROSS, { '#': C.rd }, 176, 112, 2, ap(t, OFF + 1.0, .05)); }
+  const p = pop(t, OFF + 1.5, .4);
+  if (p > 0) { g.save(); g.translate(108, 236); g.scale(p, p); g.translate(-108, -236); pbox(30, 200, 156, 72, C.nv, C.am, 1, 2); ptxt('1024', 108, 236, 32, C.am); g.restore();
+    ptxt('BYTE', 108, 290, 8, C.gr, { a: ap(t, OFF + 1.9, .2) }); }
+  if (t > V('school') - .1) { const q = ap(t, V('school'), .3); sprite(['  ####  ', ' ##  ## ', '     ## ', '    ##  ', '   ##   ', '        ', '   ##   '], { '#': C.wh }, 108, 85 - 4 * (1 - q), 2, q * (Math.floor(t * 3) % 2 ? 1 : .6)); }
+}
+function scene2(t) {   // ҰБТ plate + calculator, 1 minute
+  clearBg(t, .45);
+  header(TX.ent, t, V('ent'));
+  const p = pop(t, V('ent') + .2); if (p > 0) { g.save(); g.translate(108, 112); g.scale(p, p); g.translate(-108, -112); pbox(10, 96, 196, 32, C.nv, C.am, 1, 2); ptxt(TX.plate, 108, 112, 8, C.wh, { fit: 184 }); g.restore(); }
+  const bob = Math.abs(Math.sin((t - V('ent')) * 5)) * 6 * (1 - ap(t, V('ent') + 2, .5));
+  sprite(CALC, { '#': '#c9ccd4', '.': C.gy, g: C.gr, w: '#e8e8e8', a: C.am, r: C.rd }, 108, 150 - bob, 6, ap(t, V('ent') + .4, .2));
+  // display shows 1024 on the calculator
+  ptxt('1024', 108, 172 - bob, 8, '#04210c', { shadow: null, a: ap(t, V('ent') + .6, .2) });
+  const m = ap(t, V('min'), .25);
+  if (m > 0) { const prog = clamp((t - V('min')) / 1.6); pbox(24, 254, 168, 40, C.dg, C.gr, m, 2); sprite(['  ###  ',' #...# ','#..#..#','#..##.#','#.....#',' #...# ','  ###  '], { '#': C.gr }, 40, 267, 2, m);
+    ptxt(TX.min, 116, 274, 8, C.gr, { a: m, fit: 140 }); prect(30, 290, 156 * prog, 2, C.am, m); }
+}
+function scene3(t) {   // one bulb: 0 / 1 = bit
+  clearBg(t, .35);
+  const c0 = V('comp'), on = t >= V('on') ? 1 : 0;
+  header(TX.bitH, t, V('bit'), C.am, 58, 16);
+  // two big digits on the sides
+  const d = ap(t, c0 + .2, .3);
+  if (t < V('off')) { ptxt('0', 60, 170, 48, C.gr, { a: d }); ptxt('1', 156, 170, 48, C.gr, { a: ap(t, c0 + 1.2, .3) }); ptxt(LANG === 'kk' ? 'ЕКІ ЦИФР' : 'ДВЕ ЦИФРЫ', 108, 240, 8, C.wh, { a: d }); }
+  else {
+    const flick = t >= V('on') && t < V('on') + .25 ? (Math.floor(t * 30) % 2) : on;
+    bulb(108, 110, flick, 7, ap(t, V('off'), .2));
+    const lab = on ? '1' : '0';
+    ptxt(lab, 108, 236, 32, on ? C.am : C.gy, { a: ap(t, V('off') + .1, .2) });
+    ptxt(on ? TX.on : TX.off, 108, 268, 8, on ? C.yl : '#8a909c', {});
+    if (t >= V('bit')) { const p = pop(t, V('bit') + .2); if (p > 0) { g.save(); g.translate(108, 300); g.scale(p, p); g.translate(-108, -300); pbox(58, 286, 100, 28, C.nv, C.am, 1, 2); ptxt(TX.bit, 108, 300, 8, C.wh); g.restore(); } }
+    if (t >= V('small')) { const a = ap(t, V('small'), .3); ptxt(TX.small[0], 108, 86, 8, C.gr, { a, fit: 200 }); ptxt(TX.small[1], 108, 98, 8, C.gr, { a, fit: 200 }); }
+  }
+}
+function scene4(t) {   // 8 bulbs = byte, 256 ways, letter A
+  clearBg(t, .3);
+  header(TX.byteH, t, V('byte') + .1, C.am, 58, 12);
+  const A = '01000001'; let bits = A.split('').map(Number);
+  const w0 = V('ways'), w1 = V('letter');
+  let cnt = -1;
+  if (t >= w0 && t < w1) { const k = Math.floor((t - w0) * 10); const n = Math.min(255, Math.floor(255 * clamp((t - w0) / Math.max(1, w1 - w0 - .3)) ** 1.6)); cnt = n;
+    bits = n.toString(2).padStart(8, '0').split('').map(Number); }
+  if (t < w0) bits = bits.map((b, i) => (t > V('byte') + .2 + i * .12 ? (Math.floor((t - V('byte')) * 3 + i) % 3 === 0 ? 1 : 0) : 0));
+  for (let i = 0; i < 8; i++) {
+    const x = 17 + i * 26, a = ap(t, V('byte') + i * .07, .15);
+    bulb(x, 112, bits[i], 2, a);
+    ptxt(String(bits[i]), x, 152, 16, bits[i] ? C.am : C.gy, { a });
+  }
+  // bracket
+  const bk = ap(t, V('byte') + .9, .3); if (bk > 0) { prect(6, 170, 204 * bk, 2, C.gr); prect(6, 164, 2, 8, C.gr, bk); prect(208, 164, 2, 8, C.gr, bk); prect(107, 172, 2, 6, C.gr, bk);
+    ptxt('8 BIT', 108, 186, 8, C.gr, { a: bk }); }
+  if (cnt >= 0 || (t >= w1 && t < w1 + 99)) {
+    const n = t >= w1 ? 256 : cnt + 1; const a = ap(t, w0, .2);
+    pbox(30, 206, 156, 50, C.dg, C.gm, a, 2); ptxt(String(n), 108, 226, 16, t >= w1 - .4 || n >= 256 ? C.am : C.gr, { a }); ptxt(TX.ways, 108, 246, 8, C.wh, { a, fit: 140 });
+  }
+  if (t >= w1) {
+    const p = pop(t, w1 + .5, .45), jump = Math.abs(Math.sin((t - w1 - .5) * 4)) * 10 * clamp(1 - (t - w1 - .5) / 2.5);
+    ptxt('→', 64, 304, 16, C.gr, { a: ap(t, w1 + .3, .2) });
+    if (p > 0) { g.save(); g.translate(130, 300 - jump); g.scale(p, p); pbox(-24, -26, 48, 52, C.nv, C.am, 1, 2); ptxt('A', 1, 1, 32, C.wh); g.restore(); }
+    ptxt('01000001', 108, 340, 8, C.gr, { a: ap(t, w1 + .2, .3) });
+  }
+}
+function powLabel(x, y, e, val, col, a) {   // "2^e = val" with a raised small exponent
+  ptxt('2', x, y, 8, col, { align: 'left', a }); ptxt(String(e), x + 8, y - 4, 6, col, { align: 'left', a });
+  ptxt('=' + val, x + 8 + ptw(String(e), 6) + 1, y, 8, col, { align: 'left', a });
+}
+function scene5(t) {   // staircase of powers of two
+  clearBg(t, .25);
+  const t0 = V('main');
+  if (t < V('pow') + .3) { const a = ap(t, t0, .2) * (1 - ap(t, V('pow') + .1, .2)); ptxt(TX.main, 108, 170, 16, C.am, { a: a * (Math.floor(t * 8) % 2 ? 1 : .7), fit: 200 }); }
+  const l0 = V('list'), l1 = V('tenth');
+  const st = i => i < 4 ? l0 + i * Math.max(.35, (l1 - l0) / 7) : lerp(l0 + 4 * Math.max(.35, (l1 - l0) / 7), l1, (i - 3) / 6);
+  if (t >= V('pow')) {
+    const hdr = t >= l1; header(hdr ? '' : TX.bin, t, V('pow') + .1, C.gr, 58, 8);
+    if (hdr) { const a = ap(t, l1 + .1, .2); ptxt('2', 82, 58, 16, C.am, { a }); ptxt('10', 102, 50, 8, C.am, { a }); ptxt('= 1024', 146, 58, 16, C.am, { a, fit: 90 }); }
+    let hi = -1;
+    for (let i = 0; i < 10; i++) {
+      const ts = st(i); if (t < ts) continue; hi = i; const a = ap(t, ts, .12), y = 336 - i * 25, x = 6 + i * 9, w = 98;
+      const top = i === 9, col = top ? C.am : C.gr;
+      pbox(x, y - 9, w, 20, top ? C.nv : C.dg, col, a, top ? 2 : 1);
+      powLabel(x + 6, y + 1, i + 1, String(2 ** (i + 1)), top ? C.wh : col, a);
+      if (top && t > l1) { const gl = .5 + .5 * Math.sin(t * 8); prect(x - 2, y - 11, w + 4, 2, C.am, gl); prect(x - 2, y + 11, w + 4, 2, C.am, gl); }
+    }
+    if (hi >= 0) {   // little hero hops up the steps
+      const ts = st(hi), k = clamp((t - ts) / .25), y = 336 - hi * 25 - 10 - 16 - Math.sin(k * Math.PI) * 8, x = 6 + hi * 9 + 104 + 6;
+      sprite(HERO[Math.floor(t * 6) % 2], HPAL, x, y, 2, 1);
+    }
+    if (t >= V('round')) {   // 1000 stands aside, does not fit the ladder
+      const a = ap(t, V('round') + .2, .25), sh = Math.sin(t * 30) * (t < V('round') + .8 ? 1.5 : 0);
+      pbox(150 + sh, 250, 58, 26, C.dg, C.rd, a, 2); ptxt('1000', 179 + sh, 263, 8, C.rd, { a });
+      sprite(CROSS, { '#': C.rd }, 179, 282, 1, a * (Math.floor(t * 4) % 2 ? 1 : .5));
+      ptxt('≈', 136, 116, 16, C.wh, { a });
+    }
+  }
+}
+function scene6(t) {   // nested blocks: B -> KB -> MB -> GB, x1024 every step
+  clearBg(t, .2);
+  header('×1024 · ×1024 · ×1024', t, V('rule'), C.am, 52, 8);
+  const ks = [V('kb') - .6, V('kb'), V('mb'), V('gb')], cols = [C.gr, C.am, '#5ad1ff', '#ff6ad5'];
+  // nested squares (matryoshka)
+  const cx = 108, cy = 150, sz = [10, 34, 66, 100];
+  for (let i = 3; i >= 0; i--) {
+    const p = pop(t, ks[i] + .1, .4); if (p <= 0) continue; const s = sz[i] * p;
+    pbox(cx - s / 2, cy - s / 2, s, s, i ? C.bk : C.gr, cols[i], 1, 2);
+    if (i) ptxt(TX.u[i], cx + s / 2 - 4, cy - s / 2 + 8, 8, cols[i], { align: 'right' });
+  }
+  for (let i = 0; i < 4; i++) {
+    const a = ap(t, ks[i] + .15, .25); if (a <= 0) continue; const y = 222 + i * 26;
+    const pulse = t >= V('rule') && i > 0 ? (Math.floor((t - V('rule')) * 3) % 3 === i - 1 ? 1 : 0) : 0;
+    pbox(4, y - 10, 208, 21, pulse ? C.nv : C.dg, cols[i], a, 1);
+    ptxt(TX.rows[i][0] + ' = ' + TX.rows[i][1], 108, y + 1, 8, i ? C.wh : C.gr, { a, fit: 200 });
+  }
+}
+function scene7(t) {   // 2 bytes = 16 bits
+  clearBg(t, .25);
+  const q = ap(t, V('check') + .1, .2), m = V('mult');
+  header(LANG === 'kk' ? 'ТЕКСЕРІП КӨР' : 'ПРОВЕРИМ', t, V('check'), C.gr, 58, 12);
+  pbox(10, 110, 196, 44, C.dg, C.gm, q, 2); ptxt(t >= m + 1.4 ? TX.chkA : TX.chkQ, 108, 132, 12, t >= m + 1.4 ? C.am : C.wh, { a: q, fit: 186 });
+  // two byte rows of 8 bits
+  for (let r = 0; r < 2; r++) for (let i = 0; i < 8; i++) { const a = ap(t, V('check') + .5 + r * .3 + i * .03, .1); prect(26 + i * 21, 176 + r * 22, 16, 16, (i + r) % 3 ? C.gd : C.gr, a); }
+  if (t >= m) {
+    const a = ap(t, m + .1, .2), cn = Math.min(16, Math.floor((t - m) * 12));
+    pbox(26, 238, 164, 60, C.nv, C.am, a, 2); ptxt('2 × 8 = ' + (t >= m + 1.3 ? '16' : String(cn)), 108, 268, 16, C.wh, { a, fit: 150 });
+  }
+}
+function scene8(t) {   // quiz
+  clearBg(t, .2);
+  const q0 = V('q'), ans = V('ans');
+  const p = pop(t, q0 + .05); if (p > 0) { g.save(); g.translate(108, 60); g.scale(p, p); g.translate(-108, -60); pbox(28, 46, 160, 28, C.nv, C.am, 1, 2); ptxt(TX.qT, 108, 60, 8, C.am, { fit: 150 }); g.restore(); }
+  ptxt(TX.qq, 108, 108, 12, C.wh, { a: ap(t, V('qq'), .2), fit: 200 });
+  for (let i = 0; i < 3; i++) {
+    const a = ap(t, V('opts') + i * .55, .15); if (a <= 0) continue; const y = 150 + i * 40, right = i === 2, done = t >= ans;
+    const col = done ? (right ? C.gr : '#555b66') : C.wh;
+    pbox(24, y - 15, 168, 30, done && right ? '#0b3d1a' : C.dg, done && right ? C.gr : C.gy, a, 2);
+    ptxt(TX.opts[i][0] + ')', 42, y, 8, done && right ? C.gr : C.am, { a, align: 'left' }); ptxt(TX.opts[i][1], 120, y, 16, col, { a });
+    if (done && right) sprite(CHECK, { '#': C.gr }, 178, y - 6, 2, ap(t, ans, .1));
+  }
+  // countdown in the pause
+  const p0 = V('_p0'), wait = ans - p0;
+  if (t >= p0 && t < ans) { const k = (t - p0) / wait; const n = Math.max(1, 3 - Math.floor(k * 3)); pbox(24, 284, 168, 12, C.dg, C.gy, 1); prect(27, 287, 162 * (1 - k), 6, k > .66 ? C.rd : C.am);
+    ptxt(String(n), 108, 320, 24, k > .66 ? C.rd : C.am, {}); }
+  if (t >= ans) {
+    const a = ap(t, ans + .1, .2); ptxt(TX.ok, 108, 300, 16, C.gr, { a: a * (Math.floor((t - ans) * 6) % 2 ? 1 : .6) });
+    ptxt('1024 × 8 = 8192', 108, 324, 8, C.am, { a: ap(t, ans + .6, .2) });
+    if (t > ans + 1.2) ptxt(TX.clear, 108, 88, 8, C.yl, { a: ap(t, ans + 1.2, .2) * (Math.floor(t * 5) % 2 ? 1 : .5), fit: 200 });
+  }
+}
+function scene9(t) {   // CTA: 1024 again + arrow up to the profile header
+  clearBg(t, .45);
+  const t0 = V('cta'), bob = R(Math.sin(t * 6) * 4);
+  const p = pop(t, t0 + .1, .4); if (p > 0) { g.save(); g.translate(108, 200); g.scale(p, p); g.translate(-108, -200); pbox(30, 164, 156, 72, C.nv, C.am, 1, 2); ptxt('1024', 108, 200, 32, C.am); g.restore(); }
+  sprite(ARROW, { '#': C.am }, 108, 98 + bob, 4, ap(t, t0 + .7, .2));
+  ptxt(TX.cta1, 108, 266, 16, C.wh, { a: ap(t, t0 + .9, .2), fit: 200 });
+  ptxt(TX.cta2, 108, 292, 16, C.am, { a: ap(t, t0 + 1.2, .2), fit: 200 });
+}
+function scenes(t) {
+  if (t < V('ent')) scene1(t);
+  else if (t < V('comp')) scene2(t);
+  else if (t < V('byte')) scene3(t);
+  else if (t < V('main')) scene4(t);
+  else if (t < V('kb')) scene5(t);
+  else if (t < V('check')) scene6(t);
+  else if (t < V('q')) scene7(t);
+  else if (t < V('cta')) scene8(t);
+  else scene9(t);
+  dissolve(t, ['ent', 'comp', 'byte', 'main', 'kb', 'check', 'q', 'cta'].map(V));
+}
+// captions: 2-3 words, spoken word amber, black pixel plate
+function pcaps(t) {
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const sz = 10, sp = ptw(' ', sz), ws = c[2].map(w => w[0].toUpperCase()); const tot = ws.reduce((s, w) => s + ptw(w, sz), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 204 / tot), s2 = sz * k; let x = LW / 2 - tot * k / 2; const y = 362;
+  prect(x - 5, y - 10, tot * k + 10, 20, '#000', .7);
+  c[2].forEach(([w, w0, w1], i) => { const ww = ptw(ws[i], s2), on = vt >= w0 - .03 && vt < w1; ptxt(ws[i], x, y, s2, on ? C.am : C.wh, { align: 'left' }); x += ww + sp * k; });
+}
+// ---------- end card (navy, crisp logo) ----------
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 400 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TX.end1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TX.end2, W / 2, H * .62 + 95, 72, BR.acc, 'MB', { blur: 0 });
+  ctx.restore();
+}
+const SCAN = document.createElement('canvas'); SCAN.width = W; SCAN.height = H;
+{ const s = SCAN.getContext('2d'); s.fillStyle = 'rgba(0,0,0,.22)'; for (let y = 4; y < H; y += SC) s.fillRect(0, y, W, 1);
+  const v = s.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .75); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.45)'); s.fillStyle = v; s.fillRect(0, 0, W, H); }
+function render(t) {
+  TT = t; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  g.imageSmoothingEnabled = false; scenes(t); pcaps(t);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(lo, 0, 0, W, H);
+  // bloom: blurred low-res copy added on top
+  bg_.clearRect(0, 0, LW, LH); bg_.filter = 'blur(3px)'; bg_.drawImage(lo, 0, 0); bg_.filter = 'none';
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .45; ctx.imageSmoothingEnabled = true; ctx.drawImage(bl, 0, 0, W, H); ctx.restore();
+  ctx.drawImage(SCAN, 0, 0);
+  logo(.9);
+  endCard(t, V('vend') + .6);
+}
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+window.ready = (async () => {
+  await Promise.all([loadFont('PS', 'fonts/PressStart2P.ttf'), loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  END = V('vend') + 2.6;
+  await loadImg('logo', 'brand/logo_white_transparent.png');
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
