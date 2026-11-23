@@ -1,0 +1,439 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#fff}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Баланың жынысын әке анықтайды»: Minimal Line (white paper, thin black lines, X = turquoise, Y = coral).
+// Nine scenes, each drawn by a line; render(T) is deterministic.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OW = 1080, OH = 1920;
+const BR = { navy: '#130B54', amber: '#FEB300' }, TQ = '#14ABA2', CR = '#EE5F4C', INK = '#171717', GR = 'rgba(23,23,23,.45)', PAPER = '#FAF9F5';
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+let B, M, IMG = {};
+
+const L = {
+  kk: {
+    h: { s1: '6 ӘЙЕЛ · 1 СЕБЕП', s2: 'ЖЫНЫСТЫ КІМ АНЫҚТАЙДЫ?', s3: 'ӘЙЕЛ XX · ЕР XY', s4: 'АНА → тек X · ӘКЕ → X не Y', s5: 'SRY ГЕНІ', s6: 'ҚҰСТАРДА — КЕРІСІНШЕ', s7: 'ЖАУАП ӘКЕДЕ', s8: 'ҰБТ СҰРАҒЫ', s9: 'СІЛТЕМЕ ШАПКАДА' },
+    who: 'КІМ?', pill: 'ҰБТ · БИОЛОГИЯ', woman: 'ӘЙЕЛ', man: 'ЕР', note: '46 хромосома · 1 жұп — жыныстық',
+    mom: 'АНА', dad: 'ӘКЕ', momS: 'тек X', dadS: 'X не Y', girl: 'қыз', boy: 'ұл',
+    sryM: 'ұл бағыты', sryF: 'SRY жоқ → қыз бағыты', p50: ['қыз', 'ұл'],
+    bird: ['аталық ZZ', 'аналық ZW'], birdW: 'жынысты аналық анықтайды', hot: 'ыстық', cold: 'суық', temp: 'температура шешеді',
+    ans: 'ЖАУАБЫ — ', chance: 'кездейсоқтық',
+    q: ['Ер адамның жыныс', 'хромосомалары:'], let: ['А', 'Ә', 'Б'], opts: ['XX', 'XY', 'ZW'],
+    cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз']
+  },
+  ru: {
+    h: { s1: '6 ЖЁН · 1 ПРИЧИНА', s2: 'КТО ОПРЕДЕЛЯЕТ ПОЛ?', s3: 'ЖЕНЩИНА XX · МУЖЧИНА XY', s4: 'МАТЬ → только X · ОТЕЦ → X или Y', s5: 'ГЕН SRY', s6: 'У ПТИЦ — НАОБОРОТ', s7: 'ОТВЕТ — У ОТЦА', s8: 'ВОПРОС ЕНТ', s9: 'ССЫЛКА В ШАПКЕ' },
+    who: 'КТО?', pill: 'ЕНТ · БИОЛОГИЯ', woman: 'ЖЕНЩИНА', man: 'МУЖЧИНА', note: '46 хромосом · 1 пара — половая',
+    mom: 'МАТЬ', dad: 'ОТЕЦ', momS: 'только X', dadS: 'X или Y', girl: 'девочка', boy: 'мальчик',
+    sryM: 'мужской путь', sryF: 'нет SRY → женский путь', p50: ['девочка', 'мальчик'],
+    bird: ['самец ZZ', 'самка ZW'], birdW: 'пол определяет самка', hot: 'тепло', cold: 'холод', temp: 'решает температура',
+    ans: 'ОТВЕТ — ', chance: 'случайность',
+    q: ['Половые хромосомы', 'у мужчины:'], let: ['А', 'Б', 'В'], opts: ['XX', 'XY', 'ZW'],
+    cta: ['Перейдите по ссылке', 'в шапке профиля']
+  }
+}[LANG];
+
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const eob = x => { x = clamp(x); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const win = (T, t0, d) => clamp((T - t0) / d);
+const colOf = s => /Y|ZW|SRY/.test(s) ? CR : TQ;
+
+// ---------- line primitives ----------
+function strokes(polys, k, lw = 5, col = INK, dash = null) {
+  let tot = 0; const lens = polys.map(p => { let s = 0; for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); tot += s; return s; });
+  let left = clamp(k) * tot, tip = null;
+  ctx.save(); ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (dash) ctx.setLineDash(dash);
+  for (let j = 0; j < polys.length && left > 0; j++) {
+    const p = polys[j]; ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); tip = p[0];
+    for (let i = 1; i < p.length; i++) {
+      const s = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+      if (s <= left) { ctx.lineTo(p[i][0], p[i][1]); left -= s; tip = p[i]; }
+      else { const f = left / s; tip = [lerp(p[i - 1][0], p[i][0], f), lerp(p[i - 1][1], p[i][1], f)]; ctx.lineTo(tip[0], tip[1]); left = 0; break; }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  return k > 0 && k < 1 ? tip : null;
+}
+function pen(tip, r = 7) {
+  if (!tip) return; ctx.save(); ctx.fillStyle = INK; ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(tip[0], tip[1], r, 0, 7); ctx.fill(); ctx.restore();
+}
+const arcP = (cx, cy, r, a0, a1, n = 48) => Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a0, a1, i / n); return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+const ellP = (cx, cy, rx, ry, n = 48) => Array.from({ length: n + 1 }, (_, i) => { const a = -Math.PI / 2 + i / n * Math.PI * 2; return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; });
+const off = (p, x, y, s = 1) => p.map(q => q.map(([a, b]) => [x + a * s, y + b * s]));
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function rrectP(x, y, w, h, r) {
+  const P = [[x + r, y], [x + w - r, y], ...arcP(x + w - r, y + r, r, -Math.PI / 2, 0, 10).slice(1), [x + w, y + h - r], ...arcP(x + w - r, y + h - r, r, 0, Math.PI / 2, 10).slice(1),
+    [x + r, y + h], ...arcP(x + r, y + h - r, r, Math.PI / 2, Math.PI, 10).slice(1), [x, y + r], ...arcP(x + r, y + r, r, Math.PI, Math.PI * 1.5, 10).slice(1)];
+  return [P];
+}
+function tw(t, font) { ctx.save(); ctx.font = font; const w = ctx.measureText(t).width; ctx.restore(); return w; }
+function fitFont(t, base, maxW, face = 'MB') { const w = tw(t, `${base}px ${face}`); return Math.min(base, Math.floor(base * maxW / w)); }
+// text revealed left to right with a pen point; segments [[text,colour],...] allowed
+function wtext(t, x, y, font, k, o = {}) {
+  if (k <= 0) return 0;
+  const segs = Array.isArray(t) ? t : [[t, o.col || INK]];
+  ctx.save(); ctx.font = font; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const w = segs.reduce((s, q) => s + ctx.measureText(q[0]).width, 0), x0 = o.align === 'left' ? x : o.align === 'right' ? x - w : x - w / 2;
+  const hgt = parseInt(font) * 1.3;
+  ctx.beginPath(); ctx.rect(x0 - 10, y - hgt, (w + 20) * clamp(k), hgt * 2); ctx.clip();
+  ctx.globalAlpha *= o.a ?? 1;
+  let xx = x0; for (const [s, col] of segs) { ctx.fillStyle = col; ctx.fillText(s, xx, y); xx += ctx.measureText(s).width; }
+  ctx.restore();
+  if (k < 1 && o.pen !== false) pen([x0 + w * k, y], 6);
+  return w;
+}
+// text with X / Y / Z letters coloured
+function xyText(t) { const out = []; for (const ch of t) { const col = ch === 'X' ? TQ : (ch === 'Y' || ch === 'W') ? CR : INK; if (out.length && out[out.length - 1][1] === col) out[out.length - 1][0] += ch; else out.push([ch, col]); } return out; }
+function ftext(t, x, y, font, col = INK, al = 'center', a = 1) { ctx.save(); ctx.globalAlpha *= a; ctx.font = font; ctx.fillStyle = col; ctx.textAlign = al; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); ctx.restore(); }
+
+// ---------- figures ----------
+// chromosome: X or Y, centromere at (cx,cy), height h, grown by k (0..1); outline in ink, body in colour
+function chromo(type, cx, cy, h, k, col, a = 1) {
+  if (k <= 0) return; k = eo(k);
+  const arms = type === 'X' ? [[-.26, -.5], [.26, -.5], [-.26, .5], [.26, .5]] : [[-.24, -.42], [.24, -.42], [0, .5]];
+  const lw = h * .17;
+  ctx.save(); ctx.globalAlpha *= a; ctx.lineCap = 'round';
+  for (const pass of [0, 1]) {
+    ctx.lineWidth = pass ? lw : lw + 8; ctx.strokeStyle = pass ? col : INK;
+    for (const [ax, ay] of arms) {
+      const ex = cx + ax * h * k, ey = cy + ay * h * k, mx = cx + ax * h * k * .35, my = cy + ay * h * k * .62;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+    }
+  }
+  // bands
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 4;
+  for (const [ax, ay] of arms) { const f = .62, ex = cx + ax * h * k * f, ey = cy + ay * h * k * f; ctx.beginPath(); ctx.arc(ex, ey, lw * .28, 0, 7); ctx.stroke(); }
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(cx, cy, lw * .32, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function venus(cx, cy, r, k, col = INK, lw = 6) { return strokes([arcP(cx, cy, r, -Math.PI / 2, Math.PI * 1.5), [[cx, cy + r], [cx, cy + r * 2]], [[cx - r * .5, cy + r * 1.5], [cx + r * .5, cy + r * 1.5]]], k, lw, col); }
+function mars(cx, cy, r, k, col = INK, lw = 6) {
+  const a = Math.PI / 4, ex = cx + r * Math.cos(-a), ey = cy + r * Math.sin(-a), tx = cx + r * 1.9 * Math.cos(-a), ty = cy + r * 1.9 * Math.sin(-a);
+  return strokes([arcP(cx, cy, r, -a, Math.PI * 2 - a), [[ex, ey], [tx, ty]], [[tx - r * .6, ty], [tx, ty], [tx, ty + r * .6]]], k, lw, col);
+}
+function gamete(x, y, r, letter, k, a = 1) {
+  if (k <= 0) return; const col = colOf(letter);
+  ctx.save(); ctx.globalAlpha *= a;
+  pen(strokes([arcP(x, y, r, -Math.PI / 2, Math.PI * 1.5)], k, 5, col));
+  if (k > .5) ftext(letter, x, y + 3, `${Math.round(r * 1.05)}px MB`, col, 'center', clamp((k - .5) * 2));
+  ctx.restore();
+}
+const CROWN = [[[-170, 110], [-170, -60], [-85, 30], [0, -110], [85, 30], [170, -60], [170, 110], [-170, 110]], [[-170, 70], [170, 70]]];
+function crown(x, y, s, k, lw = 6) {
+  const t = pen(strokes(off(CROWN, x, y, s), k, lw));
+  const g = clamp((k - .8) * 5);
+  if (g > 0) { ctx.save(); ctx.globalAlpha *= g; ctx.strokeStyle = INK; ctx.lineWidth = lw; for (const [px, py] of [[-170, -60], [0, -110], [170, -60]]) { ctx.beginPath(); ctx.arc(x + px * s, y + (py - 20) * s, 14 * s, 0, 7); ctx.stroke(); } ctx.restore(); }
+}
+function wife(x, y, s, k, a = 1) {
+  ctx.save(); ctx.globalAlpha *= a;
+  strokes(off([arcP(0, -80, 24, -Math.PI / 2, Math.PI * 1.5, 30), [[0, -56], [-42, 50], [42, 50], [0, -56]], [[-14, 50], [-14, 82]], [[14, 50], [14, 82]]], x, y, s), k, 5);
+  ctx.restore();
+}
+const HEN = [
+  [[52, -128], [40, -90], [70, -40], [78, 20], [50, 72], [-10, 96], [-80, 88], [-140, 50], [-176, -10], [-200, -100], [-170, -70], [-196, -150], [-150, -88], [-168, -160], [-122, -96], [-100, -60], [-40, -60], [10, -90], [30, -130]],
+  arcP(70, -168, 44, Math.PI * .75, Math.PI * 2.75, 40),
+  [[44, -206], [52, -244], [70, -214], [86, -250], [100, -214], [116, -236], [114, -196]],
+  [[112, -178], [150, -164], [112, -150]],
+  [[108, -130], [116, -108], [100, -120]],
+  [[-110, -10], [-60, 30], [10, 20], [-40, -10], [-110, -10]],
+  [[-30, 94], [-30, 170], [-58, 192]], [[-30, 170], [-2, 192]], [[14, 88], [14, 170], [-12, 192]], [[14, 170], [42, 192]]];
+const CROC = [
+  [[-300, 0], [-230, -18], [-170, -40], [-150, -56], [-130, -42], [-110, -60], [-90, -46], [-70, -62], [-50, -48], [-30, -62], [-10, -48], [10, -58], [40, -50], [100, -50], [130, -74], [160, -66], [176, -46], [300, -28], [310, -10], [296, 4], [170, 10], [120, 22], [40, 34], [-120, 30], [-300, 0]],
+  [[176, -6], [190, 4], [204, -6], [218, 4], [232, -6], [246, 4], [260, -6], [274, 3], [288, -6]],
+  [[-110, 30], [-130, 66], [-96, 66]], [[50, 34], [40, 70], [76, 70]], [[-60, 32], [-70, 62]], [[110, 22], [118, 56]]];
+
+// ---------- scenes ----------
+const SC = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9'];
+const S0 = id => M[id], S1 = id => { const i = SC.indexOf(id); return i < SC.length - 1 ? M[SC[i + 1]] : B.end; };
+function sceneAlpha(id, T) { const a = S0(id), b = S1(id); if (T < a - .05 || T > b + .05) return 0; return (id === 's1' ? 1 : win(T, a, .35)) * (1 - win(T, b - .3, .3)); }
+// gentle push-in around the content centre while a scene runs
+function within(id, T, fn) {
+  const a = sceneAlpha(id, T); if (a <= 0) return;
+  const k = win(T, S0(id), S1(id) - S0(id)), z = 1 + .035 * k;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(540, 960); ctx.scale(z, z); ctx.translate(-540, -960);
+  fn(T - S0(id)); ctx.restore();
+}
+
+function scene1(T) { within('s1', T, t => {
+  crown(540, 760, 1.05, win(t, .05, 1.3), 7);
+  const n1 = M.n1, end = M.s2;
+  for (let i = 0; i < 6; i++) {
+    const x = 540 + (i - 2.5) * 150, ta = .5 + i * .22;
+    const tg = n1 + .3 + i * (end - n1 - .9) / 6, g = win(T, tg, .3);
+    if (g >= 1) continue;
+    ctx.save(); ctx.translate(0, g * 40); wife(x, 1200, 1, win(t, ta, .5), 1 - g); ctx.restore();
+  }
+  // the king's own mark: a small Y drawn on the crown at «ответ в нём самом»
+  chromo('Y', 540, 800, 150, win(T, n1 + 1.0, .6), CR);
+}); }
+
+function scene2(T) { within('s2', T, t => {
+  pen(strokes([arcP(540, 860, 300, -Math.PI / 2, Math.PI * 1.5, 90)], win(t, 0, 1.0), 6));
+  // the cell's inner dots (nucleus)
+  pen(strokes([arcP(540, 860, 120, -Math.PI / 2, Math.PI * 1.5, 60)], win(t, .7, .8), 4, GR, [10, 12]));
+  const k = eob(win(t, .9, .5));
+  if (k > 0) { ctx.save(); ctx.translate(540, 870); ctx.scale(k, k); ftext(L.who, 0, 0, `${fitFont(L.who, 170, 420)}px MB`, INK); ctx.restore(); }
+  const pk = eob(win(T, M.ent, .45));
+  if (pk > 0) {
+    ctx.save(); ctx.translate(540, 1300); ctx.scale(pk, pk);
+    const w = tw(L.pill, '54px MB') + 90; ctx.fillStyle = BR.navy; rrect(-w / 2, -50, w, 100, 50); ctx.fill();
+    ftext(L.pill, 0, 3, '54px MB', '#fff'); ctx.restore();
+  }
+}); }
+
+function scene3(T) { within('s3', T, t => {
+  const sp = ease(win(t, 0, .7));
+  for (const [i, x0] of [[0, 80], [1, 560]]) {
+    const w = 440, cx = x0 + w / 2;
+    strokes(rrectP(lerp(540 - 20, x0, sp), 450, lerp(40, w, sp), 900, 36), win(t, .1, .8), 4, GR);
+    (i ? mars : venus)(cx - (i ? 10 : 0), 590, 52, win(t, .5 + i * .3, .7), INK, 6);
+    wtext(i ? L.man : L.woman, cx, 735, `${fitFont(i ? L.man : L.woman, 60, 400)}px MB`, win(t, .8 + i * .3, .5), { pen: false });
+  }
+  chromo('X', 212, 980, 205, win(T, M.xx + .3, .6), TQ); chromo('X', 408, 980, 205, win(T, M.xx + .7, .6), TQ);
+  wtext(xyText('XX'), 310, 1210, '120px MB', win(T, M.xx + 1.2, .5), { pen: false });
+  chromo('X', 700, 980, 205, win(T, M.xy + .3, .6), TQ); chromo('Y', 875, 1005, 165, win(T, M.xy + 1.0, .6), CR);
+  wtext(xyText('XY'), 790, 1210, '120px MB', win(T, M.xy + 1.8, .5), { pen: false });
+  const pa = win(T, M.pair, .5);
+  if (pa > 0) {
+    wtext(L.note, 540, 1430, `${fitFont(L.note, 44, 900, 'MX')}px MX`, pa, {});
+    // the sex pair circled in both columns
+    const pl = .5 + .5 * Math.sin((T - M.pair) * 5);
+    ctx.save(); ctx.globalAlpha *= win(T, M.pair + .4, .4) * (.55 + .45 * pl);
+    strokes(rrectP(150, 830, 320, 450, 40), 1, 4, TQ, [14, 12]); strokes(rrectP(630, 830, 320, 450, 40), 1, 4, CR, [14, 12]);
+    ctx.restore();
+  }
+}); }
+
+function scene4(T) { within('s4', T, t => {
+  // parents
+  venus(260, 510, 50, win(t, .1, .7)); wtext(L.mom, 260, 670, '52px MB', win(t, .4, .5), { pen: false });
+  wtext(xyText(L.momS), 260, 730, '40px MX', win(T, M.mom + 1.0, .5), { pen: false });
+  mars(820, 510, 50, win(T, M.dad - .2, .7)); wtext(L.dad, 820, 670, '52px MB', win(T, M.dad, .5), { pen: false });
+  wtext(xyText(L.dadS), 820, 730, '40px MX', win(T, M.dad + .5, .5), { pen: false });
+  // grid 2x2
+  const gx = 330, gy = 900, cs = 300;
+  strokes([[[gx, gy], [gx + 2 * cs, gy]], [[gx, gy + cs], [gx + 2 * cs, gy + cs]], [[gx, gy + 2 * cs], [gx + 2 * cs, gy + 2 * cs]],
+    [[gx, gy], [gx, gy + 2 * cs]], [[gx + cs, gy], [gx + cs, gy + 2 * cs]], [[gx + 2 * cs, gy], [gx + 2 * cs, gy + 2 * cs]]], win(t, .4, 1.2), 4, GR);
+  // mother's cells fly to the row headers (both X)
+  for (let r = 0; r < 2; r++) {
+    const k = ease(win(T, M.mom + .4 + r * .35, .8)), x = lerp(260, gx - 90, k), y = lerp(560, gy + cs / 2 + r * cs, k);
+    gamete(x, y, 52, 'X', win(T, M.mom + .4 + r * .35, .5));
+  }
+  // father's cells: X and Y to the column headers
+  const fa = T > M.fa ? .5 + .5 * Math.sin((T - M.fa) * 6) : 0;
+  for (let q = 0; q < 2; q++) {
+    const k = ease(win(T, M.dad + .9 + q * .4, .8)), x = lerp(820, gx + cs / 2 + q * cs, k), y = lerp(560, gy - 85, k);
+    if (fa && k >= 1) { ctx.save(); ctx.globalAlpha *= .25 * fa; ctx.fillStyle = q ? CR : TQ; ctx.beginPath(); ctx.arc(x, y, 72, 0, 7); ctx.fill(); ctx.restore(); }
+    gamete(x, y, 52, q ? 'Y' : 'X', win(T, M.dad + .9 + q * .4, .5));
+  }
+  // cells
+  for (let q = 0; q < 2; q++) for (let r = 0; r < 2; r++) {
+    const t0 = (q ? M.gy : M.gx) + .15 + r * .3, k = eob(win(T, t0, .4)); if (k <= 0) continue;
+    const cx = gx + cs / 2 + q * cs, cy = gy + cs / 2 + r * cs, col = q ? CR : TQ;
+    ctx.save(); ctx.globalAlpha *= .13 * clamp(k); ctx.fillStyle = col; ctx.fillRect(cx - cs / 2 + 6, cy - cs / 2 + 6, cs - 12, cs - 12); ctx.restore();
+    ctx.save(); ctx.translate(cx, cy - 25); ctx.scale(k, k); wtext(xyText(q ? 'XY' : 'XX'), 0, 0, '96px MB', 1, { pen: false }); ctx.restore();
+    ftext(q ? L.boy : L.girl, cx, cy + 75, '44px MX', col, 'center', clamp(k));
+  }
+  // «father decides»: a ring around the father
+  if (T > M.fa) pen(strokes([arcP(820, 520, 92, -Math.PI / 2, Math.PI * 1.5, 60)], win(T, M.fa, .7), 6, CR));
+}); }
+
+function scene5(T) { within('s5', T, t => {
+  chromo('Y', 540, 800, 560, win(t, .1, .9), CR);
+  // SRY spot on the lower arm
+  const sk = win(T, M.s5 + 1.2, .4);
+  if (sk > 0) {
+    const bl = .5 + .5 * Math.sin((T - M.s5) * 8);
+    ctx.save(); ctx.globalAlpha *= sk; ctx.fillStyle = INK; ctx.fillRect(492, 930, 96, 26);
+    ctx.strokeStyle = CR; ctx.lineWidth = 4; ctx.globalAlpha *= .3 + .7 * bl; ctx.beginPath(); ctx.arc(540, 943, 70 + 14 * bl, 0, 7); ctx.stroke(); ctx.restore();
+    pen(strokes([[[600, 943], [740, 900]]], win(T, M.s5 + 1.4, .4), 4));
+    wtext('SRY', 830, 895, '72px MB', win(T, M.s5 + 1.7, .5), { col: CR, pen: false });
+  }
+  // two roads
+  const mk = win(T, M.m, .8);
+  if (mk > 0) { pen(strokes([[[600, 1180], [760, 1300], [860, 1300]], [[830, 1275], [860, 1300], [830, 1325]]], mk, 6, CR)); mars(940, 1290, 30, win(T, M.m + .5, .5), CR, 5);
+    wtext(L.sryM, 860, 1400, `${fitFont(L.sryM, 46, 380, 'MX')}px MX`, win(T, M.m + .6, .5), { col: CR, pen: false }); }
+  const fk = win(T, M.f, .8);
+  if (fk > 0) { pen(strokes([[[480, 1180], [320, 1300], [220, 1300]], [[250, 1275], [220, 1300], [250, 1325]]], fk, 6, TQ, [16, 14])); venus(150, 1280, 30, win(T, M.f + .5, .5), TQ, 5);
+    wtext(L.sryF, 250, 1400, `${fitFont(L.sryF, 40, 420, 'MX')}px MX`, win(T, M.f + .6, .5), { col: TQ, pen: false }); }
+  // 50 / 50 scale
+  const pk = win(T, M.p50, .6);
+  if (pk > 0) {
+    const y = 1540, x0 = 140, x1 = 940, mid = 540 + 16 * Math.sin((T - M.p50) * 3) * Math.exp(-(T - M.p50) * .8);
+    ctx.save(); ctx.globalAlpha *= pk;
+    ctx.fillStyle = TQ; rrect(x0, y - 28, (mid - x0) * pk, 56, 28); ctx.fill();
+    ctx.fillStyle = CR; rrect(mid, y - 28, (x1 - mid) * pk, 56, 28); ctx.fill();
+    ftext('50%', (x0 + mid) / 2, y + 3, '40px MB', '#fff'); ftext('50%', (mid + x1) / 2, y + 3, '40px MB', '#fff');
+    ftext(L.p50[0], x0 + 10, y - 62, '36px MX', TQ, 'left'); ftext(L.p50[1], x1 - 10, y - 62, '36px MX', CR, 'right');
+    ctx.restore();
+  }
+}); }
+
+function scene6(T) { within('s6', T, t => {
+  // hen: drawn, then moves up when the crocodile comes
+  const up = ease(win(T, M.croc - .2, .8)), hy = lerp(820, 640, up), hs = lerp(1.25, .85, up), hx = lerp(560, 380, up);
+  pen(strokes(off(HEN, hx, hy, hs), win(t, .1, 1.8), 5));
+  const bk = win(T, M.bird, .5);
+  if (bk > 0) {
+    const bx = lerp(540, 790, up), by = lerp(1150, 560, up), fs = up > .5 ? 46 : 58;
+    ctx.save(); ctx.globalAlpha *= bk;
+    ctx.save(); ctx.font = `${fs}px MB`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (up < .5) { wtext(xyText(L.bird[0] + '   ' + L.bird[1]), bx, by, `${fitFont(L.bird[0] + '   ' + L.bird[1], 58, 900)}px MB`, win(T, M.bird, .7), {}); }
+    else { wtext(xyText(L.bird[0]), bx, by - 40, '46px MB', 1, { pen: false }); wtext(xyText(L.bird[1]), bx, by + 30, '46px MB', 1, { pen: false }); }
+    ctx.restore();
+    if (up < .5) wtext(L.birdW, 540, 1250, `${fitFont(L.birdW, 42, 860, 'MX')}px MX`, win(T, M.bird + 1.2, .6), { col: CR, pen: false, a: 1 - up * 2 });
+    ctx.restore();
+  }
+  // crocodile over a nest, with a thermometer
+  const ck = win(T, M.croc, 1.4);
+  if (ck > 0) {
+    pen(strokes(off(CROC, 470, 1130, 1.15), ck, 5));
+    strokes([arcP(470, 1180, 230, Math.PI * .12, Math.PI * .88, 30)], win(T, M.croc + .9, .6), 5, GR);
+    for (let i = 0; i < 3; i++) strokes([ellP(400 + i * 70, 1310, 30, 40, 30)], win(T, M.croc + 1.2 + i * .15, .4), 5);
+    // thermometer
+    const tx = 920, tk = win(T, M.croc + 1.0, .6);
+    if (tk > 0) {
+      ctx.save(); ctx.globalAlpha *= tk;
+      const lev = .5 + .45 * Math.sin((T - M.croc) * 1.8), top = 1020, bot = 1330, col = lev > .5 ? CR : TQ;
+      ctx.fillStyle = col; ctx.fillRect(tx - 12, lerp(bot, top + 20, lev), 24, bot - lerp(bot, top + 20, lev));
+      ctx.beginPath(); ctx.arc(tx, bot + 22, 30, 0, 7); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 5; rrect(tx - 22, top, 44, bot - top + 10, 22); ctx.stroke(); ctx.beginPath(); ctx.arc(tx, bot + 22, 38, -Math.PI * .35, Math.PI * 1.35); ctx.stroke();
+      ftext(L.hot, tx - 50, top + 20, '36px MX', CR, 'right'); ftext(L.cold, tx - 50, bot - 20, '36px MX', TQ, 'right');
+      ctx.restore();
+      wtext(L.temp, 540, 1470, `${fitFont(L.temp, 46, 860, 'MX')}px MX`, win(T, M.croc + 2.0, .6), { pen: false });
+    }
+  }
+}); }
+
+function scene7(T) { within('s7', T, t => {
+  crown(540, 700, .9, win(t, .05, .9), 6);
+  chromo('Y', 540, 740, 140, win(t, .9, .5), CR);
+  wtext([[L.ans, INK], ['Y', CR]], 540, 1020, '96px MB', win(t, 1.3, .7), {});
+  const nk = win(T, M.none, .4);
+  if (nk > 0) {   // a die rolls: chance
+    const ro = (1 - eo(win(T, M.none, 1.4))) * Math.PI * 3, s = 150;
+    ctx.save(); ctx.globalAlpha *= nk; ctx.translate(540, 1330); ctx.rotate(ro);
+    ctx.strokeStyle = INK; ctx.lineWidth = 6; rrect(-s / 2, -s / 2, s, s, 26); ctx.stroke();
+    const face = T < M.none + 1.4 ? Math.floor((T - M.none) * 8) % 6 + 1 : 5;
+    const D = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] }[face];
+    D.forEach(([a, b], i) => { ctx.fillStyle = i % 2 ? CR : TQ; ctx.beginPath(); ctx.arc(a * 40, b * 40, 14, 0, 7); ctx.fill(); });
+    ctx.restore();
+  }
+}); }
+
+function scene8(T) { within('s8', T, t => {
+  ctx.save(); const pk = eob(win(t, .05, .4)); ctx.translate(540, 480); ctx.scale(pk, pk);
+  const lab = L.h.s8, w = tw(lab, '52px MB') + 90; ctx.fillStyle = BR.navy; rrect(-w / 2, -48, w, 96, 48); ctx.fill(); ftext(lab, 0, 3, '52px MB', '#fff'); ctx.restore();
+  L.q.forEach((s, i) => wtext(s, 540, 640 + i * 76, `${fitFont(s, 62, 900)}px MB`, win(T, M.q + i * .5, .6), { pen: false }));
+  const good = T >= M.ans;
+  for (let i = 0; i < 3; i++) {
+    const y = 870 + i * 165, k = win(T, M.o1 + i * .45, .5); if (k <= 0) continue;
+    const isA = i === 1, dim = good && !isA ? .35 : 1;
+    ctx.save(); ctx.globalAlpha *= dim;
+    if (good && isA) { ctx.save(); ctx.globalAlpha *= .14 * win(T, M.ans, .3); ctx.fillStyle = TQ; rrect(150, y - 62, 780, 124, 30); ctx.fill(); ctx.restore(); }
+    strokes(rrectP(150, y - 62, 780, 124, 30), k, good && isA ? 7 : 4, good && isA ? TQ : INK);
+    ctx.globalAlpha *= clamp(k * 2 - .6);
+    ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(230, y, 40, 0, 7); ctx.stroke();
+    ftext(L.let[i], 230, y + 3, '46px MB', INK);
+    wtext(xyText(L.opts[i]), 320, y + 4, '78px MB', 1, { align: 'left', pen: false });
+    ctx.restore();
+    if (good && isA) pen(strokes([[[800, y], [835, y + 34], [895, y - 36]]], win(T, M.ans + .1, .4), 9, TQ));
+  }
+  // timer during the pause
+  if (T > M.qa - .2 && T < M.ans + .6) {
+    const k = win(T, M.qa, M.qb - M.qa), a = win(T, M.qa - .2, .3) * (1 - win(T, M.ans + .2, .4));
+    ctx.save(); ctx.globalAlpha *= a;
+    ctx.strokeStyle = 'rgba(23,23,23,.15)'; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(540, 1440, 70, 0, 7); ctx.stroke();
+    ctx.strokeStyle = CR; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(540, 1440, 70, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - k)); ctx.stroke();
+    ftext(String(Math.max(1, Math.ceil(3 * (1 - k)))), 540, 1444, '70px MB', INK);
+    ctx.restore();
+  }
+}); }
+
+function scene9(T) { within('s9', T, t => {
+  const bo = Math.sin(t * 4) * 6;
+  chromo('X', 380, 980 + bo, 300, win(t, .05, .7), TQ); chromo('Y', 700, 1010 - bo, 220, win(t, .25, .7), CR);
+  // arms meet: a handshake
+  const hk = win(t, .8, .6);
+  pen(strokes([[[460, 960 + bo], [540, 930]], [[620, 960 - bo], [540, 930]]], hk, 6));
+  if (hk >= 1) { const s = 1 + .12 * Math.sin(t * 6); ctx.save(); ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(540, 930, 20 * s, 0, 7); ctx.stroke(); ctx.restore(); }
+  // arrow up to the profile header
+  const ak = win(T, M.cta - .3, .8), ab = T > M.cta + .5 ? Math.sin((T - M.cta) * 5) * 14 : 0;
+  pen(strokes([[[540, 1440], [540, 1240 + ab]], [[480, 1300 + ab], [540, 1240 + ab], [600, 1300 + ab]]], ak, 8, INK));
+}); }
+
+// ---------- screen texts ----------
+function headline(T) {
+  if (T > B.end - 2.4) return;
+  let id = null; for (const h of SC) if (h !== 's8' && T >= M[h] + (h === 's1' ? .1 : .2)) id = h; if (!id) return;
+  const t0 = M[id] + (id === 's1' ? .1 : .2), out = 1 - win(T, S1(id) - .3, .3);
+  const txt = L.h[id], f = `${fitFont(txt, 58, 880, 'MB')}px MB`, k = win(T, t0, .7);
+  ctx.save(); ctx.globalAlpha = out;
+  const w = wtext(xyText(txt), 540, 300, f, k, {});
+  pen(strokes([[[540 - w / 2, 352], [540 + w / 2, 352]]], win(T, t0 + .5, .5), 5, id === 's5' || id === 's7' ? CR : TQ));
+  ctx.restore();
+}
+function captions(T) {
+  if (T > B.end - 2.4) return;
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  const k = clamp((T - cp.t0) / .14);
+  ctx.save(); let sz = 64; ctx.font = `${sz}px MB`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase().replace('Ё', 'Е') === w.w.toUpperCase() ? w.w.toUpperCase() : w.w.toUpperCase() })), sp = 20;
+  let wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  if (wd > 960) { sz = Math.floor(sz * 960 / wd); ctx.font = `${sz}px MB`; wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - wd / 2; const y = 1660 - (1 - k) * 14;
+  ctx.globalAlpha *= k; ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.lineWidth = 12; ctx.strokeStyle = PAPER; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? colOf(w.t) : INK; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+function logo() { const lh = 120, lw = lh * IMG.logo.width / IMG.logo.height; ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(IMG.logo, OW - 44 - lw, 44, lw, lh); ctx.restore(); }
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  const a = clamp((T - t0) / .35);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 420, lh = lw * IMG.logoW.height / IMG.logoW.width, s = .9 + .1 * eob(clamp((T - t0) / .45));
+  ctx.drawImage(IMG.logoW, OW / 2 - lw * s / 2, 700 - lh * s / 2, lw * s, lh * s);
+  ctx.font = '62px MB'; ctx.fillStyle = BR.amber; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  L.cta.forEach((t, i) => ctx.fillText(t, OW / 2, 1080 + i * 82));
+  const bo = Math.sin(T * 6) * 10; ctx.strokeStyle = BR.amber; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(OW / 2, 1420 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.moveTo(OW / 2 - 50, 1320 + bo); ctx.lineTo(OW / 2, 1270 + bo); ctx.lineTo(OW / 2 + 50, 1320 + bo); ctx.stroke();
+  ctx.restore();
+}
+function background(T) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, OW, OH);
+  const step = 60, oy = (T * 6) % step;   // faint dot grid, slowly drifting
+  ctx.fillStyle = 'rgba(23,23,23,.06)';
+  for (let y = -step + oy; y < OH; y += step) for (let x = 30; x < OW; x += step) ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+}
+
+window.render = function (T) {
+  background(T);
+  scene1(T); scene2(T); scene3(T); scene4(T); scene5(T); scene6(T); scene7(T); scene8(T); scene9(T);
+  ctx.globalAlpha = 1; headline(T); captions(T); logo(); endCard(T);
+  if (T < .2) { ctx.fillStyle = `rgba(250,249,245,${1 - T / .2})`; ctx.fillRect(0, 0, OW, OH); }
+};
+
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = (await (await fetch('beats.json')).json())[LANG]; M = B.m;
+  [IMG.logo, IMG.logoW] = await Promise.all(['brand/logo_navy_transparent.png', 'brand/logo_white_transparent.png'].map(load));
+  await Promise.all(['60px MB', '40px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІXY')));
+  window.ready = true;
+})();
+</script></body></html>
