@@ -16,6 +16,7 @@ LANG_Q=ru node snap.js 16 40  # preview stills -> stills/
 | `scene.html` | Whole picture, async `render(T)`, `?lang=kk|ru`. Texts: `TX` table. Engine from `abai/` |
 | `timing.py` | Stretches the quiz pause to 3 s, writes `vo_<lang>.wav` + `timeline_<lang>.json` (cuts + marks) |
 | `sfx.py` | Synthesised chalk, wind/steps, clock, piano with muted keys, ticks, dings + calm minor music bed |
+| `flat.html` | Flat Vector version (JAS navy/amber, flat characters, animated DNA). `FLAT=1 SKIP_RECORD=1 V=flat_silent OUT=epigen_flat ./build.sh kk` after `PAGE=flat.html LANG_Q=kk node record.js flat_silent_kk.mp4 30` |
 | `clip/` | Higgsfield shot as JPG frames (`f0001..f0121`, not in repo), `sketch.png` (chalk version of the last frame), `info.json` |
 
 Voice: ElevenLabs eleven_v4, Arunur's own cloned voice «Arnur», one take per language. Voice files are not in the repo.

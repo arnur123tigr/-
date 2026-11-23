@@ -78,6 +78,10 @@ def pnote(f, L=1.8, damp=2.2):
 def thunk(L=0.25):   # muted key
     t = tt(L); return np.sin(2 * np.pi * 180 * t) * np.exp(-t * 40) + 0.3 * band(rng.standard_normal(len(t)), 200, 1500) * np.exp(-t * 50)
 m2f = lambda m: 440 * 2 ** ((m - 69) / 12)
+import os
+if os.environ.get('FLAT'):      # flat-vector version: soft UI pops instead of chalk scratches
+    def chalk(L=0.3):
+        t = tt(0.12); return np.sin(2 * np.pi * (520 + 900 * np.exp(-t * 40)) * t) * np.exp(-t * 35) * 0.8
 fx = np.zeros(N)
 st = lambda k: sc[k]['start']; en = lambda k: sc[k]['end']
 for k in ['s1', 's2', 's4', 's5', 's6', 's7', 's8', 's9']:

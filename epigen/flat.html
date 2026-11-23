@@ -1,0 +1,462 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Epigenetics flat vector</title>
+<style>
+@font-face{font-family:Mont;src:url(fonts/Montserrat-ExtraBold.ttf);font-weight:800}
+@font-face{font-family:Inter;src:url(fonts/Inter-Bold.otf);font-weight:700}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Flat Vector version of «Гендер есте сақтаған аштық» / «Голод, который запомнили гены» (?lang=kk|ru)
+// Deterministic async render(T); timing from timeline_<lang>.json (timing.py), same marks as the chalk version.
+const W = 1080, H = 1920, CX = W / 2, CY = H / 2;
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const back = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+
+// ---------- palette (JAS) ----------
+const NAVY = '#130B54', NAVY2 = '#1F1673', PANEL = '#2A2085', AMBER = '#FEB300', WHITE = '#FFFFFF';
+const CORAL = '#FF6B5B', TEAL = '#2EC4B6', LILAC = '#9D8CFF', SKIN = '#F2C29B', GREYV = '#6E68A3', DARK = '#0B0638';
+
+const LANG = new URLSearchParams(location.search).get('lang') || 'kk';
+const TX = {
+  kk: {
+    h1: ['ӘЖЕҢНІҢ ӨМІРІ', 'СЕНІҢ ГЕНІҢ'], names: ['әже', 'ана', 'сен'], dnaOk: 'ДНҚ өзгермейді',
+    epi: 'ЭПИГЕНЕТИКА', epiSub: 'гендердің «үстіндегі» белгілер', ubt: 'ҰБТ · БИОЛОГИЯ', newT: 'жаңа тақырып!',
+    film: 'НИДЕРЛАНД · 1944',
+    kcal: '400–800 ККАЛ', norm: 'қалыпты ≈ 2000', perDay: 'ккал / күніне', years: '1944–1945', less: 'бірнеше есе аз!', preg: 'бала күткен аналар',
+    h5: '60 ЖЫЛДАН КЕЙІН', y2: '2000-жж.', ill: ['қант диабеті', 'артық салмақ', 'жүрек'], why: 'Бірақ неге?', watch: 'ғалымдар бақылады',
+    h6: 'ДНҚ МЕТИЛДЕНУІ', gene: 'ГЕН', off: 'ӨШІРУЛІ', on: 'ҚОСУЛЫ', same: 'әріптері сол қалпы', piano: 'пернелер бірдей',
+    h7: '60 ЖЫЛ ӨТСЕ ДЕ', hungry: 'аштық тобы', control: 'бақылау тобы', grand: 'немерелер?', some: 'кейбір зерттеулер бойынша', rev: 'көбіне қайтымды',
+    ubtQ: 'ҰБТ СҰРАҒЫ', q: 'Эпигенетикада не өзгереді?', o: ['ДНҚ тізбегі', 'ген белсенділігі', 'хромосома саны'], L: ['А', 'Ә', 'Б'],
+    link: 'СІЛТЕМЕ ШАПКАДА', cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз'],
+  },
+  ru: {
+    h1: ['ЖИЗНЬ БАБУШКИ', 'ТВОИ ГЕНЫ'], names: ['бабушка', 'мама', 'ты'], dnaOk: 'ДНК не меняется',
+    epi: 'ЭПИГЕНЕТИКА', epiSub: 'метки «поверх» генов', ubt: 'ЕНТ · БИОЛОГИЯ', newT: 'новая тема!',
+    film: 'НИДЕРЛАНДЫ · 1944',
+    kcal: '400–800 ККАЛ', norm: 'норма ≈ 2000', perDay: 'ккал в день', years: '1944–1945', less: 'в несколько раз меньше!', preg: 'ждали детей',
+    h5: 'ЧЕРЕЗ 60 ЛЕТ', y2: '2000-е', ill: ['диабет', 'лишний вес', 'сердце'], why: 'Но почему?', watch: 'учёные наблюдали',
+    h6: 'МЕТИЛИРОВАНИЕ ДНК', gene: 'ГЕН', off: 'ВЫКЛЮЧЕН', on: 'ВКЛЮЧЁН', same: 'буквы те же', piano: 'клавиши те же',
+    h7: 'ДАЖЕ СПУСТЯ 60 ЛЕТ', hungry: 'голодная группа', control: 'контрольная', grand: 'внуки?', some: 'по некоторым исследованиям', rev: 'часто обратимы',
+    ubtQ: 'ВОПРОС ЕНТ', q: 'Что меняется при эпигенетике?', o: ['последовательность ДНК', 'активность генов', 'число хромосом'], L: ['А', 'Б', 'В'],
+    link: 'ССЫЛКА В ШАПКЕ', cta: ['Перейдите по ссылке', 'в шапке профиля'],
+  },
+}[LANG];
+
+const IMG = {};
+function loadImg(k, src) { return new Promise(r => { const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = src; }); }
+let TL = null, MK = {}, SC = null;
+const mk_ = k => MK[k] - SC.start;
+
+// ---------- drawing helpers ----------
+function rr(x, y, w, h, r, fill, o = {}) {
+  X.save(); if (o.alpha != null) X.globalAlpha *= o.alpha;
+  if (o.shadow) { X.shadowColor = 'rgba(0,0,0,.35)'; X.shadowBlur = 30; X.shadowOffsetY = 12; }
+  X.fillStyle = fill; X.beginPath(); X.roundRect(x, y, w, h, r); X.fill();
+  if (o.stroke) { X.shadowColor = 'transparent'; X.strokeStyle = o.stroke; X.lineWidth = o.lw || 6; X.stroke(); }
+  X.restore();
+}
+function circ(x, y, r, fill, o = {}) { X.save(); if (o.alpha != null) X.globalAlpha *= o.alpha; X.fillStyle = fill; X.beginPath(); X.arc(x, y, r, 0, Math.PI * 2); X.fill(); X.restore(); }
+function txt(s, x, y, px, o = {}) {
+  if (o.alpha === 0) return 0;
+  X.save(); if (o.alpha != null) X.globalAlpha *= o.alpha;
+  X.font = `${o.fam === 'Inter' ? 700 : 800} ${px}px ${o.fam || 'Mont'}`;
+  X.textAlign = o.align || 'center'; X.textBaseline = 'middle';
+  if (o.shadow !== false) { X.shadowColor = 'rgba(0,0,0,.35)'; X.shadowBlur = 14; X.shadowOffsetY = 5; }
+  X.fillStyle = o.color || WHITE; X.fillText(s, x, y);
+  const w = X.measureText(s).width; X.restore(); return w;
+}
+function tw(s, px, fam = 'Mont') { X.save(); X.font = `${fam === 'Inter' ? 700 : 800} ${px}px ${fam}`; const w = X.measureText(s).width; X.restore(); return w; }
+function fit(s, px, maxW, fam) { const w = tw(s, px, fam); return w > maxW ? px * maxW / w : px; }
+// pop-in transform around (x, y)
+function pop(t, t0, x, y, fn, dur = 0.45) {
+  const p = seg(t, t0, t0 + dur); if (p <= 0) return;
+  X.save(); X.translate(x, y); const s = back(p); X.scale(s, s); X.globalAlpha *= clamp(p * 3); X.translate(-x, -y); fn(); X.restore();
+}
+function slideUp(t, t0, fn, dist = 60, dur = 0.5) {
+  const p = seg(t, t0, t0 + dur); if (p <= 0) return;
+  X.save(); X.translate(0, (1 - easeOut(p)) * dist); X.globalAlpha *= easeOut(p); fn(); X.restore();
+}
+// headline: white pill-free bold caps with amber underline bar
+function headline(s, t, t0, y = 230, o = {}) {
+  const px = fit(s, o.px || 96, 880);
+  slideUp(t, t0, () => {
+    txt(s, CX, y, px, { color: o.color || WHITE });
+    const w = tw(s, px) * easeOut(seg(t, t0 + 0.25, t0 + 0.7));
+    rr(CX - w / 2, y + px * 0.62, w, 12, 6, AMBER, { shadow: false });
+  });
+}
+function label(s, x, y, px, t, t0, o = {}) { slideUp(t, t0, () => txt(s, x, y, px, { fam: 'Inter', color: o.color || WHITE }), 30, 0.4); }
+function pill(s, x, y, px, bg, fg, t, t0) {
+  pop(t, t0, x, y, () => { const w = tw(s, px, 'Inter') + px * 1.4; rr(x - w / 2, y - px * 0.95, w, px * 1.9, px * 0.95, bg, { shadow: true }); txt(s, x, y + 2, px, { fam: 'Inter', color: fg, shadow: false }); });
+}
+function line(pts, p, col, lw, o = {}) {
+  if (p <= 0) return;
+  let L = 0; const cum = [0]; for (let i = 1; i < pts.length; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); cum.push(L); }
+  const up = L * clamp(p);
+  X.save(); X.strokeStyle = col; X.lineWidth = lw; X.lineCap = 'round'; X.lineJoin = 'round'; if (o.dash) X.setLineDash(o.dash);
+  X.beginPath(); X.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) {
+    if (cum[i] <= up) X.lineTo(pts[i][0], pts[i][1]);
+    else { const f = (up - cum[i - 1]) / (cum[i] - cum[i - 1]); X.lineTo(lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)); break; }
+  }
+  X.stroke(); X.restore();
+}
+function arrowHead(x, y, ang, s, col) { X.save(); X.translate(x, y); X.rotate(ang); X.fillStyle = col; X.beginPath(); X.moveTo(s, 0); X.lineTo(-s * 0.7, -s * 0.75); X.lineTo(-s * 0.7, s * 0.75); X.closePath(); X.fill(); X.restore(); }
+function curve(p0, p1, p2, n = 30) { const o = []; for (let i = 0; i <= n; i++) { const t = i / n; o.push([(1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0], (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]]); } return o; }
+function tick(x, y, s, p, col = AMBER) { line([[x - 30 * s, y], [x - 6 * s, y + 26 * s], [x + 40 * s, y - 34 * s]], p, col, 14 * s); }
+
+// ---------- background ----------
+function background(T) {
+  const g = X.createLinearGradient(0, 0, 0, H); g.addColorStop(0, NAVY2); g.addColorStop(1, NAVY);
+  X.fillStyle = g; X.fillRect(0, 0, W, H);
+  // big soft flat circles drifting
+  const blobs = [[160, 380, 300, '#251B80'], [930, 1250, 380, '#1A1268'], [300, 1700, 260, '#221879'], [900, 300, 180, '#241A7E']];
+  for (const [x, y, r, c] of blobs) circ(x + 30 * Math.sin(T * 0.2 + x), y + 25 * Math.cos(T * 0.17 + y), r, c);
+  // dotted grid
+  X.save(); X.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let y = 60; y < H; y += 60) for (let x = 60; x < W; x += 60) { X.beginPath(); X.arc(x, y, 2.5, 0, 7); X.fill(); }
+  X.restore();
+}
+
+// ---------- characters (feet at origin, ~ 480 tall at s=1) ----------
+function person(kind, x, y, s = 1, o = {}) {
+  X.save(); X.translate(x, y); X.scale(s, s); if (o.alpha != null) X.globalAlpha *= o.alpha;
+  const kid = kind === 'kid', hy = kid ? -250 : -400, hr = kid ? 52 : 60;
+  const body = { gran: LILAC, mom: TEAL, kid: AMBER, preg: TEAL, adult: TEAL }[kind];
+  // shadow
+  X.fillStyle = 'rgba(0,0,0,.25)'; X.beginPath(); X.ellipse(0, 6, kid ? 70 : 110, 16, 0, 0, 7); X.fill();
+  if (kind === 'gran') { X.fillStyle = '#C9A26B'; X.fillRect(-150, -190, 14, 190); X.beginPath(); X.arc(-133, -190, 17, Math.PI, 0); X.lineWidth = 14; X.strokeStyle = '#C9A26B'; X.stroke(); }
+  // legs
+  X.fillStyle = DARK;
+  if (kid) { X.fillRect(-34, -110, 26, 110); X.fillRect(8, -110, 26, 110); } else { X.fillRect(-46, -90, 32, 90); X.fillRect(14, -90, 32, 90); }
+  // body
+  X.fillStyle = body; X.beginPath();
+  if (kid) { X.roundRect(-62, hy + hr + 6, 124, 150, [40, 40, 16, 16]); }
+  else if (kind === 'preg') { X.moveTo(-60, hy + hr + 8); X.quadraticCurveTo(-110, -40, -95, -70); X.lineTo(95, -70); X.quadraticCurveTo(170, -150, 80, hy + hr + 30); X.closePath(); }
+  else { X.moveTo(-62, hy + hr + 8); X.lineTo(62, hy + hr + 8); X.lineTo(118, -70); X.lineTo(-118, -70); X.closePath(); }
+  X.fill();
+  if (!kid) { X.fillStyle = 'rgba(0,0,0,.12)'; X.fillRect(-118, -110, 236, 18); }
+  // arms
+  X.strokeStyle = body; X.lineWidth = kid ? 26 : 30; X.lineCap = 'round';
+  X.beginPath(); X.moveTo(-60, hy + hr + 40); X.lineTo(kind === 'gran' ? -136 : -100, kind === 'gran' ? -200 : -150); X.stroke();
+  X.beginPath(); X.moveTo(60, hy + hr + 40); X.lineTo(kind === 'preg' ? 70 : 100, kind === 'preg' ? -150 : -150); X.stroke();
+  // neck + head
+  X.fillStyle = SKIN; X.fillRect(-16, hy + hr - 10, 32, 30);
+  X.beginPath(); X.arc(0, hy, hr, 0, 7); X.fill();
+  // hair
+  X.fillStyle = kind === 'gran' ? '#D9D6E8' : '#2B1B12';
+  X.beginPath(); X.arc(0, hy - 8, hr + 4, Math.PI * 1.02, Math.PI * 1.98); X.fill();
+  if (kind === 'gran') { X.beginPath(); X.arc(0, hy - hr - 18, 26, 0, 7); X.fill(); }
+  if (kind === 'mom' || kind === 'preg') { X.beginPath(); X.roundRect(hr - 18, hy - 20, 26, 110, 12); X.fill(); X.beginPath(); X.roundRect(-hr - 8, hy - 20, 26, 110, 12); X.fill(); }
+  // face
+  X.fillStyle = DARK; X.beginPath(); X.arc(-20, hy + 4, 6, 0, 7); X.arc(20, hy + 4, 6, 0, 7); X.fill();
+  X.strokeStyle = DARK; X.lineWidth = 5; X.beginPath(); X.arc(0, hy + 18, 16, 0.25, Math.PI - 0.25); X.stroke();
+  X.fillStyle = 'rgba(255,107,91,.35)'; X.beginPath(); X.arc(-34, hy + 22, 10, 0, 7); X.arc(34, hy + 22, 10, 0, 7); X.fill();
+  if (kind === 'gran') { X.strokeStyle = DARK; X.lineWidth = 4; X.beginPath(); X.arc(-20, hy + 4, 15, 0, 7); X.moveTo(35, hy + 4); X.arc(20, hy + 4, 15, 0, 7); X.moveTo(-5, hy + 4); X.lineTo(5, hy + 4); X.stroke(); }
+  if (o.sad) { X.fillStyle = SKIN; X.fillRect(-20, hy + 14, 40, 16); X.strokeStyle = DARK; X.lineWidth = 5; X.beginPath(); X.arc(0, hy + 38, 14, Math.PI + 0.4, -0.4); X.stroke(); }
+  X.restore();
+}
+function family(t, t0, y = 1080, o = {}) {
+  const xs = [230, 540, 850], K = ['gran', 'mom', 'kid'];
+  K.forEach((k, i) => pop(t, t0 + i * 0.25, xs[i], y, () => {
+    person(k, xs[i], y, 0.92);
+    pill(TX.names[i], xs[i], y + 70, 44, PANEL, WHITE, t, t0 + i * 0.25 + 0.2);
+  }, 0.5));
+}
+
+// ---------- DNA helix (animated rotation) ----------
+function helix(x0, x1, y, a, turns, T, p = 1, o = {}) {
+  if (p <= 0) return;
+  const N = 120, xe = lerp(x0, x1, clamp(p)), ph0 = T * (o.spin == null ? 1.6 : o.spin);
+  const rungs = Math.round(turns * 9);
+  for (let k = 0; k <= rungs; k++) {
+    const f = k / rungs, x = lerp(x0, x1, f); if (x > xe) break;
+    const ph = f * turns * Math.PI * 2 + ph0, s = Math.sin(ph) * a;
+    X.save(); X.strokeStyle = 'rgba(255,255,255,0.35)'; X.lineWidth = 8; X.lineCap = 'round'; X.beginPath(); X.moveTo(x, y + s); X.lineTo(x, y - s); X.stroke(); X.restore();
+  }
+  for (const [sign, col] of [[1, o.c1 || AMBER], [-1, o.c2 || TEAL]]) {
+    const pts = []; for (let i = 0; i <= N; i++) { const f = i / N, x = lerp(x0, x1, f); if (x > xe) break; pts.push([x, y + sign * Math.sin(f * turns * Math.PI * 2 + ph0) * a]); }
+    if (pts.length > 1) line(pts, 1, col, o.lw || 16);
+  }
+}
+function lock(x, y, s, p, open = 0) {
+  pop(p, 0, x, y, () => {
+    X.save(); X.translate(x, y); X.scale(s, s);
+    X.save(); X.translate(open * 44, -open * 34); X.rotate(-open * 0.5);
+    X.strokeStyle = '#D6D2EE'; X.lineWidth = 20; X.beginPath(); X.moveTo(-36, -10); X.lineTo(-36, -50); X.arc(0, -50, 36, Math.PI, 0); X.lineTo(36, -10); X.stroke(); X.restore();
+    rr(-62, -14, 124, 104, 20, AMBER, { shadow: true }); circ(0, 26, 14, NAVY); X.fillStyle = NAVY; X.fillRect(-6, 30, 12, 32);
+    X.restore();
+  }, 1);
+}
+function methyl(x, y, p, r = 42) {
+  if (p <= 0) return;
+  const yy = y - lerp(320, 0, back(p)) ;
+  X.save(); X.globalAlpha *= clamp(p * 4);
+  X.strokeStyle = CORAL; X.lineWidth = 8; X.beginPath(); X.moveTo(x, yy + r * 0.6); X.lineTo(x, yy + r * 1.3); X.stroke();
+  circ(x, yy, r, CORAL); txt('CH₃', x, yy + 2, r * 0.72, { fam: 'Inter', shadow: false });
+  X.restore();
+}
+function geneBox(x, y, w, h, t, t0, off, lbl) {
+  pop(t, t0, x, y, () => {
+    rr(x - w / 2, y - h / 2, w, h, 22, off ? GREYV : AMBER, { shadow: true });
+    txt(lbl, x, y + 3, h * 0.48, { color: off ? '#C9C6E0' : NAVY, shadow: false });
+  });
+}
+function iconDrop(x, y, s) { X.save(); X.translate(x, y); X.scale(s, s); X.fillStyle = CORAL; X.beginPath(); X.moveTo(0, -56); X.bezierCurveTo(30, -18, 44, 6, 44, 22); X.arc(0, 22, 44, 0, Math.PI); X.bezierCurveTo(-44, 6, -30, -18, 0, -56); X.fill(); X.fillStyle = WHITE; X.fillRect(-6, 4, 12, 36); X.fillRect(-18, 16, 36, 12); X.restore(); }
+function iconScale(x, y, s) { X.save(); X.translate(x, y); X.scale(s, s); rr(-56, -46, 112, 92, 20, CORAL); circ(0, -6, 26, WHITE); X.strokeStyle = CORAL; X.lineWidth = 6; X.beginPath(); X.moveTo(0, -6); X.lineTo(14, -22); X.stroke(); X.restore(); }
+function iconHeart(x, y, s) { X.save(); X.translate(x, y); X.scale(s, s); X.fillStyle = CORAL; X.beginPath(); X.moveTo(0, 46); X.bezierCurveTo(-70, 0, -50, -60, 0, -26); X.bezierCurveTo(50, -60, 70, 0, 0, 46); X.fill(); X.restore(); }
+function clockIcon(x, y, r, T) {
+  circ(x, y, r, WHITE); circ(x, y, r - 12, PANEL);
+  const a = -Math.PI / 2 + Math.floor(T * 2) * Math.PI / 6;
+  X.save(); X.strokeStyle = AMBER; X.lineWidth = 8; X.lineCap = 'round'; X.beginPath(); X.moveTo(x, y); X.lineTo(x + Math.cos(a) * r * 0.7, y + Math.sin(a) * r * 0.7); X.stroke();
+  X.strokeStyle = WHITE; X.beginPath(); X.moveTo(x, y); X.lineTo(x, y - r * 0.45); X.stroke(); X.restore();
+}
+function piano(x, y, w, t, t0, tapeT, taped) {
+  const n = 10, kw = w / n, h = 260, x0 = x - w / 2;
+  pop(t, t0, x, y + h / 2, () => {
+    rr(x0 - 20, y - 50, w + 40, h + 70, 26, DARK, { shadow: true });
+    for (let i = 0; i < n; i++) rr(x0 + i * kw + 3, y, kw - 6, h, 10, WHITE);
+    for (let i = 1; i < n; i++) if (![3, 7].includes(i)) rr(x0 + i * kw - kw * 0.28, y, kw * 0.56, h * 0.58, 6, DARK);
+    taped.forEach((k, j) => {
+      const q = easeOut(seg(t, tapeT + j * 0.25, tapeT + j * 0.25 + 0.3)); if (q <= 0) return;
+      X.save(); X.translate(x0 + (k + 0.5) * kw, y + h * 0.78); X.rotate(-0.45 + j * 0.3);
+      rr(-kw * 0.8 * q, -18, kw * 1.6 * q, 36, 8, CORAL); X.restore();
+    });
+  });
+}
+function timer(x, y, r, lt, t0, dur, appear) {
+  const ap = seg(lt, appear, appear + 0.4); if (ap <= 0) return;
+  pop(lt, appear, x, y, () => {
+    circ(x, y, r, PANEL);
+    const q = clamp((lt - t0) / dur), left = lt < t0 ? 1 : 1 - q;
+    X.save(); X.strokeStyle = left < 0.34 ? CORAL : AMBER; X.lineWidth = 18; X.lineCap = 'round';
+    X.beginPath(); X.arc(x, y, r - 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); X.stroke(); X.restore();
+    const n = lt < t0 ? 3 : Math.max(1, Math.ceil(dur * left - 1e-6));
+    if (q < 1) txt(String(n), x, y + 6, r * 0.9, { color: left < 0.34 ? CORAL : WHITE });
+  });
+}
+
+// ---------- scenes ----------
+const SCN = {};
+SCN.s1 = { draw(t, d, T) {
+  slideUp(t, 0.05, () => txt(TX.h1[0], CX, 290, fit(TX.h1[0], 100, 900), { color: WHITE }));
+  pop(t, 0.5, CX, 395, () => { arrowHead(CX, 395, Math.PI / 2, 30, AMBER); });
+  slideUp(t, 0.7, () => txt(TX.h1[1], CX, 500, fit(TX.h1[1], 100, 900), { color: AMBER }));
+  family(t, 0.4, 1060);
+  helix(110, 970, 1360, 60, 3.5, T, easeOut(seg(t, 1.0, 2.2)));
+  const dt = mk_('dna');
+  lock(540, 1350, 1, seg(t, dt, dt + 0.5));
+  pill(TX.dnaOk, CX, 1560, 52, AMBER, NAVY, t, dt + 0.3);
+  const ht = mk_('how');
+  pop(t, ht, 900, 1720, () => { circ(900, 1720, 90, CORAL); txt('?', 900, 1728, 130, { shadow: false }); });
+} };
+SCN.s2 = { draw(t, d, T) {
+  pop(t, 0.05, CX, 700, () => { rr(70, 600, 940, 200, 40, AMBER, { shadow: true }); txt(TX.epi, CX, 705, fit(TX.epi, 130, 880), { color: NAVY, shadow: false }); }, 0.5);
+  label(TX.epiSub, CX, 880, fit(TX.epiSub, 56, 940, 'Inter'), t, 0.8);
+  helix(230, 850, 1080, 46, 2, T, easeOut(seg(t, 1.1, 2.0)), { lw: 13 });
+  [400, 540, 680].forEach((x, i) => methyl(x, 990, seg(t, 2.0 + i * 0.22, 2.6 + i * 0.22), 34));
+  const ut = mk_('ubt');
+  pill(TX.ubt, CX, 1330, 64, PANEL, WHITE, t, ut);
+  pill(TX.newT, 790, 1460, 44, CORAL, WHITE, t, ut + 0.8);
+  const wt = mk_('winter');
+  pop(t, wt + 0.3, CX, 1680, () => {   // snowflake
+    X.save(); X.strokeStyle = '#BFE6FF'; X.lineWidth = 12; X.lineCap = 'round';
+    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + T * 0.5; X.beginPath(); X.moveTo(CX, 1680); X.lineTo(CX + Math.cos(a) * 80, 1680 + Math.sin(a) * 80); X.stroke(); }
+    X.restore();
+  });
+} };
+let FILM = { n: 0 }, filmFrame = null;
+SCN.s3 = { bare: true, draw(t, d, T) {
+  if (filmFrame) X.drawImage(filmFrame, 0, 0, W, H);
+  const g = X.createLinearGradient(0, 0, 0, 640); g.addColorStop(0, 'rgba(19,11,84,.75)'); g.addColorStop(1, 'rgba(19,11,84,0)');
+  X.fillStyle = g; X.fillRect(0, 0, W, 640);
+  pop(t, 0.4, CX, 310, () => { const w = tw(TX.film, 64) + 100; rr(CX - w / 2, 250, w, 120, 60, AMBER, { shadow: true }); txt(TX.film, CX, 313, 64, { color: NAVY, shadow: false }); });
+} };
+SCN.s4 = { draw(t, d, T) {
+  const kt = mk_('kcal');
+  headline(TX.kcal, t, Math.max(0.05, kt - 0.1), 280, { px: 104 });
+  pill(TX.years, 330, 450, 50, PANEL, WHITE, t, 0.2);
+  pop(t, 0.35, 820, 450, () => clockIcon(820, 450, 70, T));
+  pop(t, 0.5, CX, 690, () => {
+    X.fillStyle = 'rgba(0,0,0,.25)'; X.beginPath(); X.ellipse(CX, 720, 250, 80, 0, 0, 7); X.fill();
+    X.fillStyle = WHITE; X.beginPath(); X.ellipse(CX, 690, 250, 84, 0, 0, 7); X.fill();
+    X.fillStyle = '#E4E1F2'; X.beginPath(); X.ellipse(CX, 690, 170, 54, 0, 0, 7); X.fill();
+    rr(CX - 330, 620, 18, 150, 9, '#D6D2EE'); rr(CX + 312, 620, 18, 150, 9, '#D6D2EE');
+  });
+  pop(t, 1.1, CX, 680, () => { rr(CX - 40, 660, 80, 34, 12, '#E2A24C'); });
+  const c = seg(t, 0.8, kt + 0.2), v = Math.round(lerp(2000, 600, easeOut(c)) / 10) * 10;
+  if (t < kt + 0.2) { if (t > 0.8) txt(String(v), CX, 960, 170, { color: c > 0.5 ? CORAL : WHITE }); }
+  else pop(t, kt + 0.2, CX, 960, () => txt('400–800', CX, 960, 170, { color: CORAL }));
+  if (t > 0.9) txt(TX.perDay, CX, 1075, 50, { fam: 'Inter', alpha: 0.85 });
+  const lt = mk_('less');
+  const barW = 760, bx = CX - barW / 2;
+  slideUp(t, lt, () => {
+    rr(bx, 1180, barW * easeOut(seg(t, lt, lt + 0.6)), 56, 28, 'rgba(255,255,255,.25)');
+    rr(bx, 1180, barW * 0.3 * easeOut(seg(t, lt + 0.5, lt + 0.9)), 56, 28, CORAL);
+    txt(TX.norm, CX, 1290, 44, { fam: 'Inter', alpha: 0.8 });
+  });
+  pill(TX.less, CX, 1400, fit(TX.less, 54, 800, 'Inter'), CORAL, WHITE, t, lt + 0.8);
+  const pt = mk_('preg');
+  pop(t, pt, 300, 1850, () => person('preg', 300, 1850, 0.62), 0.5);
+  pill(TX.preg, 700, 1650, fit(TX.preg, 48, 560, 'Inter'), AMBER, NAVY, t, pt + 0.5);
+} };
+SCN.s5 = { draw(t, d, T) {
+  headline(TX.h5, t, 0.05, 280, { px: 104 });
+  line([[120, 660], [920, 660]], easeOut(seg(t, 0.4, 1.3)), WHITE, 10);
+  if (t > 1.3) arrowHead(950, 640, 0, 30, WHITE);
+  pop(t, 0.5, 170, 640, () => circ(170, 640, 22, AMBER)); pill('1945', 170, 560, 50, PANEL, WHITE, t, 0.6);
+  pop(t, 1.3, 880, 640, () => circ(880, 640, 22, AMBER)); pill(TX.y2, 860, 560, 50, AMBER, NAVY, t, 1.4);
+  // baby
+  pop(t, 0.8, 200, 880, () => { circ(200, 880, 70, AMBER); circ(200, 810, 50, SKIN); circ(185, 805, 6, DARK); circ(215, 805, 6, DARK); });
+  const wt = mk_('watch');
+  line(curve([290, 860], [540, 720], [760, 860]), easeOut(seg(t, wt, wt + 1.0)), AMBER, 10, { dash: [24, 20] });
+  pop(t, wt, 520, 960, () => { X.save(); X.strokeStyle = WHITE; X.lineWidth = 16; X.beginPath(); X.arc(500, 940, 50, 0, 7); X.stroke(); X.lineCap = 'round'; X.lineWidth = 22; X.beginPath(); X.moveTo(538, 978); X.lineTo(590, 1030); X.stroke(); X.restore(); });
+  label(TX.watch, 520, 1090, 44, t, wt + 0.3, { color: '#D6D2EE' });
+  pop(t, wt + 0.6, 860, 1290, () => person('adult', 860, 1290, 0.68, { sad: t > mk_('ill') }), 0.5);
+  const it = mk_('ill'), ys = [1460, 1610, 1760];
+  [iconDrop, iconScale, iconHeart].forEach((f, i) => {
+    pop(t, it + i * 0.4, 170, ys[i], () => { circ(170, ys[i], 62, PANEL); f(170, ys[i], 0.85); });
+    slideUp(t, it + i * 0.4 + 0.1, () => txt(TX.ill[i], 270, ys[i], 56, { fam: 'Inter', align: 'left' }), 30, 0.4);
+  });
+  const yt = mk_('why');
+  pop(t, yt, 700, 1200, () => { const w = tw(TX.why, 70) + 80; rr(700 - w / 2, 1140, w, 120, 60, CORAL, { shadow: true }); txt(TX.why, 700, 1203, 70, { shadow: false }); });
+} };
+SCN.s6 = { draw(t, d, T) {
+  headline(TX.h6, t, 0.05, 280, { px: 96 });
+  const ot = mk_('off'), mt = mk_('meth'), off = t > ot + 0.2;
+  helix(90, 990, 600, 70, 3, T * (off ? 0.3 : 1), easeOut(seg(t, 0.2, 1.4)));
+  geneBox(CX, 600, 300, 120, t, 1.1, off, TX.gene);
+  [CX - 100, CX, CX + 100].forEach((x, i) => methyl(x, 470, seg(t, mt + i * 0.3, mt + i * 0.3 + 0.55)));
+  if (t > 1.5) pill(off ? TX.off : TX.on, CX, 770, 48, off ? GREYV : AMBER, off ? WHITE : NAVY, t, off ? ot + 0.2 : 1.5);
+  const lt = mk_('letters'), letters = ['А', 'Т', 'Г', 'Ц', 'А', 'Т', 'Г', 'Ц'];
+  letters.forEach((c, i) => pop(t, lt + i * 0.06, 225 + i * 90, 920, () => { rr(185 + i * 90, 880, 80, 80, 18, i % 2 ? TEAL : LILAC); txt(c, 225 + i * 90, 923, 46, { shadow: false }); }));
+  label(TX.same, CX - 30, 1030, 48, t, lt + 0.5);
+  tick(CX + 220 + tw(TX.same, 48, 'Inter') / 2 - 120, 1030, 0.9, seg(t, lt + 0.9, lt + 1.2));
+  const pt = mk_('piano'), kt = mk_('keys');
+  piano(CX, 1250, 860, t, pt, kt, [2, 5, 8]);
+  label(TX.piano, CX, 1620, 50, t, kt - 0.5);
+  [2, 5, 8].forEach((k, j) => pop(t, kt + 0.5 + j * 0.2, CX - 430 + (k + 0.5) * 86, 1730, () => { circ(CX - 430 + (k + 0.5) * 86, 1730, 34, CORAL); txt('×', CX - 430 + (k + 0.5) * 86, 1726, 54, { shadow: false }); }));
+} };
+SCN.s7 = { draw(t, d, T) {
+  pop(t, 0.05, CX, 220, () => { rr(CX - 190, 150, 380, 140, 70, AMBER, { shadow: true }); txt('2008', CX, 224, 110, { color: NAVY, shadow: false }); });
+  [[290, TX.hungry, true, CORAL], [790, TX.control, false, TEAL]].forEach(([x, lbl, meth, col], i) => {
+    const t0 = 0.5 + i * 0.5;
+    pop(t, t0, x, 600, () => rr(x - 230, 380, 460, 420, 36, PANEL, { shadow: true }));
+    pill(lbl, x, 440, fit(lbl, 42, 380, 'Inter'), col, WHITE, t, t0 + 0.2);
+    if (t > t0 + 0.3) helix(x - 190, x + 190, 640, 40, 1.5, T, easeOut(seg(t, t0 + 0.3, t0 + 1.0)), { lw: 11 });
+    geneBox(x, 640, 200, 84, t, t0 + 0.9, false, 'IGF2');
+    if (meth) [x - 55, x + 55].forEach((mx, j) => methyl(mx, 545, seg(t, 2.0 + j * 0.3, 2.5 + j * 0.3), 32));
+  });
+  const st = mk_('sixty');
+  headline(TX.h7, t, st, 920, { px: 92, color: AMBER });
+  const gt = mk_('grand');
+  pop(t, gt, 190, 1480, () => person('gran', 190, 1480, 0.5), 0.45);
+  pop(t, gt + 0.25, 420, 1480, () => person('mom', 420, 1480, 0.5), 0.45);
+  line(curve([490, 1360], [600, 1290], [700, 1360]), easeOut(seg(t, gt + 0.6, gt + 1.2)), AMBER, 9, { dash: [22, 18] });
+  pop(t, gt + 1.1, 820, 1380, () => { circ(820, 1380, 80, CORAL); txt('?', 820, 1390, 110, { shadow: false }); });
+  label(TX.grand, 820, 1520, 46, t, gt + 1.3, { color: CORAL });
+  label(`(${TX.some})`, CX, 1600, fit(`(${TX.some})`, 40, 900, 'Inter'), t, gt + 1.6, { color: '#B9B3E6' });
+  const rt = mk_('rev');
+  pop(t, rt, CX, 1760, () => {
+    const w = tw(TX.rev, 60) + 200; rr(CX - w / 2, 1690, w, 140, 70, TEAL, { shadow: true });
+    X.save(); X.strokeStyle = WHITE; X.lineWidth = 12; X.lineCap = 'round'; const ax = CX - w / 2 + 75;
+    X.beginPath(); X.arc(ax, 1760, 32, -0.3 + T * 2, Math.PI * 1.5 + T * 2); X.stroke(); X.restore();
+    txt(TX.rev, CX + 40, 1763, 60, { shadow: false });
+  });
+} };
+const OPT_Y = [780, 960, 1140];
+SCN.s8 = { draw(t, d, T) {
+  pill(TX.ubtQ, CX, 210, 50, CORAL, WHITE, t, 0.05);
+  slideUp(t, 0.6, () => txt(TX.q, CX, 420, fit(TX.q, 80, 960), { color: WHITE }));
+  const at = mk_('ans'), st = ['qa', 'qb', 'qc'].map(mk_);
+  TX.o.forEach((o, i) => slideUp(t, st[i], () => {
+    const right = i === 1 && t > at, dim = t > at && i !== 1 ? 0.4 : 1;
+    X.save(); X.globalAlpha *= dim;
+    rr(90, OPT_Y[i] - 70, 900, 140, 36, right ? AMBER : PANEL, { shadow: true });
+    circ(170, OPT_Y[i], 46, right ? NAVY : '#3A2F9E'); txt(TX.L[i], 170, OPT_Y[i] + 3, 52, { color: right ? AMBER : WHITE, shadow: false });
+    txt(o, 240, OPT_Y[i] + 3, fit(o, 58, 700, 'Inter'), { fam: 'Inter', align: 'left', color: right ? NAVY : WHITE, shadow: false });
+    X.restore();
+    if (right) tick(920, OPT_Y[i], 1.1, seg(t, at + 0.2, at + 0.5), NAVY);
+  }, 40, 0.4));
+  timer(CX, 1480, 150, t, mk_('q1'), 3, st[2]);
+} };
+SCN.s9 = { draw(t, d, T) {
+  headline(TX.link, t, 0.2, 360, { px: 96, color: AMBER });
+  line(curve([CX + 150, 560], [CX + 330, 470], [W - 150, 230]), easeOut(seg(t, 1.0, 1.6)), AMBER, 14);
+  if (t > 1.6) arrowHead(W - 150, 225, -0.95, 34, AMBER);
+  family(t, 0.1, 1050);
+  helix(110, 970, 1330, 55, 3.5, T, easeOut(seg(t, 0.6, 1.4)));
+  lock(540, 1320, 1, 1, ease(seg(t, 1.4, 2.0)));
+  const ct = mk_('cta');
+  slideUp(t, ct, () => txt(TX.cta[0], CX, 1560, 62));
+  slideUp(t, ct + 0.5, () => txt(TX.cta[1], CX, 1650, 62, { color: AMBER }));
+} };
+
+// ---------- transitions, logo, end card ----------
+function wipe(p, dir) {   // amber + navy bar sweep covering the screen; p 0..1
+  if (dir > 0 ? p <= 0 : p >= 1) return;
+  const e = ease(p);
+  X.save();
+  if (dir > 0) { X.fillStyle = AMBER; X.fillRect(0, 0, W * Math.min(1, e * 1.15), H); X.fillStyle = NAVY; X.fillRect(0, 0, W * e, H); }
+  else { X.fillStyle = NAVY; X.fillRect(W * e, 0, W, H); X.fillStyle = AMBER; X.fillRect(W * e, 0, Math.max(0, W * (1 - e)) * 0.08 + 0.01, H); }
+  X.restore();
+}
+function logoCorner() {
+  const lg = IMG.logo; if (!lg) return;
+  const h = 120, w = h * lg.width / lg.height;
+  X.save(); X.globalAlpha = 0.92; X.shadowColor = 'rgba(0,0,0,.45)'; X.shadowBlur = 14; X.drawImage(lg, W - 44 - w, 44, w, h); X.restore();
+}
+function endCard(T) {
+  const t0 = MK.voend + 0.05, p = seg(T, t0, t0 + 0.35);
+  if (p <= 0) return;
+  X.save(); X.globalAlpha = p; X.fillStyle = NAVY; X.fillRect(0, 0, W, H);
+  const lg = IMG.logo;
+  if (lg) { const s = lerp(0.9, 1, back(seg(T, t0, t0 + 0.6))), h = 420 * s, w = h * lg.width / lg.height; X.drawImage(lg, CX - w / 2, 800 - h / 2, w, h); }
+  X.globalAlpha = p * seg(T, t0 + 0.2, t0 + 0.6);
+  txt(TX.cta[0], CX, 1210, 58, { color: AMBER, shadow: false }); txt(TX.cta[1], CX, 1290, 58, { color: AMBER, shadow: false });
+  X.restore();
+}
+async function loadFilm(s, lt, d) {
+  filmFrame = null;
+  if (s.id !== 's3' || !FILM.n) return;
+  const f = Math.min(FILM.n - 1, Math.floor(lt / d * FILM.n)), key = 'f' + f;
+  if (!IMG[key]) await loadImg(key, `clip/f${String(f + 1).padStart(4, '0')}.jpg`);
+  filmFrame = IMG[key];
+  for (const k of Object.keys(IMG)) if (/^f\d+$/.test(k) && Math.abs(+k.slice(1) - f) > 3) delete IMG[k];
+}
+window.render = async function (T) {
+  const sc = TL.scenes;
+  let i = sc.findIndex(s => T >= s.start && T < s.end); if (i < 0) i = sc.length - 1;
+  const s = sc[i], lt = T - s.start, d = s.end - s.start, sd = SCN[s.id]; SC = s;
+  await loadFilm(s, lt, d);
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1;
+  background(T);
+  // gentle camera push
+  const z = lerp(1, 1.035, ease(lt / d));
+  X.save(); X.translate(CX, CY); X.scale(z, z); X.translate(-CX, -CY);
+  sd.draw(lt, d, T);
+  X.restore();
+  // transitions: cover at scene end, reveal at scene start (not before s1 / after s9)
+  if (i > 0) wipe(seg(lt, 0, 0.32), -1);
+  if (i < sc.length - 1) wipe(seg(lt, d - 0.32, d), 1);
+  logoCorner();
+  endCard(T);
+};
+window.ready = (async () => {
+  TL = await (await fetch(`timeline_${LANG}.json`)).json(); MK = TL.marks;
+  try { FILM = await (await fetch('clip/info.json')).json(); } catch (e) { FILM = { n: 0 }; }
+  await loadImg('logo', 'brand/logo_white_transparent.png');
+  await document.fonts.load('800 60px Mont'); await document.fonts.load('700 60px Inter'); await document.fonts.ready;
+  await window.render(0); return true;
+})();
+</script>
+</body></html>
