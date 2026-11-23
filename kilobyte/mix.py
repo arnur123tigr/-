@@ -9,7 +9,7 @@ NAME = sys.argv[1]
 DUR = json.load(open('cues.json'))['dur']
 OFF = .3                        # the voice starts this late in the video
 TARGET, CEIL = -14.0, -1.5      # loudness of the result (LUFS) and its peak ceiling (dBFS)
-VOICE, MUSIC, SFX = -18.0, -31.0, -4.0   # voice and music: loudness before the master (LUFS); effects: plain gain (dB), their track is peak-normalised
+VOICE, MUSIC, SFX = -18.0, -31.0, -8.0   # voice and music: loudness before the master (LUFS); effects: plain gain (dB), their track is peak-normalised
 VLIM = 'alimiter=limit=-6.5dB:attack=3:release=70:level=false'   # the voice is spiky (peaks 23 dB over its loudness): a limiter evens it out and keeps the phrasing
 SRC = ['vo.wav', 'sfx.wav', 'music.wav']
 

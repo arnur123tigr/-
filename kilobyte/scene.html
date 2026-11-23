@@ -107,7 +107,7 @@ function scene1(t) {   // 1 KB = 1000 -> struck out -> 1024
   header(TX.top1, t, OFF + 1.6, C.wh, 58, 12);
   const s = '1 KB = 1000', n = Math.floor(clamp((t - .05) / .9) * s.length);
   pbox(20, 120, 176, 52, C.dg, C.gm, 1);
-  ptxt(s.slice(0, n) + (Math.floor(t * 4) % 2 && n < s.length + 1 ? '_' : ''), 108, 146, 16, C.gr, { shadow: '#000' });
+  ptxt(s.slice(0, n) + (Math.floor(t * 4) % 2 && n < s.length ? '_' : ''), 108, 146, 16, C.gr, { shadow: '#000' });
   const st = ap(t, OFF + .9, .25);   // strike
   if (st > 0) { prect(28, 143, 160 * st, 5, C.rd); sprite(CROSS, { '#': C.rd }, 176, 112, 2, ap(t, OFF + 1.0, .05)); }
   const p = pop(t, OFF + 1.5, .4);
@@ -168,7 +168,7 @@ function scene4(t) {   // 8 bulbs = byte, 256 ways, letter A
   if (t >= w1) {
     const p = pop(t, w1 + .5, .45), jump = Math.abs(Math.sin((t - w1 - .5) * 4)) * 10 * clamp(1 - (t - w1 - .5) / 2.5);
     ptxt('→', 64, 304, 16, C.gr, { a: ap(t, w1 + .3, .2) });
-    if (p > 0) { g.save(); g.translate(130, 300 - jump); g.scale(p, p); pbox(-24, -26, 48, 52, C.nv, C.am, 1, 2); ptxt('A', 1, 1, 32, C.wh); g.restore(); }
+    if (p > 0) { const yy = 300 - jump; g.save(); g.translate(130, yy); g.scale(p, p); g.translate(-130, -yy); pbox(106, yy - 26, 48, 52, C.nv, C.am, 1, 2); ptxt('A', 131, yy + 1, 32, C.wh); g.restore(); }
     ptxt('01000001', 108, 340, 8, C.gr, { a: ap(t, w1 + .2, .3) });
   }
 }
@@ -201,7 +201,6 @@ function scene5(t) {   // staircase of powers of two
       const a = ap(t, V('round') + .2, .25), sh = Math.sin(t * 30) * (t < V('round') + .8 ? 1.5 : 0);
       pbox(150 + sh, 250, 58, 26, C.dg, C.rd, a, 2); ptxt('1000', 179 + sh, 263, 8, C.rd, { a });
       sprite(CROSS, { '#': C.rd }, 179, 282, 1, a * (Math.floor(t * 4) % 2 ? 1 : .5));
-      ptxt('≈', 136, 116, 16, C.wh, { a });
     }
   }
 }

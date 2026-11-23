@@ -27,7 +27,7 @@ def notes(seq, step, duty=.5, dec=6):
 FX = {
   'err': lambda: np.concatenate([sq(110, .12, .5), np.zeros(int(SR * .03)), sq(92, .22, .5, 4)]),
   'coin': lambda: np.concatenate([sq(N(83), .07, .5), sq(N(88), .35, .5, 7)]),
-  'click': lambda: sq(1800, .025, .5, 120) + noise(.02, 200) * .5,
+  'click': lambda: sq(1800, .025, .5, 120) + noise(.025, 200) * .5,
   'blip': lambda: sq(np.linspace(600, 1200, int(SR * .07)), .07, .25, 25),
   'blop': lambda: sq(np.linspace(500, 160, int(SR * .12)), .12, .5, 15),
   'tick': lambda: sq(2400, .02, .5, 150),
