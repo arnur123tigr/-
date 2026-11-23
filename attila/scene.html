@@ -1,0 +1,342 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Рим далаға салық төледі: Аттила» — KZ + RU, voice «Arnur». Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 90, SH = null, CLIPS = {};
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'reg', l0: -12, l1: 78, b0: 28, b1: 62, minppd: 16 });
+const GOLD = BR.acc, RED = BR.red, CORAL = '#FF6F61', TURQ = '#4FD1C5';
+const KERCH = [36.5, 45.3], VOLGA = [46.3, 48.6], GOTH = [31.5, 48.6], PANN = [19.0, 47.0], CONST = [28.98, 41.01], CATAL = [4.36, 48.95], AQUI = [13.37, 45.77], ROME = [12.5, 41.9], STOP = [12.9, 43.3];
+const PANN_P = [[16, 48.1], [17.5, 48.3], [19.1, 48.2], [20.9, 47.0], [20.2, 45.8], [19.2, 45.2], [17.6, 45.6], [16.5, 45.9], [15.9, 47.0]];
+const HUNS = [[7.8, 50.2], [8.6, 48.0], [12.5, 48.4], [16.5, 48.1], [18.8, 45.5], [22.5, 44.6], [27.5, 44.1], [29.8, 45.3], [33.5, 46.0], [38, 46.9], [42, 45.8], [46, 44.4],
+  [48.5, 43.3], [50.5, 45.2], [53, 47.2], [54.5, 50.2], [51.5, 53.2], [45, 55.0], [38, 55.6], [30, 55.2], [22, 54.6], [15, 53.6], [10, 52.2]];
+const XIONG = [[101, 46.3], [90, 46.8], [78, 47.2], [66, 48.0], [56, 48.4], [49, 48.3]];
+const A370 = [[53, 48.2], [48, 46.8], [43, 45.8], [39.5, 45.5], [37.2, 45.35]];
+const A375 = [[49.5, 49.4], [46, 48.8], [41, 48.5], [36, 48.6], [32.6, 48.6]];
+const WAVES = [[[38, 50.5], [30, 50.8], [22, 50.6], [15, 50.4]], [[36, 47.5], [29, 47.2], [22, 46.8], [16.5, 46.9]], [[34, 45.6], [28.5, 44.8], [24, 44.1], [20, 44.3]], [[40, 53.0], [32, 53.3], [24, 53.1], [17, 52.6]]];
+const AGAUL = [[19.0, 47.2], [15.5, 48.3], [11.5, 48.9], [8.0, 49.3], [6.0, 49.1], [4.6, 48.95]];
+const AITAL = [[19.0, 46.9], [16.6, 46.4], [14.5, 46.0], [13.37, 45.77], [12.4, 45.3], [12.2, 44.5], [12.6, 43.6]];
+const TXT = {
+  ru: { t1: 'Рим платил дань', t2: 'степнякам', xi: 'Хунну', hd2a: 'Хунну → гунны?', hyp: 'Это гипотеза', fact: 'Точная история · ЕНТ', bos: 'Боспорское царство', volga: 'Волга', goth: 'Остготы',
+    mig1: 'Великое переселение', mig2: 'народов', pann: 'Паннония', att: 'Аттила · 434', tag: 'род. ~400 · у власти с 434', son: 'сын Мундзука', bich: '«Бич Божий»',
+    gold1: '700 → 2100', gold2: 'фунтов золота в год', perY: 'фунтов/год', west: 'Западный Рим', east: 'Восточный Рим', cpl: 'Константинополь', huns: 'Гунны', malo: 'Мало!',
+    y451: '451 · Каталаун', allies: 'Римляне + вестготы', gaul: 'Галлия', ital: 'Италия', rome: 'Рим', y453: '453 · Конец', fall: 'Империя распалась',
+    ent: 'ЕНТ', rows: [['375', 'гунны перешли Волгу'], ['434', 'Аттила у власти'], ['«Бич Божий»', 'Аттила']], jor1: 'Иордан:', jor2: '«пришёл потрясти народы»',
+    cta1: 'Ссылка', cta2: 'в шапке профиля', src: 'Снимки: NASA Blue Marble · реки: Natural Earth · границы примерные' },
+  kk: { t1: 'Рим далаға', t2: 'салық төледі', xi: 'Хунну', hd2a: 'Хунну → ғұндар?', hyp: 'Бұл — болжам', fact: 'Нақты тарих · ҰБТ', bos: 'Босфор патшалығы', volga: 'Еділ', goth: 'Остготтар',
+    mig1: 'Халықтардың ұлы', mig2: 'қоныс аударуы', pann: 'Паннония', att: 'Аттила · 434', tag: '~400 ж. туған · 434 ж. билік', son: 'Мундзуктың ұлы', bich: '«Құдайдың қамшысы»',
+    gold1: '700 → 2100', gold2: 'фунт алтын жылына', perY: 'фунт/жыл', west: 'Батыс Рим', east: 'Шығыс Рим', cpl: 'Константинополь', huns: 'Ғұндар', malo: 'Аз болды!',
+    y451: '451 · Каталаун', allies: 'Римдіктер + вестготтар', gaul: 'Галлия', ital: 'Италия', rome: 'Рим', y453: '453 · Соңы', fall: 'Империя ыдырады',
+    ent: 'ҰБТ', rows: [['375', 'ғұндар Еділден өтті'], ['434', 'Аттила билікке келді'], ['«Құдайдың қамшысы»', 'Аттила']], jor1: 'Иордан:', jor2: '«халықтарды күйзелтуге келген адам»',
+    cta1: 'Сілтеме', cta2: 'профиль шапкасында', src: 'Түсірілім: NASA Blue Marble · өзендер: Natural Earth · шекаралар шартты' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function ring(x, y, r, p, a, col = GOLD) {
+  if (a <= 0 || p <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(p)); ctx.stroke(); ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 116) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(62, 62 * 960 / tw(l1, 62, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, s2 * .88, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function counter(n, a) { if (a <= 0) return; pill(`${n} / 3`, W / 2, H * .085, 46, a, { line: GOLD, scale: .9 + .1 * clamp(a) }); }
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function cty(iso, col, a, o = {}) { if (SH && a > 0) glowFill(SH.cty[iso], col, a, o); }
+function kz(a, o = {}) {   // Kazakhstan (with Baikonur) glowing, the edge pulsing
+  if (a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  cty('KAZ', GOLD, a, { fill: o.fill ?? .38, blur: (o.blur ?? 22) + 16 * pu * (o.pulse ?? 1), lw: (o.lw ?? 5) + 2 * pu * (o.pulse ?? 1) });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoLine(a, b, p, o = {}) {   // straight lon/lat line (fine for these spans), drawn on with p
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push([lerp(a[0], b[0], i / 40), lerp(a[1], b[1], i / 40)]); polyPartial(pts, p, o);
+}
+function xMark(x, y, s, a, col = RED) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke(); ctx.restore();
+}
+function stamp(s, x, y, a, sp) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)); ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.16); ctx.scale(k, k);
+  rr(-140, -66, 280, 132, 22); ctx.lineWidth = 9; ctx.strokeStyle = GOLD; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+  txt(s, 0, 5, 80, GOLD, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+drawMap = function (dark = 0) {   // textures fade in with zoom (no pop between Blue Marble and Sentinel)
+  ctx.fillStyle = '#183a4e'; ctx.fillRect(0, 0, W, H);
+  for (const T of TEX) { const m = T.minppd || 0, a = m ? clamp((CAM.ppd - m * .7) / (m * .3)) : 1; if (a <= 0) continue;
+    ctx.save(); ctx.globalAlpha = a; drawTex(T); ctx.restore(); }
+  if (dark > 0) { ctx.fillStyle = `rgba(4,10,20,${dark})`; ctx.fillRect(0, 0, W, H); }
+};
+function feather(im, f = .07) {   // soft alpha edge so close-up textures melt into the one below
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  g.globalCompositeOperation = 'destination-in'; const fx = im.width * f, fy = im.height * f;
+  const m = document.createElement('canvas'); m.width = im.width; m.height = im.height; const h = m.getContext('2d');
+  let gr = h.createLinearGradient(0, 0, im.width, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f, '#000'); gr.addColorStop(1 - f, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  h.fillStyle = gr; h.fillRect(0, 0, im.width, im.height); h.globalCompositeOperation = 'destination-in';
+  gr = h.createLinearGradient(0, 0, 0, im.height); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f, '#000'); gr.addColorStop(1 - f, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  h.fillStyle = gr; h.fillRect(0, 0, im.width, im.height); g.drawImage(m, 0, 0); return c;
+}
+function smooth(pts, n = 3) { let p = pts; for (let k = 0; k < n; k++) p = p.map((q, i) => i === 0 || i === p.length - 1 ? q : [(p[i - 1][0] + 2 * q[0] + p[i + 1][0]) / 4, (p[i - 1][1] + 2 * q[1] + p[i + 1][1]) / 4]); return p; }
+function along(pts, u) {   // point + heading (screen) at fraction u of a lon/lat polyline (by screen length)
+  const S = pts.map(c => P(c[0], c[1])); const d = [0]; for (let i = 1; i < S.length; i++) d.push(d[i - 1] + Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]));
+  const L = d[d.length - 1] * clamp(u); let i = 1; while (i < S.length - 1 && d[i] < L) i++;
+  const k = (L - d[i - 1]) / (d[i] - d[i - 1] || 1); return [lerp(S[i - 1][0], S[i][0], k), lerp(S[i - 1][1], S[i][1], k), Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0])];
+}
+function plate(x, y, w, h, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; rr(x - w / 2, y - h / 2, w, h, 30); ctx.fillStyle = 'rgba(19,11,84,.86)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(254,179,0,.45)'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); }
+
+function rivers(a = .5) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = TURQ; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.shadowColor = TURQ; ctx.shadowBlur = 6;
+  for (const l of SH.rivers) { ctx.beginPath(); l.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); } ctx.restore();
+}
+function crown(x, y, s, a, glow = 1) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  ctx.beginPath(); ctx.moveTo(-40, 22); ctx.lineTo(-46, -18); ctx.lineTo(-22, 2); ctx.lineTo(0, -30); ctx.lineTo(22, 2); ctx.lineTo(46, -18); ctx.lineTo(40, 22); ctx.closePath();
+  ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 20 + 25 * glow; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff'; [[-46, -18], [0, -30], [46, -18]].forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); });
+  ctx.fillStyle = BR.navy; rr(-40, 12, 80, 10, 3); ctx.fill(); ctx.restore();
+}
+function arrowLine(pts, p, a, col, lw = 10) {   // polyline drawn on with p, with an arrow head at its tip
+  if (p <= 0 || a <= 0) return; polyPartial(pts, p, { col: '#140c30', lw: lw + 7, blur: 0, a: a * .6 }); polyPartial(pts, p, { col, lw, glow: col, blur: 18, a });
+  const [x, y, an] = along(pts, p); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(an); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 16;
+  ctx.beginPath(); ctx.moveTo(lw * 2.6, 0); ctx.lineTo(-lw * .8, -lw * 2); ctx.lineTo(-lw * .8, lw * 2); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function bigDot(x, y, r, a, fill = GOLD, line = '#fff') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = fill; ctx.shadowColor = fill === '#fff' ? GOLD : fill; ctx.shadowBlur = 20; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = r * .32; ctx.strokeStyle = line; ctx.stroke(); ctx.restore();
+}
+function eyeIcon(x, y, s, a) {   // eye with a white cloudy spot (bельмо / ақ дақ)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(0, -48, 60, 0); ctx.quadraticCurveTo(0, 48, -60, 0); ctx.closePath(); ctx.fillStyle = '#f3efe6'; ctx.fill();
+  ctx.save(); ctx.clip(); ctx.beginPath(); ctx.arc(0, 0, 24, 0, 7); ctx.fillStyle = '#6b4a2b'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); ctx.fillStyle = '#140c0a'; ctx.fill();
+  const g = ctx.createRadialGradient(6, -4, 0, 6, -4, 20); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(6, -4, 20, 0, 7); ctx.fill(); ctx.restore();
+  ctx.lineWidth = 5; ctx.strokeStyle = GOLD; ctx.beginPath(); ctx.moveTo(-60, 0); ctx.quadraticCurveTo(0, -48, 60, 0); ctx.quadraticCurveTo(0, 48, -60, 0); ctx.stroke(); ctx.restore();
+}
+function photoCard(im, cx, cy, w, a, rise, cap, cr) {   // real photo in a thin gold frame, rising from a map point
+  if (!im || a <= 0) return; const h = w * im.height / im.width, p = eout(rise);
+  ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(cx, cy + (1 - p) * 220); const s = .55 + .45 * p; ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 40; ctx.fillStyle = BR.navy; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.lineWidth = 4; ctx.strokeStyle = GOLD; rr(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24 + (cap ? 64 : 0), 18); ctx.stroke();
+  if (cap) txt(cap, 0, h / 2 + 34, 30, '#fff', 'MX', { blur: 0, dy: 0 }); if (cr) txt(cr, 0, h / 2 + 96, 18, 'rgba(255,255,255,.8)', 'MS', { blur: 6 }); ctx.restore();
+}
+function flash(t0, a = 1) { const q = (1 - ap(TT, t0, .5)) * ap(TT, t0 - .05, .05) * a; if (q <= 0) return; ctx.save(); ctx.globalAlpha = q * .85; const [x, y] = P(...AIN);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 700); g.addColorStop(0, '#fff'); g.addColorStop(.3, 'rgba(254,179,0,.6)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+function ptsOf(pts, u0, u1) { const o = []; for (let i = 0; i <= 30; i++) { const [x, y] = along(pts, lerp(u0, u1, i / 30)); o.push([x, y]); } return o; }
+flash = function (pt, t0, a = 1) { const q = (1 - ap(TT, t0, .5)) * ap(TT, t0 - .05, .05) * a; if (q <= 0) return; ctx.save(); ctx.globalAlpha = q * .8; const [x, y] = P(...pt);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 700); g.addColorStop(0, '#fff'); g.addColorStop(.3, 'rgba(254,179,0,.6)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); };
+// ---------- film shots (Higgsfield): frames clips/s<k>/NNNN.jpg if extracted, else the still with a slow push-in ----------
+const FR = {};
+function frameImg(k, i) { const key = k + ':' + i; if (FR[key]) return FR[key]; FR[key] = new Promise(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = `clips/s${k}/${String(i + 1).padStart(4, '0')}.jpg`; }); return FR[key]; }
+async function film(k, t, t0, t1, a) {
+  if (a <= 0) return; let im = null, kb = 0; const u = clamp((t - t0) / (t1 - t0));
+  if (CLIPS['s' + k]) { const n = CLIPS['s' + k]; im = await frameImg(k, Math.min(n - 1, Math.floor(u * (n - 1) + .5))); for (const key in FR) if (key.startsWith(k + ':') && Math.abs(+key.split(':')[1] - u * n) > 6) delete FR[key]; }
+  if (!im) { im = IM['s' + k]; kb = 1; } if (!im) return;
+  const s = Math.max(W / im.width, H / im.height) * (1 + kb * .08 * u), w = im.width * s, h = im.height * s;
+  ctx.save(); ctx.globalAlpha = a; ctx.drawImage(im, W / 2 - w / 2, H / 2 - h / 2 - kb * 30 * u, w, h);
+  const g = ctx.createLinearGradient(0, H * .55, 0, H); g.addColorStop(0, 'rgba(5,4,20,0)'); g.addColorStop(1, 'rgba(5,4,20,.65)'); ctx.fillStyle = g; ctx.fillRect(0, H * .55, W, H * .45);
+  ctx.restore();
+}
+function portrait(im, x, y, r, a, ring = GOLD) {
+  if (!im || a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k, k);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 30; ctx.fillStyle = BR.navy; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.clip(); ctx.drawImage(im, -r, -r, 2 * r, 2 * r); ctx.restore();
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.lineWidth = 8; ctx.strokeStyle = ring; ctx.shadowColor = ring; ctx.shadowBlur = 24; ctx.stroke(); ctx.restore();
+}
+function swords(x, y, s, a) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s);
+  for (const d of [-1, 1]) { ctx.save(); ctx.rotate(d * .78); ctx.fillStyle = '#e8edf3'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.moveTo(-5, -62); ctx.lineTo(0, -74); ctx.lineTo(5, -62); ctx.lineTo(5, 26); ctx.lineTo(-5, 26); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = GOLD; ctx.fillRect(-20, 26, 40, 8); ctx.fillRect(-4, 34, 8, 24); ctx.beginPath(); ctx.arc(0, 62, 7, 0, 7); ctx.fill(); ctx.restore(); }
+  ctx.restore();
+}
+function candle(x, y, s, a, lit) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = '#efe6d2'; rr(-26, -40, 52, 150, 10); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(10, -40, 16, 150);
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(0, -58); ctx.stroke();
+  if (lit > 0) { const fl = 1 + .08 * Math.sin(TT * 23) + .05 * Math.sin(TT * 37); ctx.save(); ctx.globalAlpha = a * lit; ctx.translate(0, -60); ctx.scale(fl * lit, fl);
+    const g = ctx.createRadialGradient(0, -10, 0, 0, -10, 90); g.addColorStop(0, 'rgba(254,179,0,.55)'); g.addColorStop(1, 'rgba(254,179,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -10, 90, 0, 7); ctx.fill();
+    ctx.fillStyle = GOLD; ctx.beginPath(); ctx.moveTo(0, -52); ctx.quadraticCurveTo(20, -10, 0, 4); ctx.quadraticCurveTo(-20, -10, 0, -52); ctx.fill();
+    ctx.fillStyle = '#fff6d6'; ctx.beginPath(); ctx.moveTo(0, -30); ctx.quadraticCurveTo(8, -6, 0, 2); ctx.quadraticCurveTo(-8, -6, 0, -30); ctx.fill(); ctx.restore(); }
+  else { const sp = clamp((TT - (window._cOff || 0)) / 2); ctx.globalAlpha = a * (1 - sp) * .6; ctx.strokeStyle = '#ccc'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -60);
+    for (let i = 1; i < 12; i++) ctx.lineTo(Math.sin(i * .9 + TT * 2) * 10 * i / 6, -60 - i * 14 * (.4 + sp)); ctx.stroke(); }
+  ctx.restore();
+}
+function coin(x, y, r, a, rot) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(Math.abs(Math.cos(rot)) * .8 + .2, 1);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#fff2c4'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, r * .62, 0, 7); ctx.strokeStyle = 'rgba(120,70,0,.6)'; ctx.stroke(); ctx.restore(); }
+function roman(a, o = {}) { if (!SH || a <= 0) return; glowFill(SH.west, CORAL, a, { fill: o.fill ?? .3, blur: 18, lw: 3.5 }); glowFill(SH.east, CORAL, a, { fill: o.fill ?? .3, blur: 18, lw: 3.5 }); }
+function hunland(a, o = {}) { if (a <= 0) return; glowFill([HUNS], GOLD, a, { fill: o.fill ?? .26, blur: 26, lw: 4.5 }); }
+function goths(t, a) {   // grey figures (Ostrogoths) that topple after the Hun arrow arrives
+  if (a <= 0) return; const r = rng(11), [gx, gy] = P(...GOTH), fall = ap(t, V('y375') + 1.6, .9);
+  for (let i = 0; i < 26; i++) { const dx = (r() - .5) * 220, dy = (r() - .5) * 150, f = clamp(fall * 1.6 - r() * .6);
+    ctx.save(); ctx.globalAlpha = a * (1 - .75 * f); ctx.translate(gx + dx, gy + dy + f * 18); ctx.rotate(f * (r() > .5 ? 1.4 : -1.4));
+    ctx.fillStyle = '#c9ced6'; ctx.beginPath(); ctx.arc(0, -22, 7, 0, 7); ctx.fill(); rr(-6, -15, 12, 22, 4); ctx.fill(); ctx.restore(); }
+}
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  const c5 = V('gold') + 1.8;
+  CK = [[V('hun') - .6, 82, 46, 8.5], [V('hyp'), 78, 46.3, 9.5, 'l'], [V('but') + .3, 74, 46.5, 10.5, 'l'],
+    [V('y370') + .1, 41, 46.6, 36], [V('y375') - .05, 39.5, 46.8, 40, 'l'], [V('y375') + 1.4, 39, 48.2, 38], [V('mig') - .05, 38.5, 48.2, 39, 'l'],
+    [V('mig') + 1.6, 24, 48.5, 19], [V('pann') - .05, 23, 48.3, 20, 'l'], [V('pann') + 1.2, 19.2, 46.3, 52], [V('const') - .3, 19.2, 46.1, 60, 'l'],
+    [c5 - .6, 25, 44, 21], [V('malo') + .4, 25.5, 44, 22, 'l'], [V('gaul') + .9, 11, 47.8, 31], [V('cat') + 2.5, 8.5, 48.2, 34, 'l'],
+    [V('ital') + 1.0, 14, 45.0, 36], [V('died') - .05, 13.5, 44.6, 38, 'l'], [V('fall') + .8, 26, 47.5, 17], [V('ent'), 26.5, 47.5, 17.5, 'l'],
+    [V('cta') - .4, 26.5, 47.5, 18, 'l'], [V('cta') + .8, 40, 49, 22], [V('vend') + 2, 41, 49, 23, 'l']];
+}
+async function render(t) {
+  TT = t; CAM = camAt(CK, t); const c1 = V('hun') + .1, c5a = V('const') - .25, c5b = V('gold') + 1.8;
+  { const s = ap(t, V('cat') + .6, .02) * (1 - ap(t, V('cat') + .6, .7)); if (s > 0) { CAM.lon += Math.sin(t * 61) * .12 * s; CAM.lat += Math.cos(t * 53) * .09 * s; } }
+  drawMap(.42); rivers(.45);
+  // ---- S2 Xiongnu in Mongolia -> Huns? (hypothesis)
+  { const a = win(t, c1 - .5, V('y370') + .3, .4);
+    if (a > 0) { if (SH) glowFill(SH.mng, GOLD, a * ap(t, V('hun') + .3, .5), { fill: .3, blur: 26, lw: 4 });
+      const [mx, my] = P(103, 46.8); pill(TXT.xi, mx, my - 70, 44, a * ap(t, V('hun') + .6, .3), { line: GOLD, col: GOLD, scale: back(clamp(ap(t, V('hun') + .6, .4))) });
+      const p = ease(ap(t, V('hun') + 1.2, 2.2)); polyPartial(XIONG, p, { col: GOLD, lw: 6, glow: GOLD, blur: 14, a, dash: [16, 14], dashOff: -t * 40 });
+      if (p >= 1) { const [qx, qy] = P(...XIONG[XIONG.length - 1]); const q = back(clamp(ap(t, V('hun') + 3.4, .4))); ctx.save(); ctx.translate(qx - 30, qy - 10); ctx.scale(q, q); txt('?', 0, 0, 130, GOLD, 'MB', { stroke: 10, sc: 'rgba(0,0,0,.6)' }); ctx.restore(); }
+      head(TXT.hd2a, a * ap(t, V('hun') + .2, .35) * (1 - ap(t, V('but') + .4, .3)), GOLD, H * .16, 88);
+      pill(TXT.hyp, W / 2, H * .27, 46, a * win(t, V('hyp'), V('but') + .6, .3), { bg: 'rgba(232,80,47,.92)', line: '#fff', scale: back(clamp(ap(t, V('hyp'), .4))) });
+      pill(TXT.fact, W / 2, H * .17, 50, a * ap(t, V('but') + .9, .3), { bg: GOLD, col: BR.navy, line: '#fff', scale: back(clamp(ap(t, V('but') + .9, .4))) }); } }
+  // ---- S3 370 Bosporan kingdom, 375 across the Volga, Ostrogoths fall, the Great Migration
+  { const a = win(t, V('y370') - .2, V('pann') + .5, .3);
+    if (a > 0) { const yr = t < V('y375') ? 370 : Math.round(lerp(370, 375, ap(t, V('y375'), .6)));
+      head(String(yr), a * ap(t, V('y370'), .3) * (1 - ap(t, V('mig') - .2, .3)), GOLD, H * .16, 170);
+      arrowLine(A370, ease(ap(t, V('y370') + .5, 1.4)), a * (1 - .6 * ap(t, V('y375'), .5)), GOLD, 11);
+      const [kx, ky] = P(...KERCH); xMark(kx, ky, 1.1, a * ap(t, V('y370') + 1.9, .3) * (1 - ap(t, V('mig'), .4)));
+      lab(TXT.bos, ...KERCH, a * ap(t, V('y370') + 1.2, .3) * (1 - ap(t, V('y375') + .5, .3)), { size: 32, dy: 70, line: RED });
+      lab(TXT.volga, ...VOLGA, a * win(t, V('y375'), V('mig') + .3, .3), { size: 32, dx: 60, dy: -40, line: TURQ, col: TURQ });
+      goths(t, a * ap(t, V('y375') + .3, .4) * (1 - ap(t, V('mig') + .4, .4)));
+      lab(TXT.goth, ...GOTH, a * win(t, V('y375') + .6, V('mig') + .3, .3), { size: 32, dy: -110, line: '#c9ced6' });
+      arrowLine(A375, ease(ap(t, V('y375') + .3, 1.3)), a * (1 - .6 * ap(t, V('mig') + .6, .5)), GOLD, 11);
+      flash(GOTH, V('y375') + 1.5, a * .6);
+      WAVES.forEach((w, i) => arrowLine(w, ease(ap(t, V('mig') + .7 + i * .25, 1.4)), a * win(t, V('mig') + .6, V('pann') + .5, .3), GOLD, 8));
+      head2(TXT.mig1, TXT.mig2, a * win(t, V('mig') + .3, V('pann') + .3, .3), H * .14, 96); } }
+  // ---- S4 Pannonia, Attila 434, «Scourge of God»
+  { const a = win(t, V('pann') - .2, c5a + .3, .3);
+    if (a > 0) { hunland(a * ap(t, V('pann') + .6, .8) * .8, { fill: .16 }); glowFill([PANN_P], GOLD, a * ap(t, V('pann'), .5), { fill: .45, blur: 30, lw: 5 });
+      lab(TXT.pann, ...PANN, a * ap(t, V('pann') + .4, .3) * (1 - ap(t, V('att') + .8, .3)), { size: 38 });
+      glowSpot(...PANN, a * ap(t, V('pann') + .4, .4), GOLD, 50);
+      const pa = a * ap(t, V('att') + .3, .4); portrait(IM.att, W / 2, H * .36, 190, pa);
+      if (pa > 0) { pill(TXT.tag, W / 2, H * .36 + 245, 34, pa, { line: GOLD }); txt(TXT.son, W / 2, H * .36 + 315, 34, '#fff', 'MX', { stroke: 6, sc: 'rgba(0,0,0,.5)' }); }
+      head(TXT.att, a * ap(t, V('att') + .1, .35), GOLD, H * .14, 96);
+      const bq = a * ap(t, V('bich'), .3); flash(PANN, V('bich') + .9, a * .5);
+      if (bq > 0) pill(TXT.bich, W / 2, H * .66, 58, bq, { bg: GOLD, col: BR.navy, line: '#fff', scale: back(clamp(ap(t, V('bich') + .7, .45))) }); } }
+  // ---- S6 tribute grows (after the tent shot), Roman empire, then Gaul 451
+  { const a = win(t, c5b - .5, V('ital') + .3, .3);
+    if (a > 0) { roman(a * .9); hunland(a * .9);
+      lab(TXT.west, 2.5, 44.5, a * ap(t, c5b - .2, .3) * (1 - ap(t, V('gaul'), .3)), { size: 30, line: CORAL }); lab(TXT.east, 33, 38.6, a * ap(t, c5b, .3) * (1 - ap(t, V('gaul'), .3)), { size: 30, line: CORAL });
+      lab(TXT.huns, 32, 51, a * ap(t, c5b + .2, .3) * (1 - ap(t, V('gaul'), .3)), { size: 34, col: GOLD });
+      const ca = a * (1 - ap(t, V('gaul'), .4)); const [kx, ky] = P(...CONST);
+      if (ca > 0) { const r = rng(5); for (let i = 0; i < 26; i++) { const t0 = c5b - .6 + r() * 2.5, f = ap(t, t0, .9); if (f <= 0 || f >= 1) continue;
+          const x0 = kx + (r() - .5) * 300; coin(lerp(x0, kx + (r() - .5) * 40, f), lerp(ky - 600, ky, f * f), 16, ca * (1 - f * .3), t * 6 + i); }
+        dot(...CONST, ca, CORAL); lab(TXT.cpl, ...CONST, ca, { size: 28, dy: 50, line: CORAL });
+        const n = Math.round(lerp(700, 2100, ease(ap(t, c5b - .8, 1.2)))); pill(`${n} ${TXT.perY}`, W / 2, H * .27, 50, ca, { bg: GOLD, col: BR.navy, line: '#fff' }); }
+      const mq = a * win(t, V('malo'), V('gaul') + .3, .3); if (mq > 0) head(TXT.malo, mq, RED, H * .16, 110);
+      arrowLine(AGAUL, ease(ap(t, V('gaul') + .2, 1.6)), a * (1 - .5 * ap(t, V('ital'), .4)), GOLD, 11);
+      lab(TXT.gaul, 2.0, 47.0, a * win(t, V('gaul') + .5, V('ital'), .3), { size: 32, line: CORAL });
+      const [sx, sy] = P(...CATAL); swords(sx, sy - 10, 1.1, a * ap(t, V('cat') + .5, .3)); flash(CATAL, V('cat') + .6, a * .7);
+      head(TXT.y451, a * ap(t, V('gaul') + .1, .35) * (1 - ap(t, V('ital') - .2, .3)), GOLD, H * .16, 104);
+      pill(TXT.allies, W / 2, H * .27, 44, a * win(t, V('cat') + 1.0, V('ital'), .3), { line: CORAL, scale: back(clamp(ap(t, V('cat') + 1.0, .4))) }); } }
+  // ---- S7 Italy, stops before Rome; 453 the candle goes out; the empire breaks up
+  { const a = win(t, V('ital') - .3, V('ent') + .2, .3);
+    if (a > 0) { roman(a * .9 * (1 - .4 * ap(t, V('fall'), .6)));
+      const brk = ease(ap(t, V('fall') + .3, 1.6));
+      if (brk <= 0) hunland(a * .9); else { const pcs = [[0, 8], [7, 13], [12, 18], [17, 23]], dirs = [[-1.2, .6], [.3, -.9], [1.4, .2], [-.4, 1.1]];
+        pcs.forEach(([i0, i1], j) => { const ring_ = HUNS.slice(i0, i1 + 1).concat([[30, 50]]).map(([x, y]) => [x + dirs[j][0] * brk * 3, y + dirs[j][1] * brk * 1.5]); glowFill([ring_], GOLD, a * (1 - brk * .8), { fill: .22, blur: 20, lw: 4 }); }); }
+      arrowLine(AITAL, ease(ap(t, V('ital') + .3, 1.8)), a * (1 - .6 * ap(t, V('died'), .4)), GOLD, 11);
+      dot(...ROME, a * ap(t, V('ital') + .6, .3), CORAL); lab(TXT.rome, ...ROME, a * ap(t, V('ital') + .6, .3) * (1 - ap(t, V('fall'), .3)), { size: 32, dy: 52, line: CORAL });
+      lab(TXT.ital, 9.0, 44.6, a * win(t, V('ital') + .4, V('died'), .3), { size: 30, line: CORAL });
+      const [sx, sy] = P(...STOP); const sq = a * ap(t, V('ital') + 2.2, .3) * (1 - ap(t, V('died'), .3));
+      if (sq > 0) { ctx.save(); ctx.globalAlpha = sq; ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.shadowColor = '#000'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(sx - 46, sy + 16); ctx.lineTo(sx + 46, sy - 16); ctx.stroke(); ctx.restore(); }
+      const da = a * win(t, V('died'), V('ent') + .1, .3); window._cOff = V('died') + 1.0;
+      if (da > 0) { ctx.save(); ctx.globalAlpha = da * .45; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore(); candle(W / 2, H * .44, 1.9, da, 1 - ap(t, V('died') + 1.0, .25)); }
+      head(TXT.y453, a * ap(t, V('died') + .1, .35), GOLD, H * .16, 120);
+      pill(TXT.fall, W / 2, H * .66, 48, a * ap(t, V('fall') + .4, .3), { line: RED, scale: back(clamp(ap(t, V('fall') + .4, .4))) }); } }
+  // ---- S8 ENT card
+  { const a = win(t, V('ent') - .1, V('cta') - .1, .35);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a * .62; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      stamp(TXT.ent, W / 2, H * .19, a, ap(t, V('ent') + .05, .35));
+      ['e1', 'e2', 'e3'].forEach((k, i) => { const q = a * ap(t, V(k), .35); if (q <= 0) return; const y = H * .36 + i * 170, [l, r] = TXT.rows[i];
+        ctx.save(); ctx.globalAlpha = q; ctx.translate((1 - eout(ap(t, V(k), .4))) * 60, 0); rr(W / 2 - 470, y - 66, 940, 132, 30); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(254,179,0,.5)'; ctx.stroke();
+        if (i < 2) { const ls = Math.min(56, 56 * 290 / tw(l, 56, 'MB')); txt(l, W / 2 - 225, y + 3, ls, GOLD, 'MB', { blur: 0 }); const rs = Math.min(40, 40 * 430 / tw(r, 40, 'MX')); txt(r, W / 2 + 190, y + 3, rs, '#fff', 'MX', { blur: 0 }); }
+        else { const s3 = l + ' — ' + r, z = Math.min(46, 46 * 780 / tw(s3, 46, 'MB')); txt(l + ' —', W / 2 + 30 - tw(' ' + r, z, 'MB') / 2, y + 3, z, GOLD, 'MB', { blur: 0 }); txt(r, W / 2 + 30 + tw(l + ' —', z, 'MB') / 2 + 8, y + 3, z, '#fff', 'MB', { blur: 0 }); }
+        const ck = ap(t, V(k) + .3, .3); if (ck > 0) { ctx.strokeStyle = GOLD; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.shadowColor = GOLD; ctx.shadowBlur = 14; ctx.beginPath(); ctx.moveTo(W / 2 - 440, y); ctx.lineTo(W / 2 - 440 + 14 * Math.min(1, ck * 2), y + 14 * Math.min(1, ck * 2)); if (ck > .5) ctx.lineTo(W / 2 - 426 + 26 * (ck - .5) * 2, y + 14 - 32 * (ck - .5) * 2); ctx.stroke(); }
+        ctx.restore(); });
+      const jq = a * ap(t, V('jord'), .35); if (jq > 0) { plate(W / 2, H * .7, 960, 190, jq); ctx.save(); ctx.globalAlpha = jq; txt(TXT.jor1, W / 2, H * .7 - 40, 40, GOLD, 'MB', { blur: 0 });
+        txt(TXT.jor2, W / 2, H * .7 + 30, Math.min(46, 46 * 900 / tw(TXT.jor2, 46, 'MX')), '#fff', 'MX', { blur: 0 }); ctx.restore(); } } }
+  // ---- S9 CTA: rider on the map, link
+  { const a = ap(t, V('cta') - .3, .4);
+    if (a > 0) { hunland(a * .7); portrait(IM.rider, W / 2, H * .36, 170, a * ap(t, V('cta'), .4)); if (t >= V('cta') - .3) ctaEnd(t); } }
+  // ---- film shots on top of the map
+  if (t < c1 + .6) await film(1, t, 0, c1 + .6, 1 - ap(t, c1 - .3, .9));
+  if (t > c5a - .1 && t < c5b + .5) await film(5, t, c5a, c5b + .5, Math.min(ap(t, c5a - .1, .3), 1 - ap(t, c5b, .5)));
+  // texts over the film shots
+  head2(TXT.t1, TXT.t2, win(t, .4, c1 - .2, .35), H * .15, 120);
+  { const q = win(t, V('const') + .4, c5b, .3); if (q > 0) { head(TXT.gold1, q * ap(t, V('gold'), .35), GOLD, H * .15, 150);
+      pill(TXT.gold2, W / 2, H * .25, 44, q * ap(t, V('gold') + .3, .3), { line: GOLD, scale: back(clamp(ap(t, V('gold') + .3, .4))) }); } }
+  cutFade(t, [c5a]);
+  { const q = Math.min(win(t, c1 + .5, c5a, .3) + win(t, c5b + .4, V('ent'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55); captions(t); logo(.9); endCard(t, V('vend') + .4);
+}
+function ctaEnd(t) {
+  const t0 = V('cta') - .3, q = ap(t, t0, .4); ctx.save(); ctx.globalAlpha = q * .35; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, t0 + .5, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .66); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(s, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .56 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  try { CLIPS = await (await fetch('clips/clips.json')).json(); } catch (e) { CLIPS = {}; }
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all(['world', 'reg'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  await Promise.all([['att', 'photos/attila.jpg'], ['rider', 'photos/rider.jpg'], ['s1', 'hf/s1.jpg'], ['s5', 'hf/s5.jpg']].map(([k, f]) => loadImg(k, f).catch(() => null)));
+  for (const T of TEX) if (T.minppd) IM[T.k] = feather(IM[T.k], .04);
+  window.END = END; await render(0); return true;
+})();
+</script></body></html>
