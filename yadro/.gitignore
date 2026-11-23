@@ -1,0 +1,8 @@
+*.wav
+*.mp4
+*.log
+tr_*.txt
+photos_src/
+old_voices/
+out/
+dbg.js
