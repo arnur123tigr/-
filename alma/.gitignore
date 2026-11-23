@@ -1,0 +1,5 @@
+out/
+out_*.log
+hf/frames/
+take_female/
+__pycache__/

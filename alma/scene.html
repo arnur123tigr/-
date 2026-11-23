@@ -1,0 +1,369 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Все яблоки мира родом из Алматы» / «Әлемдегі барлық алма Алматыдан шыққан» — KZ + RU, voice «Arnur». Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 90, SH = null, HF = [], HFN = 0;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'silk', l0: 0, l1: 84, b0: 28, b1: 58, minppd: 12 });
+TEX.push({ k: 'ca', l0: 40, l1: 90, b0: 30, b1: 58, minppd: 30 });
+TEX.push({ k: 'jet', l0: 73, l1: 84, b0: 41.5, b1: 47.5, minppd: 60 });
+TEX.push({ k: 'alm', l0: 73.5, l1: 80.5, b0: 41, b1: 45.5, minppd: 170 });
+const GOLD = BR.acc, RED = BR.red, GREEN = '#3DDC84', APR = '#d8232a';
+const ALM = [76.92, 43.25], NY = [-74.0, 40.7], PAR = [2.35, 48.86], VOR = [39.2, 51.67];
+const ILE = [[75.4, 42.88], [76.0, 42.98], [76.6, 43.04], [77.1, 43.06], [77.6, 43.1], [78.2, 43.06], [78.8, 43.0]];
+const FOREST = [[76.75, 43.1], [77.2, 43.13], [77.75, 43.17], [76.3, 43.06], [78.3, 43.12], [79.4, 44.95], [80.1, 45.12], [80.8, 45.2], [79.0, 44.75], [78.0, 43.2]];
+// Silk Road: [lon, lat, label-key]
+const ROUTE = [[76.92, 43.25], [74.6, 42.9], [71.4, 42.9], [69.2, 41.3], [66.97, 39.65, 'sam'], [64.4, 39.77], [61.83, 37.6], [58.0, 36.7], [54.4, 36.2], [51.4, 35.6, 'per'],
+  [48.5, 34.4], [44.4, 33.3], [40.0, 35.5], [36.2, 36.2], [32.0, 39.0], [28.97, 41.01], [23.0, 40.6], [19.5, 41.3], [16.0, 41.0], [12.5, 41.9, 'rim'],
+  [10.0, 44.0], [7.0, 45.8], [4.8, 45.75], [2.35, 48.86, 'evr']];
+const TXT = {
+  ru: { ny: 'Нью-Йорк', par: 'Париж', alm: 'Алматы', head1: 'Каждое яблоко мира —', head2: 'ИЗ АЛМАТЫ', ile: 'Заилийский Алатау', jet: 'Джунгарский Алатау', ala: 'ЗАИЛИЙСКИЙ И ДЖУНГАРСКИЙ АЛАТАУ',
+    forest: 'дикие яблоневые леса', siv: 'ЯБЛОНЯ СИВЕРСА', vav: 'Н. И. Вавилов', vav2: 'ботаник', y29: '1929', home: 'РОДИНА ЯБЛОНИ',
+    silk: 'ПО ШЁЛКОВОМУ ПУТИ → В МИР', sam: 'Самарканд', per: 'Персия', rim: 'Рим', evr: 'Европа', dna: 'ДНК ДОКАЗАЛА', y10: '2010',
+    gd: 'Golden Delicious', gd2: 'из магазина', ms: 'Malus sieversii', ms2: 'дикая, Алатау', pred: 'главный предок', aport: 'АПОРТ', alien: 'ПРИЕЗЖИЙ!',
+    vor: 'Воронеж', verny: 'Верный (Алматы)', y65: '1865', redb: 'КРАСНАЯ КНИГА', q: 'Где родина', q2: 'культурной яблони?', L: ['А', 'Б', 'В'],
+    opts: ['Средиземноморье', 'Заилийский и Джунгарский Алатау', 'Альпы'], ent: 'ВОПРОС', cta1: 'Ссылка', cta2: 'в шапке профиля',
+    src: 'Карта: NASA Blue Marble · Natural Earth · Вавилов 1929 · геном яблони: Velasco et al., 2010' },
+  kk: { ny: 'Нью-Йорк', par: 'Париж', alm: 'Алматы', head1: 'Әлемдегі әр алма —', head2: 'БӘРІ АЛМАТЫДАН', ile: 'Іле Алатауы', jet: 'Жетісу Алатауы', ala: 'ІЛЕ ЖӘНЕ ЖЕТІСУ АЛАТАУЫ',
+    forest: 'жабайы алма ормандары', siv: 'СИВЕРС АЛМАСЫ', vav: 'Н. И. Вавилов', vav2: 'ботаник', y29: '1929', home: 'АЛМАНЫҢ ОТАНЫ',
+    silk: 'ЖІБЕК ЖОЛЫМЕН → ӘЛЕМГЕ', sam: 'Самарқанд', per: 'Персия', rim: 'Рим', evr: 'Еуропа', dna: 'ДНҚ ДӘЛЕЛДЕДІ', y10: '2010',
+    gd: 'Golden Delicious', gd2: 'дүкендегі алма', ms: 'Malus sieversii', ms2: 'жабайы, Алатау', pred: 'басты атасы', aport: 'АПОРТ', alien: 'КЕЛІМСЕК!',
+    vor: 'Воронеж', verny: 'Верный (Алматы)', y65: '1865', redb: 'ҚЫЗЫЛ КІТАП', q: 'Мәдени алманың', q2: 'отаны қай жер?', L: ['А', 'Ә', 'Б'],
+    opts: ['Жерорта теңізі', 'Іле және Жетісу Алатауы', 'Альпі'], ent: 'СҰРАҚ', cta1: 'Сілтеме', cta2: 'профиль шапкасында',
+    src: 'Карта: NASA Blue Marble · Natural Earth · Вавилов 1929 · алма геномы: Velasco et al., 2010' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+function glowSpot(lon, lat, a, col = GOLD, r = 60) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, col + 'aa'); g.addColorStop(.4, col + '44'); g.addColorStop(1, col + '00');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, 7); ctx.fill();
+  for (let i = 0; i < 2; i++) { const ph = ((TT * .8 + i * .5) % 1); ctx.globalAlpha = a * (1 - ph) * .8; ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, r * (.4 + ph * 1.4), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function head2(l1, l2, a, y = H * .15, s2 = 110) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  if (l1) txt(l1, 0, 0, Math.min(60, 60 * 960 / tw(l1, 60, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, l1 ? s2 * .9 : 0, Math.min(s2, s2 * 980 / tw(l2, s2, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function borders(a = .35) {
+  if (!SH || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  pathRings(SH.borders); ctx.stroke(); ctx.restore();
+}
+function kz(a, o = {}) {
+  if (!SH || a <= 0) return; const pu = .5 + .5 * Math.sin(TT * 5);
+  glowFill(SH.cty.KAZ, GOLD, a, { fill: o.fill ?? .3, blur: 20 + 12 * pu, lw: 4 + 2 * pu });
+}
+function lab(s, lon, lat, a, o = {}) { if (a <= 0) return; const [x, y] = P(lon, lat); pill(s, x + (o.dx || 0), y + (o.dy || 0), o.size || 34, a, { line: o.line || GOLD, col: o.col, bg: o.bg, scale: back(clamp(o.sc ?? a)) }); }
+function geoArc(a, b, p, bend, o = {}) {   // curved lon/lat arc (screen-space bend), drawn on with p
+  const pts = []; for (let i = 0; i <= 50; i++) { const k = i / 50; pts.push([lerp(a[0], b[0], k), lerp(a[1], b[1], k) + Math.sin(Math.PI * k) * bend]); } polyPartial(pts, p, o);
+  return pts;
+}
+function stamp(s, x, y, a, sp, col = GOLD, size = 80) {
+  if (a <= 0 || sp <= 0) return; const k = 1 + 1.4 * (1 - eout(sp)), w = tw(s, size, 'MB') + 90; ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.12); ctx.scale(k, k);
+  rr(-w / 2, -size * .85, w, size * 1.7, 24); ctx.lineWidth = 9; ctx.strokeStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.fill();
+  txt(s, 0, 5, size, col, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+
+// ---------- apples ----------
+const OFFC = document.createElement('canvas'); OFFC.width = 900; OFFC.height = 900; const oc = OFFC.getContext('2d');
+function applePath(c, r) {   // apple outline centred at 0,0
+  c.beginPath(); c.moveTo(0, -r * .62);
+  c.bezierCurveTo(r * .35, -r * 1.02, r * 1.05, -r * .92, r * 1.0, -r * .1);
+  c.bezierCurveTo(r * .98, r * .55, r * .6, r * 1.02, r * .25, r * .95);
+  c.bezierCurveTo(r * .1, r * .92, -r * .1, r * .92, -r * .25, r * .95);
+  c.bezierCurveTo(-r * .6, r * 1.02, -r * .98, r * .55, -r * 1.0, -r * .1);
+  c.bezierCurveTo(-r * 1.05, -r * .92, -r * .35, -r * 1.02, 0, -r * .62); c.closePath();
+}
+function drawApple(c, r, col, o = {}) {
+  const g = c.createRadialGradient(-r * .35, -r * .3, r * .1, 0, 0, r * 1.2);
+  g.addColorStop(0, o.light || '#ff6b5e'); g.addColorStop(.55, col); g.addColorStop(1, o.dark || '#5e0a10');
+  c.save(); c.shadowColor = 'rgba(0,0,0,.45)'; c.shadowBlur = r * .25; c.shadowOffsetY = r * .08; applePath(c, r); c.fillStyle = g; c.fill(); c.restore();
+  if (o.blush) { c.save(); applePath(c, r); c.clip(); const b = c.createRadialGradient(r * .35, r * .1, 0, r * .35, r * .1, r * .9); b.addColorStop(0, o.blush); b.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = b; c.fillRect(-r, -r, 2 * r, 2 * r); c.restore(); }
+  c.save(); c.globalAlpha = .55; c.fillStyle = '#fff'; c.beginPath(); c.ellipse(-r * .45, -r * .35, r * .14, r * .26, -.5, 0, 7); c.fill(); c.restore();
+  c.save(); c.strokeStyle = '#4a2c14'; c.lineWidth = r * .08; c.lineCap = 'round'; c.beginPath(); c.moveTo(0, -r * .6); c.quadraticCurveTo(r * .05, -r * .95, r * .18, -r * 1.12); c.stroke();
+  c.fillStyle = '#3f9b3a'; c.beginPath(); c.moveTo(r * .1, -r * .85); c.quadraticCurveTo(r * .45, -r * 1.25, r * .75, -r * 1.05); c.quadraticCurveTo(r * .45, -r * .7, r * .1, -r * .85); c.fill(); c.restore();
+}
+function apple(x, y, r, a, col = APR, o = {}) {
+  if (a <= 0 || r <= 1) return;
+  if (!o.bites && !o.sticker) { ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); drawApple(ctx, r, col, o); ctx.restore(); return; }
+  const s = Math.min(1, 380 / r); oc.setTransform(1, 0, 0, 1, 0, 0); oc.clearRect(0, 0, 900, 900); oc.translate(450, 450); oc.scale(s, s); drawApple(oc, r, col, o);
+  if (o.sticker) sticker(oc, r, o.sticker);
+  if (o.bites) { oc.globalCompositeOperation = 'destination-out'; for (const [bx, by, br] of o.bites) { for (let i = -1; i <= 1; i++) { oc.beginPath(); oc.arc(bx * r + i * br * r * .55, by * r + Math.abs(i) * br * r * .2, br * r * .62, 0, 7); oc.fill(); } } oc.globalCompositeOperation = 'source-over'; }
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); ctx.drawImage(OFFC, -450 / s, -450 / s, 900 / s, 900 / s); ctx.restore();
+}
+function sticker(c, r, p) {   // round supermarket sticker with little flags (USA, France, …), p = appear 0..1
+  if (p <= 0) return; const k = back(clamp(p)); c.save(); c.translate(r * .2, r * .15); c.rotate(-.18); c.scale(k, k);
+  c.beginPath(); c.ellipse(0, 0, r * .42, r * .3, 0, 0, 7); c.fillStyle = '#fff'; c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 8; c.fill(); c.shadowBlur = 0;
+  c.lineWidth = r * .02; c.strokeStyle = '#1e7a3a'; c.stroke();
+  const fw = r * .2, fh = r * .13, y0 = -r * .12;
+  // USA
+  for (let i = 0; i < 7; i++) { c.fillStyle = i % 2 ? '#fff' : '#b22234'; c.fillRect(-fw - r * .04, y0 + i * fh / 7, fw, fh / 7); }
+  c.fillStyle = '#3c3b6e'; c.fillRect(-fw - r * .04, y0, fw * .42, fh * .55);
+  // France
+  ['#0055a4', '#fff', '#ef4135'].forEach((cl, i) => { c.fillStyle = cl; c.fillRect(r * .04 + i * fw / 3, y0, fw / 3, fh); });
+  c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 1.5; c.strokeRect(-fw - r * .04, y0, fw, fh); c.strokeRect(r * .04, y0, fw, fh);
+  c.fillStyle = '#1e7a3a'; c.font = `${r * .1}px MB`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('FRESH · 4131', 0, r * .12);
+  c.restore();
+}
+const VARC = [['#c8151d', '#ff6b5e', '#4d080b'], ['#9acd32', '#e6ff8a', '#3f6b10'], ['#f2c230', '#fff2a0', '#8a5a08'], ['#7a0f1c', '#c4404f', '#2a0308'], ['#e8622a', '#ffb07a', '#7a2a08']];
+function miniApple(x, y, r, a, i) { const v = VARC[i % VARC.length]; apple(x, y, r, a, v[0], { light: v[1], dark: v[2] }); }
+
+// ---------- other drawn props ----------
+function camel(x, y, s, a, step) {   // tiny caravan camel silhouette, legs swing with step
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = '#f7e2b5'; ctx.strokeStyle = '#5a3a14'; ctx.lineWidth = 3;
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.moveTo(-34, 0); ctx.quadraticCurveTo(-30, -22, -16, -26); ctx.quadraticCurveTo(-8, -46, 2, -26); ctx.quadraticCurveTo(10, -44, 20, -24);
+  ctx.quadraticCurveTo(30, -20, 32, -8); ctx.lineTo(44, -34); ctx.lineTo(56, -36); ctx.lineTo(58, -28); ctx.lineTo(48, -26); ctx.lineTo(38, 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.strokeStyle = '#f7e2b5';
+  const sw = Math.sin(step) * 8; [[-26, sw], [-14, -sw], [22, -sw], [32, sw]].forEach(([lx, d]) => { ctx.beginPath(); ctx.moveTo(lx, -2); ctx.lineTo(lx + d, 28); ctx.stroke(); });
+  ctx.restore();
+}
+function silhouette(c, w, h) {   // botanist silhouette: hat, coat, notebook (drawn, not a portrait)
+  c.save(); c.fillStyle = '#0b0730';
+  c.beginPath(); c.ellipse(0, -h * .2, w * .16, h * .14, 0, 0, 7); c.fill();                                  // head
+  c.beginPath(); c.ellipse(0, -h * .33, w * .3, h * .035, 0, 0, 7); c.fill(); rr(-w * .16, -h * .45, w * .32, h * .13, w * .05); c.fill();   // hat
+  c.beginPath(); c.moveTo(-w * .42, h * .5); c.quadraticCurveTo(-w * .4, -h * .02, -w * .1, -h * .05); c.lineTo(w * .1, -h * .05); c.quadraticCurveTo(w * .4, -h * .02, w * .42, h * .5); c.closePath(); c.fill();   // coat
+  c.fillStyle = '#f4ecd8'; c.save(); c.translate(w * .16, h * .2); c.rotate(-.25); c.fillRect(-w * .1, -h * .08, w * .2, h * .15); c.restore();   // notebook
+  c.restore();
+}
+function vavCard(x, y, a) {
+  if (a <= 0) return; const k = back(clamp(a)), w = 330, h = 440; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k, k);
+  rr(-w / 2, -h / 2, w, h, 28); const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#f5d27a'); g.addColorStop(1, '#c98a1a'); ctx.fillStyle = g;
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 28; ctx.fill(); ctx.shadowBlur = 0; ctx.save(); rr(-w / 2, -h / 2, w, h, 28); ctx.clip();
+  ctx.translate(0, -10); silhouette(ctx, w * .9, h * .8); ctx.restore();
+  ctx.save(); rr(-w / 2, h / 2 - 120, w, 120, { lowerLeft: 28, lowerRight: 28, upperLeft: 0, upperRight: 0 }); ctx.fillStyle = 'rgba(19,11,84,.92)'; ctx.fill(); ctx.restore();
+  txt(TXT.vav, 0, h / 2 - 78, 38, '#fff', 'MB', { blur: 0, dy: 0 }); txt(TXT.vav2 + ' · ' + TXT.y29, 0, h / 2 - 34, 28, GOLD, 'MX', { blur: 0, dy: 0 });
+  rr(-w / 2, -h / 2, w, h, 28); ctx.lineWidth = 5; ctx.strokeStyle = GOLD; ctx.stroke(); ctx.restore();
+}
+function helix(cx, y0, y1, amp, a, t) {   // DNA double helix, rotating
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const N = 28;
+  for (let i = 0; i <= N; i++) {
+    const k = i / N, y = lerp(y0, y1, k), ph = k * Math.PI * 4 + t * 2.2, x1 = cx + Math.sin(ph) * amp, x2 = cx - Math.sin(ph) * amp, z = Math.cos(ph);
+    const draw = clamp((a * 1.4 - k * .4) * 2); if (draw <= 0) continue;
+    ctx.globalAlpha = a * draw; ctx.strokeStyle = i % 2 ? 'rgba(255,255,255,.55)' : 'rgba(254,179,0,.7)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+    for (const [x, zz, col] of [[x1, z, GOLD], [x2, -z, '#4FD1C5']]) { ctx.beginPath(); ctx.arc(x, y, 12 + 5 * zz, 0, 7); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 16; ctx.fill(); ctx.shadowBlur = 0; }
+  }
+  ctx.restore();
+}
+function redBook(x, y, s, a) {
+  if (a <= 0) return; const k = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(k * s, k * s); ctx.rotate(-.08);
+  rr(-150, -105, 300, 210, 16); ctx.fillStyle = '#c4161c'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#7d0b10'; ctx.fillRect(-150, -105, 26, 210); ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 4; rr(-112, -88, 246, 176, 10); ctx.stroke();
+  txt(TXT.redb, 12, -6, Math.min(40, 40 * 220 / tw(TXT.redb, 40, 'MB')), '#ffe7a3', 'MB', { blur: 0, dy: 0 });
+  ctx.restore();
+}
+function hfFrame(t, t0, t1, a) {   // the Higgsfield clip, slowed to fill [t0, t1] when it is shorter
+  if (a <= 0 || !HFN) return; const rate = Math.min(1, (HFN / 30) / Math.max(.5, t1 - t0)), i = clamp(Math.floor((t - t0) * 30 * rate), 0, HFN - 1), im = HF[i];
+  if (!im) return; ctx.save(); ctx.globalAlpha = a; const s = Math.max(W / im.width, H / im.height) * (1.02 + .03 * ap(t, t0, t1 - t0)); const w = im.width * s, h = im.height * s;
+  ctx.drawImage(im, W / 2 - w / 2, H / 2 - h / 2, w, h); ctx.restore();
+}
+function optCard(i, y, a, st) {   // st: 0 normal, 1 reading, 2 right, 3 wrong
+  if (a <= 0) return; const k = back(clamp(a)), w = 920, h = 150; ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(k, k);
+  rr(-w / 2, -h / 2, w, h, 30); ctx.fillStyle = st === 2 ? GOLD : 'rgba(19,11,84,.92)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = st === 1 ? 7 : 3; ctx.strokeStyle = st === 1 ? GOLD : 'rgba(255,255,255,.25)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(-w / 2 + 80, 0, 46, 0, 7); ctx.fillStyle = st === 2 ? BR.navy : GOLD; ctx.fill(); txt(TXT.L[i], -w / 2 + 80, 3, 50, st === 2 ? GOLD : BR.navy, 'MB', { blur: 0, dy: 0 });
+  const s = TXT.opts[i], sz = Math.min(48, 48 * 640 / tw(s, 48, 'MX')); txt(s, -w / 2 + 150, 2, sz, st === 2 ? BR.navy : (st === 3 ? 'rgba(255,255,255,.45)' : '#fff'), 'MX', { align: 'left', blur: 0, dy: 0 });
+  ctx.restore();
+}
+function panel(a) {   // navy blueprint background (brand)
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(W / 2, H * .45, 100, W / 2, H * .45, H * .8); g.addColorStop(0, '#1d2a6e'); g.addColorStop(1, '#0a0730'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(120,150,255,.12)'; ctx.lineWidth = 2; for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); } ctx.restore();
+}
+function routeAt(p) {   // point and index at fraction p of the route (by lon/lat length)
+  let L = 0; const d = [0]; for (let i = 1; i < ROUTE.length; i++) { L += Math.hypot(ROUTE[i][0] - ROUTE[i - 1][0], ROUTE[i][1] - ROUTE[i - 1][1]); d.push(L); }
+  const lim = L * clamp(p); for (let i = 1; i < ROUTE.length; i++) if (d[i] >= lim) { const k = (lim - d[i - 1]) / (d[i] - d[i - 1] || 1); return { pt: [lerp(ROUTE[i - 1][0], ROUTE[i][0], k), lerp(ROUTE[i - 1][1], ROUTE[i][1], k)], i, d, L }; }
+  return { pt: ROUTE[ROUTE.length - 1].slice(0, 2), i: ROUTE.length - 1, d, L };
+}
+function routeP(t) {   // the route head reaches Persia, Rome, Europe as the narrator names them
+  const fr = k => { const r = routeAt(1); const idx = ROUTE.findIndex(q => q[2] === k); return r.d[idx] / r.L; };
+  const keys = [[V('silk'), 0], [V('per') + .25, fr('per')], [V('rim') + .25, fr('rim')], [V('evr') + .45, 1]];
+  if (t <= keys[0][0]) return 0; for (let i = 0; i < keys.length - 1; i++) if (t < keys[i + 1][0]) return lerp(keys[i][1], keys[i + 1][1], (t - keys[i][0]) / (keys[i + 1][0] - keys[i][0]));
+  return 1;
+}
+
+// ---------- camera ----------
+let CK = [];
+function buildCam() {
+  CK = [[0, 2, 30, 7.4], [V('alm') - .2, 4, 30, 7.8, 'l'], [V('ala') - .05, 77.6, 43.7, 70],
+    [V('ala') + .3, 78.6, 44.1, 118], [V('forest') + 1.1, 78.2, 43.9, 150, 'l'],
+    [V('vav'), 77.4, 43.4, 175, 'l'], [V('saw'), 77.6, 43.6, 160, 'l'], [V('wrote'), 78.3, 44.0, 125], [V('how') - .05, 78.4, 44.0, 118, 'l'],
+    [V('silk') - .1, 66, 41, 22], [V('per') + .3, 58, 39, 19, 'l'], [V('rim') + .3, 36, 40, 14], [V('evr') + .6, 38, 42.5, 10.5], [V('dna') - .05, 38, 42.5, 10, 'l'],
+    [V('dna'), 58, 47, 20, 'l'], [V('y1865') - .05, 58, 47, 20, 'l'], [V('y1865') + .6, 58, 47.5, 21], [V('red') - .1, 58.5, 47.3, 22.5, 'l'],
+    [V('red') + .9, 77.4, 43.6, 120], [V('q') - .05, 77.4, 43.6, 128, 'l'],
+    [V('q'), 72, 45, 30, 'l'], [V('cta') - .05, 72, 45, 31, 'l'], [V('cta'), 70, 45, 16, 'l'], [V('vend') + 3, 70, 45.3, 15, 'l']];
+}
+const CUTS = () => [V('forest') + 1.2, V('vav'), V('dna'), V('turn'), V('q'), V('cta')];
+function render(t) {
+  TT = t; CAM = camAt(CK, t);
+  const day = (t > V('ala') - .3 && t < V('how') + .4) || (t > V('red') && t < V('q'));
+  drawMap(day ? .04 : .16); borders(CAM.ppd < 60 ? .3 : .22);
+  // ---- S1 hook: shop apple with a sticker (USA, France) -> lines from New York and Paris to Almaty
+  { const a = win(t, 0, V('ala') + .2, .3);
+    if (a > 0) {
+      ctx.save(); ctx.globalAlpha = a * .35; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = a;
+      { const [, yp] = P(0, 84); const g = ctx.createLinearGradient(0, 0, 0, yp + 140); g.addColorStop(0, '#05081c'); g.addColorStop(.75, '#05081c'); g.addColorStop(1, 'rgba(5,8,28,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, yp + 140); }
+      ctx.restore();
+      const na = ap(t, 1.0, .3), pa = ap(t, 2.0, .3), la = ap(t, V('alm') - .3, .4);
+      kz(a * la * .9);
+      dot(...NY, a * na); lab(TXT.ny, ...NY, a * na, { dy: -58, dx: 95 }); dot(...PAR, a * pa); lab(TXT.par, ...PAR, a * pa, { dy: -58 });
+      geoArc(NY, ALM, ease(ap(t, V('alm') - .2, 1.1)), 18, { col: GOLD, glow: GOLD, lw: 6, a }); geoArc(PAR, ALM, ease(ap(t, V('alm'), .9)), 7, { col: GOLD, glow: GOLD, lw: 6, a });
+      glowSpot(...ALM, a * la, GOLD, 40); dot(...ALM, a * la); lab(TXT.alm, ...ALM, a * la, { dy: -60, size: 40 });
+      // the apple: big in front, then it shrinks and flies to Almaty
+      const fly = ease(ap(t, V('alm') + .2, 1.0)), [ax, ay] = P(...ALM);
+      const x = lerp(W / 2, ax, fly), y = lerp(H * .67, ay - 40, fly), r = lerp(220, 26, fly) * (1 + .02 * Math.sin(t * 3)) * eout(ap(t, 0, .5));
+      apple(x, y, r, a * (1 - ap(t, V('ala') - .25, .3)), APR, { sticker: ap(t, .5, .4), bites: t > .35 ? [[.92, -.2, .3]] : null });
+      head2(TXT.head1, TXT.head2, a * ap(t, V('alm') + .1, .4), H * .14);
+    } }
+  // ---- S2 the two Alatau ranges (and S4 below re-uses them)
+  { const a = Math.max(win(t, V('ala') - .2, V('forest') + 1.3, .3), win(t, V('vav') - .05, V('how') + .5, .3));
+    if (a > 0) {
+      if (SH.reg.JET) glowFill(SH.reg.JET, GOLD, a * ap(t, V('ala') + .9, .5), { fill: .22, blur: 18, lw: 4 });
+      polyPartial(ILE, ease(ap(t, V('ala') + .2, .8)), { col: GOLD, glow: GOLD, lw: 12, blur: 24, a: a * .9 });
+      lab(TXT.ile, 77.3, 42.6, a * ap(t, V('ala') + .5, .3), { size: 36 }); lab(TXT.jet, 79.9, 45.75, a * ap(t, V('ala') + 1.2, .3), { size: 36 });
+      dot(...ALM, a, '#fff'); lab(TXT.alm, ...ALM, a, { dy: -50, dx: -70, size: 30, line: 'rgba(255,255,255,.4)' });
+      const fa = Math.max(ap(t, V('forest'), .4) * (t < V('vav') ? 1 : 0), t >= V('vav') ? 1 : 0);
+      FOREST.forEach((f, i) => glowSpot(f[0], f[1], a * fa * clamp((t - V('forest') - i * .08) * 3 + (t >= V('vav') ? 9 : 0)), GREEN, 26));
+      if (t < V('vav')) lab(TXT.forest, 78.4, 43.55, a * ap(t, V('forest') + .3, .3), { size: 34, line: GREEN });
+      if (t < V('vav')) head2('', TXT.ala, a * ap(t, V('ala') + .1, .4), H * .15, 80);
+    } }
+  // ---- S4 Vavilov 1929: card, many kinds of apples, "homeland" stamp
+  { const a = A('vav', 'how', .3);
+    if (a > 0) {
+      pill(TXT.y29, W / 2, H * .13, 70, a * ap(t, V('vav') + .1, .3), { font: 'MB', col: GOLD, scale: back(clamp(ap(t, V('vav') + .1, .4))) });
+      vavCard(W - 230, H * .73, a * ap(t, V('vav') + .5, .45) * (1 - ap(t, V('wrote') - .2, .4)));
+      const r = rng(11); for (let i = 0; i < 26; i++) { const f = FOREST[i % FOREST.length], lon = f[0] + (r() - .5) * .9, lat = f[1] + (r() - .5) * .45, [x, y] = P(lon, lat);
+        const pa = ap(t, V('saw') + .1 + i * .06, .25); miniApple(x, y, 22 + 8 * r(), a * pa * (1 - ap(t, V('how') - .2, .3)), i); }
+      const sp = ap(t, V('wrote') + .6, .35); stamp(TXT.home, W / 2, H * .56, a, sp, GOLD, 78);
+      if (sp > 0) glowSpot(77.5, 43.2, a * sp, GOLD, 90);
+    } }
+  // ---- S3 Higgsfield: wild apple forest (Malus sieversii)
+  { const t0 = V('forest') + 1.2, t1 = V('vav'), a = win(t, t0, t1 + .05, .2);
+    if (a > 0) { hfFrame(t, t0, t1, a);
+      ctx.save(); ctx.globalAlpha = a * .5; const g = ctx.createLinearGradient(0, 0, 0, H * .3); g.addColorStop(0, 'rgba(0,0,0,.8)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * .3); ctx.restore();
+      const sa = ap(t, V('siv') - .1, .4); head2('', TXT.siv, a * sa, H * .15, 96);
+      if (sa > 0) { ctx.save(); ctx.globalAlpha = a * sa; txt(TXT.ms, W / 2, H * .15 + 90, 44, '#fff', 'MX', { stroke: 6, sc: 'rgba(0,0,0,.5)' }); ctx.restore(); }
+    } }
+  // ---- S5 Silk Road: golden dashed route west, apples pop up along it, a camel caravan at its head
+  { const a = A('how', 'dna', .3);
+    if (a > 0) {
+      head2('', TXT.silk, a * ap(t, V('silk'), .4), H * .14, 74);
+      const p = routeP(t), R = routeAt(p);
+      ctx.save(); ctx.setLineDash([22, 16]); ctx.lineDashOffset = -t * 60; if (p > 0) polyPartial([...ROUTE.slice(0, R.i).map(q => [q[0], q[1]]), R.pt], 1, { col: GOLD, glow: GOLD, lw: 8, blur: 16, a }); ctx.restore();
+      glowSpot(...ALM, a, GOLD, 34); dot(...ALM, a); lab(TXT.alm, ...ALM, a, { dy: 56, size: 30 });
+      ROUTE.forEach((q, i) => { if (i === 0 || i > R.i - 1 + (p >= 1 ? 1 : 0)) return; const [x, y] = P(q[0], q[1]); const pa = clamp((p - R.d[i] / R.L) * 25 + .001);
+        miniApple(x, y - 26, 20, a * clamp(pa * 3), i); if (q[2]) { dot(q[0], q[1], a); lab(TXT[q[2]], q[0], q[1], a * clamp(pa * 3), { dy: q[2] === 'per' || q[2] === 'rim' ? 64 : -80, size: 36 }); } });
+      const [hx, hy] = P(...R.pt); if (p > 0 && p < 1) camel(hx, hy - 30, 1.1, a, t * 9);
+    } }
+  // ---- S6 2010: the genome; Golden Delicious -> Malus sieversii
+  { const a = A('dna', 'turn', .25);
+    if (a > 0) {
+      panel(a); helix(W / 2, 330, 900, 150, a * ap(t, V('dna') + .1, 1.2), t);
+      pill(TXT.y10, W / 2, 250, 66, a * ap(t, V('dna') + .1, .3), { font: 'MB', col: GOLD, scale: back(clamp(ap(t, V('dna') + .1, .4))) });
+      const ga = ap(t, V('proof') + .2, .4), ma = ap(t, V('pred') + .4, .4);
+      apple(270, 1170, 120, a * ga, '#e9c234', { light: '#fff5a8', dark: '#8a6a08', blush: 'rgba(230,120,40,.35)' });
+      if (ga > 0) { ctx.save(); ctx.globalAlpha = a * ga; txt(TXT.gd, 270, 1340, 40, '#fff', 'MB', { blur: 0 }); txt(TXT.gd2, 270, 1390, 30, 'rgba(255,255,255,.7)', 'MS', { blur: 0 }); ctx.restore(); }
+      arrow(410, 1170, 670, 1170, 540, 1090, ease(ap(t, V('pred'), .5)), a, 10);
+      apple(810, 1180, 95, a * ma, '#b8282e', { light: '#ffd16b', dark: '#4d0a0d', blush: 'rgba(240,200,60,.45)' });
+      if (ma > 0) { ctx.save(); ctx.globalAlpha = a * ma; txt(TXT.ms, 810, 1340, 40, GOLD, 'MB', { blur: 0 }); txt(TXT.ms2, 810, 1390, 30, 'rgba(255,255,255,.7)', 'MS', { blur: 0 }); ctx.restore();
+        pill(TXT.pred, 540, 1040, 38, a * ma, { line: GOLD }); }
+      stamp(TXT.dna, W / 2, 640, a, ap(t, V('proof') + .1, .35), GOLD, 74);
+    } }
+  // ---- S7 twist: the aport is not local (Voronezh -> Verny 1865); the wild apple is in the Red Book
+  { const a = A('turn', 'q', .25);
+    if (a > 0) {
+      const big = 1 - ap(t, V('y1865') - .2, .4);
+      if (big > 0) { ctx.save(); ctx.globalAlpha = a * big * .7; ctx.fillStyle = '#05061a'; ctx.fillRect(0, 0, W, H); ctx.restore();
+        const s = back(clamp(ap(t, V('turn') + .05, .5)));
+        apple(W / 2, H * .47, 270 * s, a * big, '#c3121b', { light: '#ff7a6a', dark: '#3d0508', blush: 'rgba(255,190,90,.25)' });
+        pill(TXT.aport, W / 2, H * .25, 92, a * big * ap(t, V('aport') - .1, .3), { font: 'MB', col: '#fff', bg: APR, line: '#fff', scale: back(clamp(ap(t, V('aport') - .1, .4))) });
+        stamp(TXT.alien, W / 2, H * .7, a * big, ap(t, V('aport') + 1.2, .35), RED, 84); }
+      const ma = a * (1 - big);
+      if (ma > 0) {
+        const pa = ease(ap(t, V('y1865') + .6, 1.6));
+        dot(...VOR, ma); lab(TXT.vor, ...VOR, ma, { dy: -60, size: 36 });
+        const pts = geoArc(VOR, ALM, pa, 2.5, { col: '#fff', glow: 'rgba(255,255,255,.9)', lw: 7, a: ma });
+        const hp = pts[Math.min(50, Math.round(pa * 50))]; if (pa > 0 && pa < 1) { const [x, y] = P(hp[0], hp[1]); apple(x, y - 10, 30, ma, '#c3121b'); }
+        dot(...ALM, ma, GOLD); lab(TXT.verny, ...ALM, ma * ap(t, V('y1865') + 1.8, .3), { dy: 62, size: 36 });
+        const yc = ap(t, V('y1865') + .9, .4); if (yc > 0) { const [x, y] = P(58, 50.5); pill(TXT.y65, x, y - 60, 80, ma * yc, { font: 'MB', col: GOLD, scale: back(clamp(yc)) }); }
+        const rb = ap(t, V('red') + .9, .45); if (rb > 0) { glowSpot(77.5, 43.2, ma * rb, RED, 70); const [x, y] = P(77.5, 43.2); miniApple(x - 40, y - 10, 34, ma * rb, 0); redBook(W / 2, H * .3, 1.1, ma * rb); }
+      } } }
+  // ---- S8 quiz
+  { const a = A('q', 'cta', .3);
+    if (a > 0) {
+      ctx.save(); ctx.globalAlpha = a * .72; ctx.fillStyle = '#05061a'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      pill(TXT.ent, W / 2, 300, 50, a * ap(t, V('q'), .3), { font: 'MB', col: BR.navy, bg: GOLD, line: GOLD, scale: back(clamp(ap(t, V('q'), .4))) });
+      const qa = ap(t, V('q2') - .1, .4); if (qa > 0) { ctx.save(); ctx.globalAlpha = a * qa; txt(TXT.q, W / 2, 430, 66, '#fff', 'MB'); txt(TXT.q2, W / 2, 515, 66, GOLD, 'MB'); ctx.restore(); }
+      const ans = t >= V('ans');
+      ['oA', 'oB', 'oC'].forEach((k, i) => { const nx = ['oB', 'oC', 'ans'][i]; const st = ans ? (i === 1 ? 2 : 3) : (t >= V(k) && t < V(nx) - (i === 2 ? 1.6 : 0) ? 1 : 0); optCard(i, 700 + i * 185, a * ap(t, V(k) - .1, .35), st); });
+      // timer apple: bitten three times during the pause
+      const t0 = V('oC') + 1.0, bites = [[.95, -.15, .28], [-.95, .1, .28], [.2, -.98, .26]].filter((_, i) => t > t0 + i * .7 + .35);
+      const ta = ap(t, t0 - .3, .3) * (1 - ap(t, V('ans') + 2.2, .4));
+      apple(W / 2, 1360, 110, a * ta, APR, { bites: bites.length ? bites : null });
+      if (ans) { const ck = ap(t, V('ans') + .05, .3); ctx.save(); ctx.globalAlpha = a * ck; ctx.strokeStyle = BR.navy; ctx.lineWidth = 12; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(W / 2 + 385, 885); ctx.lineTo(W / 2 + 405, 907); ctx.lineTo(W / 2 + 440, 862); ctx.stroke(); ctx.restore(); }
+    } }
+  // ---- S9 CTA: the shop apple again, its line back to the mountains
+  if (t >= V('cta')) { const a = ap(t, V('cta'), .4); kz(a * .9); glowSpot(...ALM, a, GOLD, 40);
+    const [ax, ay] = P(...ALM); ctaEnd(t); arrow(W / 2 - 150, H * .27, ax, ay - 30, W / 2 - 330, H * .3, ease(ap(t, V('cta') + .5, .9)), a, 9);
+    apple(W / 2, H * .25, 120 * back(clamp(ap(t, V('cta') + .1, .5))), a, APR, { sticker: 1, bites: [[.92, -.2, .3]] }); dot(...ALM, a); }
+  { const q = Math.min(win(t, 1.0, V('cta'), .3), 1) * (1 - A('forest', 'vav', .2)); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .55; txt(TXT.src, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  cutFade(t, CUTS());
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .5);
+}
+function ctaEnd(t) {
+  const q = ap(t, V('cta'), .4); ctx.save(); ctx.globalAlpha = q * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .3, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .7); ctx.scale(pk, pk); const s = TXT.cta1 + ' ' + TXT.cta2, size = Math.min(58, 58 * 900 / tw(s, 58, 'MB')), w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, -62, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 4, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .6 + Math.sin(t * 6) * 12, 1.3 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 3; buildCam();
+  await Promise.all(['world', 'silk', 'ca', 'jet', 'alm'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  try { HFN = (await (await fetch('hf/frames/n.json')).json()).n; await Promise.all([...Array(HFN)].map((_, i) => new Promise(ok => { const im = new Image(); im.onload = () => { HF[i] = im; ok(); }; im.onerror = ok; im.src = `hf/frames/${String(i + 1).padStart(3, '0')}.jpg`; }))); } catch (e) { HFN = 0; }
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
