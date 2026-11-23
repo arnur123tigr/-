@@ -1,0 +1,6 @@
+*.wav
+*.mp4
+*.log
+old_voice/
+clips/
+wh_*.txt

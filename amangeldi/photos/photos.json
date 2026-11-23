@@ -1,0 +1,4 @@
+{
+  "portrait": {"file": "portrait.jpg", "fx": 0.5, "fy": 0.36, "z0": 1.0, "z1": 1.25, "credit": "Фото: архив, e-history.kz"},
+  "monument": {"file": "monument.jpg", "fx": 0.5, "fy": 0.25, "z0": 1.25, "z1": 1.0, "credit": "Фото: SAKRI / Wikimedia Commons, CC BY-SA 4.0"}
+}

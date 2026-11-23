@@ -1,0 +1,867 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>456 жарылыс: Семей полигоны</title>
+<style>
+@font-face{font-family:IN;src:url(fonts/Inter.ttf);font-weight:100 900}
+@font-face{font-family:IN;src:url(fonts/Inter-Italic.ttf);font-weight:100 900;font-style:italic}
+@font-face{font-family:IT;src:url(fonts/InterTight.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «456 жарылыс: Семей полигоны / 456 взрывов: Семипалатинский полигон». RU / KZ: scene.html?lang=ru|kk.
+// Map scenes 1, 2, 4, 5, 7, 9 on the dark satellite globe; 3 = Higgsfield film shot (clips/s3), 6 = 1989 crowd (drawn), 8 = ENT quiz.
+// render(T) is deterministic, T = video seconds. All cues come from beats.json (voiceover word times, see timing.py).
+import * as THREE from 'three';
+
+const W = 1080, H = 1920;
+const Q = new URLSearchParams(location.search), LANG = Q.get('lang') === 'kk' ? 'kk' : 'ru', KK = LANG === 'kk';
+const STEP = +(Q.get('step') || 2);                      // terrain mesh step in DEM cells (1 = finest)
+const [BEATS, SH, demBuf] = await Promise.all([
+  fetch('beats.json').then(r => r.json()), fetch('shapes.json').then(r => r.json()), fetch('dem.bin').then(r => r.arrayBuffer())]);
+const B = BEATS[LANG], M = B.m, END = B.end;
+for (const f of ['400 40px IN', '500 40px IN', '600 40px IN', '700 40px IN', '800 40px IN', '600 40px IT', '700 40px IT', '800 40px IT', '900 40px IT'])
+  await document.fonts.load(f, 'АБВабв123ӘҒҚҢӨҰҮІәғқңөұүі→⟷«»');
+
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const LA = mk(), la = LA.getContext('2d'), LR = mk(), lr = LR.getContext('2d'), HB = mk(W / 2, H / 2), hb = HB.getContext('2d');
+
+// ---------------------------------------------------------------- helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeOut5 = t => 1 - Math.pow(1 - clamp(t), 5);
+const easeIn = t => Math.pow(clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const easeBack = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const ap = (T, t0, d = .3) => easeOut(seg(T, t0, t0 + d));       // appear 0..1
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+const RAD = Math.PI / 180, RE = 6371;                  // Earth radius, km (globe radius = 1)
+// smooth curve through keys (monotone cubic), at rest at both ends
+function hermite(ts, vs, T) {
+  const n = ts.length; if (T <= ts[0]) return vs[0]; if (T >= ts[n - 1]) return vs[n - 1];
+  let i = 0; while (T > ts[i + 1]) i++;
+  const sl = k => { if (k <= 0 || k >= n - 1) return 0; const a = (vs[k] - vs[k - 1]) / (ts[k] - ts[k - 1]), b = (vs[k + 1] - vs[k]) / (ts[k + 1] - ts[k]); return a * b <= 0 ? 0 : 2 * a * b / (a + b); };
+  const h = ts[i + 1] - ts[i], u = (T - ts[i]) / h, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * h * sl(i) + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * h * sl(i + 1);
+}
+// ---------------------------------------------------------------- palette
+// Brand (JAS EDUCATION, references/STYLE_GUIDE.md): navy panels, amber for key words, numbers and the rebels, white text,
+// red-orange only for the enemy (the tsarist side). The map is the dark Blue Marble satellite picture.
+const BR = { navy: '#130B54', amber: '#FEB300', enemy: '#E8502F' };
+const C = { acc: BR.amber, accHi: '#ffe7a6', warn: BR.enemy, warnHi: '#ffb39f', persia: '#d2452a', water: '#7cc8ff',
+            pill: 'rgba(19,11,84,.84)', card: 'rgba(19,11,84,.95)', line: 'rgba(254,179,0,.32)', sand: '#c99a5b' };
+const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgba = (h, a) => { const c = hex(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const mixHex = (a, b, t) => { const p = hex(a), q = hex(b); return `rgb(${Math.round(lerp(p[0], q[0], t))},${Math.round(lerp(p[1], q[1], t))},${Math.round(lerp(p[2], q[2], t))})`; };
+
+// ---------------------------------------------------------------- texts
+const L = KK ? {
+  hookSub: 'ЯДРОЛЫҚ ЖАРЫЛЫС', hookTag: '1949–1989 · СЕМЕЙ ПОЛИГОНЫ', people: 'ТОҚТАТҚАН — ХАЛЫҚ',
+  poly: 'Семей полигоны', semey: 'Семей', kurch: 'Курчатов', area: '18 500', km2: 'КМ²', cmp: '≈ 27 Алматы қаласы', ent: 'ҰБТ-ДА КЕЛЕДІ',
+  date3: '29.08.1949', ussr: 'КСРО-ның алғашқы атом бомбасы',
+  field: 'Тәжірибе алаңы', degelen: 'Дегелең', balapan: 'Балапан',
+  air: 'жер үстінде және ауада', under: 'жер астында', eq: '116 + 340 = 456',
+  vill: ['Саржал', 'Қайнар', 'Долон'], nomove: 'ЕШКІМ КӨШІРІЛМЕДІ',
+  milSub: 'МИЛЛИОННАН АСТАМ АДАМ', sick: 'АУРУ КӨБЕЙДІ', secret: 'ҚҰПИЯ',
+  y89: '1989', olzhas: 'Олжас Сүлейменов', olzhasSub: 'ақын · теледидардан үндеу', placard: 'НЕВАДА — СЕМЕЙ', signs: 'ҚОЛ ҚОЙДЫ',
+  closed: '29.08.1991', shut: 'ЖАБЫЛДЫ', d42: '42 ЖЫЛ', dayday: 'күні-күніне', un: 'БҰҰ', unText: ['29 тамыз —', 'ядролық сынақтарға қарсы', 'халықаралық күн'],
+  quiz: 'ҰБТ СҰРАҒЫ', q: ['Семей полигоны', 'қай жылы жабылды?'], opts: [['А', '1989'], ['Ә', '1991'], ['Б', '1993']], chip: '29 тамыз 1991',
+  plate: [['ҰБТ: ', 1], ['1949 · 456 жарылыс · 1991', 0]],
+  go: [['Сілтемеге', 1], [' өтіңіз', 0]], linkword: 'сілтеме', where: 'профиль шапкасында',
+  endA: 'Сілтемеге өтіңіз', endB: 'профиль шапкасында',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · шекаралар мен орындар шамамен',
+} : {
+  hookSub: 'ЯДЕРНЫХ ВЗРЫВОВ', hookTag: '1949–1989 · СЕМИПАЛАТИНСКИЙ ПОЛИГОН', people: 'ОСТАНОВИЛИ — ЛЮДИ',
+  poly: 'Семипалатинский полигон', semey: 'Семей', kurch: 'Курчатов', area: '18 500', km2: 'КМ²', cmp: '≈ 27 таких городов, как Алматы', ent: 'ЭТО БЫВАЕТ НА ЕНТ',
+  date3: '29.08.1949', ussr: 'первая атомная бомба СССР',
+  field: 'Опытное поле', degelen: 'Дегелен', balapan: 'Балапан',
+  air: 'на земле и в воздухе', under: 'под землёй', eq: '116 + 340 = 456',
+  vill: ['Саржал', 'Кайнар', 'Долонь'], nomove: 'НИКОГО НЕ ВЫСЕЛИЛИ',
+  milSub: 'БОЛЬШЕ МИЛЛИОНА ЧЕЛОВЕК', sick: 'РОСЛИ БОЛЕЗНИ', secret: 'СЕКРЕТНО',
+  y89: '1989', olzhas: 'Олжас Сулейменов', olzhasSub: 'поэт · обращение по ТВ', placard: 'НЕВАДА — СЕМЕЙ', signs: 'ПОДПИСЕЙ',
+  closed: '29.08.1991', shut: 'ЗАКРЫТ', d42: '42 ГОДА', dayday: 'день в день', un: 'ООН', unText: ['29 августа —', 'Международный день', 'против ядерных испытаний'],
+  quiz: 'ВОПРОС ЕНТ', q: ['В каком году закрыли', 'Семипалатинский полигон?'], opts: [['А', '1989'], ['Б', '1991'], ['В', '1993']], chip: '29 августа 1991',
+  plate: [['ЕНТ: ', 1], ['1949 · 456 взрывов · 1991', 0]],
+  go: [['Перейди ', 0], ['по ссылке', 1]], linkword: 'ссылка', where: 'в шапке профиля',
+  endA: 'Перейди по ссылке', endB: 'в шапке профиля',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · границы и места примерные',
+};
+const PAL = ['#fff', C.acc, 'rgba(255,255,255,.55)', C.warn];     // colour codes used in the [text, code] title lines above
+// the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
+const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
+function scaled(img, w) {
+  let c = img, cw = img.width, ch = img.height; const h = Math.round(w * ch / cw);
+  const draw = (nw, nh) => { const n = document.createElement('canvas'); n.width = nw; n.height = nh; const x = n.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh); c = n; cw = nw; ch = nh; };
+  while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
+  if (cw !== w) draw(w, h); return c;
+}
+const LOGO = scaled(LOGO0, 128), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
+// ---------------------------------------------------------------- globe
+const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
+const dem = new Int16Array(demBuf), EXAG = 9 / 6371000;
+function demAt(lon, lat) {                                // exaggerated height above the sphere (globe units)
+  const e = Math.min(lon - MLON0, MLON1 - lon, lat - MLAT0, MLAT1 - lat);
+  if (e <= 0) return 0;
+  const fx = clamp((lon - MLON0) / CELL - .5, 0, DEMW - 1), fy = clamp((MLAT1 - lat) / CELL - .5, 0, DEMH - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, DEMW - 1), y1 = Math.min(y0 + 1, DEMH - 1), ax = fx - x0, ay = fy - y0;
+  const h = (dem[y0 * DEMW + x0] * (1 - ax) + dem[y0 * DEMW + x1] * ax) * (1 - ay) + (dem[y1 * DEMW + x0] * (1 - ax) + dem[y1 * DEMW + x1] * ax) * ay;
+  return h * EXAG * clamp(e / 1.5);
+}
+const dirv = (lon, lat, r = 1) => { const a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r; return new THREE.Vector3(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a)); };
+
+function axis(a0, a1, w0, w1, coarse, fine) {
+  const v = [];
+  for (let x = a0; x < w0 - 1e-6; x += coarse) v.push(x);
+  const n = Math.round((w1 - w0) / fine); for (let i = 0; i <= n; i++) v.push(w0 + (w1 - w0) * i / n);
+  for (let x = Math.ceil((w1 + 1e-6) / coarse) * coarse; x < a1 - 1e-6; x += coarse) v.push(x);
+  v.push(a1); return v;
+}
+function globeGeometry() {
+  const LONS = axis(-180, 180, MLON0, MLON1, 2, CELL * STEP), LATS = axis(-90, 90, MLAT0, MLAT1, 2, CELL * STEP);
+  const nx = LONS.length, ny = LATS.length, pos = new Float32Array(nx * ny * 3), ll = new Float32Array(nx * ny * 2);
+  for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++, k++) {
+    const lon = LONS[i], lat = LATS[j], r = 1 + demAt(lon, lat), a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r;
+    pos[k * 3] = c * Math.sin(a); pos[k * 3 + 1] = Math.sin(b) * r; pos[k * 3 + 2] = c * Math.cos(a); ll[k * 2] = lon; ll[k * 2 + 1] = lat;
+  }
+  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  for (let j = 0, q = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = a; idx[q++] = c; idx[q++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ll', new THREE.BufferAttribute(ll, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const loadTex = url => new Promise(res => new THREE.TextureLoader().load(url, t => {
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; res(t); }));
+const [tW, tM, tA] = await Promise.all(['tex/world.jpg', 'tex/main.jpg', 'tex/detail.jpg'].map(loadTex));
+const win = (a, b, c, d) => new THREE.Vector4(a, 1 / (b - a), c, 1 / (d - c));
+const globeMat = new THREE.ShaderMaterial({
+  uniforms: { tW: { value: tW }, tM: { value: tM }, tA: { value: tA }, wM: { value: win(10, 146.5, 12, 78) }, wA: { value: win(58, 82, 41, 53) },
+              camPos: { value: new THREE.Vector3() }, expo: { value: 1 }, sat: { value: 1 }, haze: { value: 1 } },
+  vertexShader: `attribute vec2 ll; varying vec2 vLL; varying vec3 vP;
+    void main(){ vLL = ll; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float;
+    uniform sampler2D tW, tM, tA; uniform vec4 wM, wA; uniform vec3 camPos; uniform float expo, sat, haze;
+    varying vec2 vLL; varying vec3 vP;
+    void main(){
+      vec3 col = texture2D(tW, vec2((vLL.x + 180.) / 360., (vLL.y + 90.) / 180.)).rgb;
+      vec2 uM = vec2((vLL.x - wM.x) * wM.y, (vLL.y - wM.z) * wM.w), eM = min(uM, 1. - uM);
+      vec2 uA = vec2((vLL.x - wA.x) * wA.y, (vLL.y - wA.z) * wA.w), eA = min(uA, 1. - uA);
+      vec2 mx = dFdx(uM), my = dFdy(uM), ax = dFdx(uA), ay = dFdy(uA);
+      float mM = smoothstep(0., .012, eM.x) * smoothstep(0., .024, eM.y);
+      if (mM > 0.) col = mix(col, textureGrad(tM, uM, mx, my).rgb, mM);
+      float mA = smoothstep(0., .10, eA.x) * smoothstep(0., .14, eA.y);
+      if (mA > 0.) col = mix(col, textureGrad(tA, uA, ax, ay).rgb, mA);
+      float l = dot(col, vec3(.30, .59, .11));
+      col = mix(vec3(l), col, sat) * expo;
+      vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = clamp(dot(N, V), 0., 1.);
+      col *= mix(.14, 1., smoothstep(0., .42, mu));                       // the limb falls into shadow
+      col += vec3(.13, .36, .9) * pow(1. - mu, 5.) * haze * .5;            // thin blue air at the horizon
+      gl_FragColor = vec4(col, 1.);
+    }` });
+const scene = new THREE.Scene();
+const globe = new THREE.Mesh(globeGeometry(), globeMat); globe.frustumCulled = false; scene.add(globe);
+// atmosphere: back side of a shell 5 % above the ground, brightest right at the limb, gone at its own edge
+const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 96), new THREE.ShaderMaterial({
+  uniforms: { camPos: globeMat.uniforms.camPos, k: { value: 1 } }, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float; uniform vec3 camPos; uniform float k; varying vec3 vP;
+    void main(){ vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = dot(N, V);
+      float a = pow(clamp(-mu / .305, 0., 1.), 3.4); gl_FragColor = vec4(vec3(.2, .46, 1.) * k, a * k * .8); }` }));
+scene.add(atmo);
+const FOV = 30, camera = new THREE.PerspectiveCamera(FOV, W / H, 0.02, 30);
+
+// camera rig like Google Earth: look at (lon, lat) from `range` globe radii, heading clockwise from north, tilt 0 = straight down.
+// ox / oy shift the picture on screen (fractions of the frame, + = right / lower).
+let CAM = null;
+function setCam(c) {
+  CAM = c;
+  const U = dirv(c.lon, c.lat), a = c.lon * RAD, b = c.lat * RAD;
+  const E = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), N = new THREE.Vector3(-Math.sin(b) * Math.sin(a), Math.cos(b), -Math.sin(b) * Math.cos(a));
+  const h = (c.head || 0) * RAD, t = (c.tilt || 0) * RAD;
+  const F = N.clone().multiplyScalar(Math.cos(h)).addScaledVector(E, Math.sin(h));
+  const T = U.clone().multiplyScalar(1 + demAt(c.lon, c.lat));
+  camera.position.copy(T).addScaledVector(U, c.range * Math.cos(t)).addScaledVector(F, -c.range * Math.sin(t));
+  camera.up.copy(F).multiplyScalar(Math.cos(t)).addScaledVector(U, Math.sin(t));
+  camera.lookAt(T);
+  if (c.roll) camera.rotateZ(c.roll * RAD);
+  camera.fov = FOV; camera.near = Math.max(.004, c.range * .05); camera.far = c.range + 3;
+  camera.setViewOffset(W, H, -(c.ox || 0) * W, -(c.oy || 0) * H, W, H);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+  globeMat.uniforms.camPos.value.copy(camera.position);
+}
+const _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// lon/lat -> screen px. Returns [x, y, visible]. With limb = true a point hidden behind the globe slides to the limb,
+// so that an outline that goes round the globe stays one closed shape (for fills and clips).
+function P(lon, lat, limb = false) {
+  const a = lon * RAD, b = lat * RAD, r = 1 + demAt(lon, lat), c = Math.cos(b) * r;
+  _v.set(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a));
+  let vis = _v.dot(camera.position) > r * r * .995;
+  if (!vis && limb) {
+    const D = camera.position.length(); _c.copy(camera.position).multiplyScalar(1 / D);
+    _v.addScaledVector(_c, -_v.dot(_c)); _v.multiplyScalar(Math.sqrt(1 - 1 / (D * D)) / (_v.length() || 1)).addScaledVector(_c, 1 / D); vis = true;
+  }
+  _v.project(camera);
+  return [(_v.x * .5 + .5) * W, (1 - (_v.y * .5 + .5)) * H, vis && _v.z < 1];
+}
+// screen pixels per km near the look-at point (for sizing things in km)
+function pxPerKm() { const p = P(CAM.lon, CAM.lat), q = P(CAM.lon + 1 / Math.cos(CAM.lat * RAD), CAM.lat); return Math.hypot(q[0] - p[0], q[1] - p[1]) / 111.2; }
+// point at distance d km and bearing brg (deg) from (lon, lat)
+function dest(lon, lat, brg, d) {
+  const δ = d / RE, θ = brg * RAD, φ1 = lat * RAD, λ1 = lon * RAD;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return [λ2 / RAD, φ2 / RAD];
+}
+function distKm(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dφ = φ2 - φ1, dλ = (b[0] - a[0]) * RAD;
+  const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+  return 2 * RE * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dλ = (b[0] - a[0]) * RAD;
+  return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / RAD;
+}
+
+// stars behind the globe (fixed directions, so they turn with the camera)
+const STARS = Array.from({ length: 7000 }, (_, i) => { const z = hash(i * 3.17 + .3) * 2 - 1, a = hash(i * 7.31 + 1.1) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return { d: new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a)), m: hash(i * 1.93 + 5.5) }; });
+function stars(a) {
+  if (a <= .01) return;
+  const f = 1 / Math.tan(camera.fov * RAD / 2), asp = W / H;
+  ctx.save(); ctx.fillStyle = '#dfe8ff';
+  for (const s of STARS) {
+    _v.copy(s.d).transformDirection(camera.matrixWorldInverse);
+    if (_v.z > -.5) continue;
+    const x = (_v.x / -_v.z * f / asp * .5 + .5) * W + (CAM.ox || 0) * W, y = (.5 - _v.y / -_v.z * f * .5) * H + (CAM.oy || 0) * H;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = a * (.18 + .82 * s.m * s.m * s.m); const r = 1 + s.m * 1.7; ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.restore();
+}
+// ---------------------------------------------------------------- shapes
+function dens(r, step = .8) {                              // densify so that long edges follow the globe
+  const o = [];
+  for (let i = 0; i < r.length - 1; i++) {
+    const a = r[i], b = r[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < n; k++) o.push([lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+  }
+  o.push(r[r.length - 1]); return o;
+}
+function chaikin(pts, n = 2) {
+  for (let k = 0; k < n; k++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1];
+    o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } o.push(pts[pts.length - 1]); pts = o; }
+  return pts;
+}
+const cum = pts => { const d = [0]; for (let i = 1; i < pts.length; i++) d.push(d[i - 1] + distKm(pts[i - 1], pts[i])); return d; };
+function along(pts, d, s) {                                // point at s km along a polyline with cumulative distances d
+  const n = pts.length; if (s <= 0) return pts[0]; if (s >= d[n - 1]) return pts[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m] <= s) lo = m; else hi = m; }
+  const u = (s - d[lo]) / (d[hi] - d[lo]); return [lerp(pts[lo][0], pts[hi][0], u), lerp(pts[lo][1], pts[hi][1], u)];
+}
+// rings -> canvas path. For a fill, hidden points slide to the limb (the shape stays closed); for a line (line = true) the hidden stretch is left out.
+function pathRings(c, rings, close = true, sh = null, line = false) {
+  c.beginPath();
+  for (const r of rings) {
+    let pen = false, whole = true;
+    for (const q of r) { const p = sh ? P(q[0] + sh[0], q[1] + sh[1], !line) : P(q[0], q[1], !line); if (!p[2]) { pen = false; whole = false; continue; } if (pen) c.lineTo(p[0], p[1]); else { c.moveTo(p[0], p[1]); pen = true; } }
+    if (close && whole) c.closePath();
+  }
+}
+function pathPts(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => { const p = P(q[0], q[1], true); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); if (close) c.closePath(); }
+function pathCircle(c, cen, km) { c.beginPath(); for (let i = 0; i <= 72; i++) { const q = dest(cen[0], cen[1], i * 5, km), p = P(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.closePath(); }
+function halfBlur(src, px) { hb.setTransform(1, 0, 0, 1, 0, 0); hb.clearRect(0, 0, W / 2, H / 2); hb.filter = `blur(${px / 2}px)`; hb.drawImage(src, 0, 0, W / 2, H / 2); hb.filter = 'none'; }
+function wipe(...cs) { for (const c of cs) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; c.clearRect(0, 0, W, H); c.lineJoin = c.lineCap = 'round'; } }
+function territory(parts, a, o = {}) {
+  if (a <= .004) return;
+  wipe(la, lr);
+  for (const p of parts) {
+    const pa = p.a ?? 1; if (pa <= .004) continue;
+    la.save(); lr.save();
+    for (const cl of p.clips || []) { pathPts(la, cl); la.clip(); pathPts(lr, cl); lr.clip(); }
+    pathRings(la, p.rings, true, p.shift); la.globalAlpha = pa; la.fillStyle = p.col; la.fill('evenodd');
+    if (p.rim !== 0) { pathRings(lr, p.rings, true, p.shift, true); lr.globalAlpha = pa * (p.rim ?? 1); lr.strokeStyle = p.hi || '#fff'; lr.lineWidth = p.rimW || 2.2; lr.stroke(); }
+    la.restore(); lr.restore();
+  }
+  for (const f of o.fronts || []) {
+    lr.save(); pathRings(lr, f.rings); lr.clip('evenodd'); for (const cl of f.clips || []) { pathPts(lr, cl); lr.clip(); }
+    pathPts(lr, f.pts, !f.open); lr.strokeStyle = f.col || '#fff'; lr.lineWidth = f.w || 5; lr.globalAlpha = f.a ?? 1; lr.stroke(); lr.restore();
+  }
+  lay(a, o);
+}
+// Scene 4, the khaganate growing: its lands show where a mask is. The mask = the core of 552 swelling evenly on all sides (rKm)
+// + the march to the west (wpts, a blob). The edge of the mask inside the lands glows as the moving frontier.
+function lay(a, o = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = a * (o.color ?? .82); ctx.drawImage(LA, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = a * (o.add ?? .14); ctx.drawImage(LA, 0, 0);
+  if (o.dark) { ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = a * o.dark; ctx.drawImage(LA, 0, 0); }
+  const glow = o.glow ?? .26, rim = o.rim ?? .7;
+  if (glow > 0) { halfBlur(LA, o.blur || 30); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * glow; ctx.drawImage(HB, 0, 0, W, H); }
+  if (rim > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * rim; ctx.drawImage(LR, 0, 0); halfBlur(LR, 12); ctx.globalAlpha = a * rim; ctx.drawImage(HB, 0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- drawing kit
+function font(c, size, weight = 700, fam = 'IN') { c.font = `${weight} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save(); font(ctx, o.size || 40, o.weight || 700, o.fam || 'IN'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.base || 'alphabetic';
+  ctx.letterSpacing = (o.ls || 0) + 'px'; ctx.globalAlpha *= o.alpha ?? 1;
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 20; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x + (o.ls || 0) / 2, y); ctx.restore();
+}
+// one centred line made of differently coloured parts: [[text, colour, alpha], ...]; the text '•' is drawn as a round dot (a legend mark)
+function line(parts, x, y, o = {}) {
+  const size = o.size || 60;
+  ctx.save(); font(ctx, size, o.weight || 800, o.fam || 'IT'); ctx.letterSpacing = (o.ls || 0) + 'px';
+  const ws = parts.map(p => p[0] === '•' ? size * 1.0 : ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0), ga = ctx.globalAlpha;
+  let cx = x - tot / 2; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 22; ctx.shadowOffsetY = 3; }
+  parts.forEach((p, i) => { ctx.globalAlpha = ga * (p[2] ?? 1); ctx.fillStyle = p[1] || '#fff';
+    if (ctx.globalAlpha > .004) { if (p[0] === '•') { ctx.beginPath(); ctx.arc(cx + size * .34, y - size * .36, size * .27, 0, 7); ctx.fill(); } else ctx.fillText(p[0], cx, y); }
+    cx += ws[i]; });
+  ctx.restore(); return tot;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function glowDot(x, y, r, col, a = 1) {
+  if (a <= .004 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, a)); g.addColorStop(.35, rgba(col, a * .42)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// a place on the map: soft glow + solid dot with a white ring
+function place(p, col, k, r = 7, glow = 46) {
+  if (k <= 0 || !p[2]) return;
+  glowDot(p[0], p[1], glow * k, col, .55 * k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.beginPath(); ctx.arc(p[0], p[1], r * easeBack(k), 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+// the label of the style guide: navy pill with a thin amber edge, amber dot, white name. (x, y) = centre, k = appear 0..1
+function pill(text, x, y, k, o = {}) {
+  if (k <= 0) return;
+  const size = o.size || 34, padX = size * .6, dot = o.dot === false ? 0 : size * .3, gap = size * .34;
+  ctx.save(); font(ctx, size, 600);
+  const w = ctx.measureText(text).width + padX * 2 + (dot ? dot + gap : 0), h = size * 1.74, s = lerp(.72, 1, easeBack(k));
+  x = clamp(x, w / 2 + 22, W - w / 2 - 22);
+  ctx.translate(x, y); ctx.scale(s, s); ctx.globalAlpha *= clamp(k * 1.7);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+  rr(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = o.fill || C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (!o.fill) { ctx.strokeStyle = C.line; ctx.lineWidth = 1.6; ctx.stroke(); }
+  let tx = -w / 2 + padX;
+  if (dot) { ctx.fillStyle = o.color || C.acc; ctx.beginPath(); ctx.arc(tx + dot / 2, 0, dot / 2, 0, 7); ctx.fill(); tx += dot + gap; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, tx, size * .05);
+  ctx.restore();
+}
+function mapPill(q, text, k, o = {}) {                      // a pill pinned to a place; it fades out when the place leaves the frame
+  const p = P(q[0], q[1]); if (!p[2] || k <= 0) return;
+  const off = Math.max(-p[0], p[0] - W, -p[1], p[1] - H, 0); if (off >= 60) return;
+  ctx.save(); ctx.globalAlpha *= 1 - off / 60; pill(text, p[0] + (o.dx || 0), p[1] + (o.dy ?? -56), k, o); ctx.restore();
+}
+// a line on the map between km distances s0..s1 along a polyline (pts with cumulative distances d)
+function pathAlong(pts, d, s0, s1) {
+  ctx.beginPath(); let pen = false;
+  const a = along(pts, d, s0), pa = P(a[0], a[1]); if (pa[2]) { ctx.moveTo(pa[0], pa[1]); pen = true; }
+  for (let i = 0; i < pts.length; i++) { if (d[i] <= s0) continue; if (d[i] >= s1) break; const p = P(pts[i][0], pts[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  const b = along(pts, d, s1), pb = P(b[0], b[1]); if (pb[2]) { if (pen) ctx.lineTo(pb[0], pb[1]); else ctx.moveTo(pb[0], pb[1]); }
+}
+function borders(a) { if (a <= .01) return; ctx.save(); ctx.lineWidth = 1.3; ctx.strokeStyle = `rgba(255,255,255,${a})`; pathRings(ctx, SH.borders, false); ctx.stroke(); ctx.restore(); }
+function ring(cen, km, col, a, w = 3) { if (a <= .004) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathCircle(ctx, cen, km); ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.stroke(); ctx.restore(); }
+
+// ---------------------------------------------------------------- camera
+const mixCam = (a, b, u) => ({ lon: lerp(a.lon, b.lon, u), lat: lerp(a.lat, b.lat, u), range: Math.exp(lerp(Math.log(a.range), Math.log(b.range), u)),
+  head: lerp(a.head || 0, b.head || 0, u), tilt: lerp(a.tilt || 0, b.tilt || 0, u), ox: lerp(a.ox || 0, b.ox || 0, u), oy: lerp(a.oy || 0, b.oy || 0, u) });
+const kn = (keys, T, f, log) => { const v = hermite(keys.map(k => k[0]), keys.map(k => { const x = f(k[1]) ?? 0; return log ? Math.log(x) : x; }), T); return log ? Math.exp(v) : v; };
+const camTrack = (keys, T) => ({ lon: kn(keys, T, c => c.lon), lat: kn(keys, T, c => c.lat), range: kn(keys, T, c => c.range, true), head: kn(keys, T, c => c.head),
+  tilt: kn(keys, T, c => c.tilt), ox: kn(keys, T, c => c.ox), oy: kn(keys, T, c => c.oy) });
+function shake(c, T, t0, amp) { const u = T - t0; if (u < 0 || u > .8) return; const e = amp * Math.exp(-u * 6.5); c.ox = (c.ox || 0) + e * noise1(T * 47); c.oy = (c.oy || 0) + e * .7 * noise1(T * 53 + 9); c.roll = e * 55 * noise1(T * 31 + 3); }
+
+
+// ---------------------------------------------------------------- places (lon, lat); the test site outline and the villages are approximate
+const PL = { semey: [80.23, 50.41], kurch: [78.55, 50.75], field: [77.83, 50.43], degelen: [78.05, 49.80], balapan: [78.97, 49.95],
+             sarzhal: [78.78, 49.45], kainar: [77.41, 49.20], dolon: [79.62, 50.72], cen: [78.45, 50.27] };
+// the Semipalatinsk test site, scaled to 18 500 km²
+const POLY0 = [[77.613, 50.809], [78.357, 50.949], [79.055, 50.902], [79.474, 50.53], [79.52, 50.065], [79.241, 49.739], [78.59, 49.6], [77.845, 49.646], [77.426, 49.972], [77.38, 50.437]];
+const POLY = [dens(chaikin([...POLY0, POLY0[0]], 3), .05)];
+const KZR = [SH.kz.reduce((a, r) => r.length > a.length ? r : a, [])].map(r => dens(r, .3));
+const BALK = SH.balkhash.map(r => dens(r, .3)), ARAL = SH.aral.map(r => dens(r, .3)), IRT = (SH.syr && []) || [];
+function kzLand(a, glow = 1) { territory([{ rings: KZR, col: C.acc, hi: C.accHi, rimW: 2.8 }], a, { color: .22, add: .08 * glow, glow: .26 * glow, rim: 1 }); }
+function lakes(a) {
+  if (a <= .01) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathRings(ctx, [...ARAL, ...BALK], true, null, true);
+  ctx.strokeStyle = rgba(C.water, .35 * a); ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+}
+// the test site: a red glowing area with a dashed rim; col changes to amber when it is closed
+function site(a, col = C.warn, o = {}) {
+  if (a <= .004) return;
+  territory([{ rings: POLY, col, hi: o.hi || C.warnHi, rimW: 3 }], a, { color: o.color ?? .45, add: o.add ?? .12, glow: o.glow ?? .35, rim: o.rim ?? .9, blur: 24 });
+}
+const fmt = v => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+function counter(T, to, t0, t1, x, y, size, col, a = 1, o = {}) {
+  if (a <= .004) return;
+  const u = (o.lin ? clamp(seg(T, t0, t1)) : easeOut5(seg(T, t0, t1))), st = o.step || (to >= 1000 ? 100 : 1), v = u < 1 ? Math.round(to * u / st) * st : to, pop = 1 + .06 * Math.sin(Math.PI * seg(T, t1 - .05, t1 + .3));
+  ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); txt(fmt(v) + (o.suf || ''), 0, 0, { size, weight: 800, fam: 'IT', color: col, alpha: a, sb: 30, ls: 2 }); ctx.restore();
+}
+function town(q, text, k, col = C.acc, o = {}) { place(P(q[0], q[1]), col, k, 7, 40); mapPill(q, text, k, { color: col, ...o }); }
+
+// ---------------------------------------------------------------- the 456 explosions (deterministic). 116 in the air / on the ground (Experimental field, 1949–1962),
+// 340 underground (Degelen tunnels and Balapan wells, 1961–1989). Points are spread inside the real test areas, approximately.
+function inPoly(q) { let c = false; for (let i = 0, j = POLY0.length - 1; i < POLY0.length; j = i++) { const a = POLY0[i], b = POLY0[j];
+  if ((a[1] > q[1]) !== (b[1] > q[1]) && q[0] < (b[0] - a[0]) * (q[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+const EX = [];
+for (let i = 0; i < 456; i++) {
+  const air = i < 116, h1 = hash(i * 1.37 + .2), h2 = hash(i * 2.91 + .7);
+  const cen = air ? PL.field : (hash(i * 5.3) < .62 ? PL.degelen : PL.balapan), sp = air ? 22 : (cen === PL.degelen ? 14 : 18);
+  let q = dest(cen[0], cen[1], h1 * 360, sp * Math.sqrt(h2)); if (!inPoly(q)) q = cen;
+  EX.push({ q, air, u: air ? i / 116 : (i - 116) / 340, s: .7 + .6 * hash(i * 7.7) });
+}
+// when each explosion goes off (video seconds): the air ones between S4 and the «340» word, the underground ones from there to the villages
+function exTime(e) { return e.air ? lerp(M.S4 + .35, M.k340 - .25, Math.pow(e.u, .9)) : lerp(M.k340 - .15, M.vill - .35, Math.pow(e.u, .85)); }
+EX.forEach(e => e.t = exTime(e));
+function explosions(T, keep = 1, burst = 1) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const e of EX) {
+    if (T < e.t) continue; const p = P(e.q[0], e.q[1]); if (!p[2]) continue;
+    const u = (T - e.t) / (e.air ? .9 : .6);
+    if (u < 1 && burst > 0) {
+      const r = (e.air ? 120 : 60) * e.s * easeOut(u);
+      glowDot(p[0], p[1], r * 1.4, e.air ? '#ffb347' : '#ff6a2a', burst * (1 - u) * (e.air ? .95 : .7));
+      ctx.strokeStyle = rgba(e.air ? '#ffd28a' : '#ff7a3c', burst * .7 * (1 - u)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, 7); ctx.stroke();
+    }
+    if (keep > 0) { ctx.fillStyle = rgba(e.air ? '#ffae5a' : '#ff5a2a', keep * (e.air ? .85 : .7)); ctx.beginPath(); ctx.arc(p[0], p[1], e.air ? 3.4 : 2.6, 0, 7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+const nEx = T => EX.reduce((n, e) => n + (T >= e.t ? 1 : 0), 0);
+
+// ---------------------------------------------------------------- film shot (Higgsfield clip frames in clips/s3, see prep_clips.sh) and its still
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const CLIPS = await fetch('clips/clips.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+const frameCache = {};
+async function clipFrame(name, ct) {
+  const c = CLIPS[name]; if (!c) return null;
+  const i = clamp(Math.round(ct * c.fps), 0, c.n - 1) + 1, key = name + i;
+  if (frameCache[name] && frameCache[name].key === key) return frameCache[name].img;
+  const img = await loadImg(`clips/${name}/${String(i).padStart(4, '0')}.jpg`); frameCache[name] = { key, img }; return img;
+}
+const SC = [0, M.S2, M.S3, M.S4, M.S5, M.S6, M.S7, M.S8, M.S9, END];
+const HF3 = await loadImg('hf/s3.png');
+async function film(n, T) {
+  const t0 = SC[n - 1], t1 = SC[n], dur = t1 - t0, c = CLIPS['s' + n];
+  const cd = c ? c.n / c.fps : 5, rate = clamp(cd / dur, .6, 1), ct = (T - t0) * rate + Math.max(0, cd - dur * rate) * .2;
+  const img = (await clipFrame('s' + n, ct)) || HF3;
+  if (img) {
+    const zoom = 1.02 + .07 * easeIO(seg(T, t0, t1)), sc = Math.max(W / img.width, H / img.height) * zoom, dw = img.width * sc, dh = img.height * sc;
+    ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2 - (zoom - 1) * 200, dw, dh);
+  }
+}
+
+// ---------------------------------------------------------------- camera
+const CAMS = {
+  1: [[0, { lon: 68.5, lat: 47.6, range: 1.45, tilt: 14, oy: .1 }], [M.people - .4, { lon: 72.0, lat: 48.4, range: 1.1, tilt: 20, oy: .1 }],
+      [M.S2, { lon: 78.8, lat: 50.2, range: .42, tilt: 30, oy: .08 }]],
+  2: [[M.S2, { lon: 78.8, lat: 50.2, range: .36, tilt: 30, oy: .08 }], [M.area + .6, { lon: 78.9, lat: 50.15, range: .25, tilt: 34, oy: .1 }],
+      [M.S3, { lon: 79.0, lat: 50.1, range: .22, tilt: 36, oy: .1 }]],
+  4: [[M.S4, { lon: 78.45, lat: 50.05, range: .2, tilt: 40, oy: .12 }], [M.k340, { lon: 78.4, lat: 50.0, range: .155, tilt: 44, oy: .12 }],
+      [M.vill - .3, { lon: 78.5, lat: 50.0, range: .15, tilt: 44, oy: .12 }], [M.S5, { lon: 78.7, lat: 49.95, range: .22, tilt: 40, oy: .1 }]],
+  5: [[M.S5, { lon: 78.7, lat: 49.95, range: .23, tilt: 40, oy: .1 }], [M.S6, { lon: 78.8, lat: 49.95, range: .3, tilt: 36, oy: .1 }]],
+  7: [[M.S7, { lon: 78.6, lat: 50.15, range: .3, tilt: 34, oy: .1 }], [M.shut + .5, { lon: 78.5, lat: 50.2, range: .2, tilt: 38, oy: .11 }],
+      [M.S8, { lon: 78.3, lat: 50.3, range: .5, tilt: 28, oy: .08 }]],
+  9: [[M.S9, { lon: 78.45, lat: 50.15, range: .22, tilt: 40, oy: .1 }], [END, { lon: 78.45, lat: 50.2, range: .17, tilt: 44, oy: .1 }]],
+};
+const camAt = (sc, T) => { const c = camTrack(CAMS[sc], T); if (sc === 1) shake(c, T, M.k456, .004); return c; };
+
+// ---------------------------------------------------------------- map scenes
+function mapS1(T) {                                          // Kazakhstan in the dark, one pulsing point at Semey
+  lakes(.6); kzLand(.6 * ap(T, .1, .8));
+  const p = P(...PL.semey), k = ap(T, .2, .4);
+  if (p[2] && k > 0) {
+    for (const d of [0, .5]) { const u = ((T + d) % 1.6) / 1.6; ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warn, .7 * (1 - u) * k); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], 10 + 70 * u, 0, 7); ctx.stroke(); ctx.restore(); }
+    glowDot(p[0], p[1], 80, C.warn, .55 * k); place(p, C.warn, k, 8, 40);
+    mapPill(PL.semey, L.semey, ap(T, M.people - .2, .35), { color: C.warn, dy: 58, size: 32 });
+  }
+}
+function mapS2(T) {                                          // the outline of the test site, the area, the comparison
+  lakes(.6); kzLand(.3);
+  const k = ap(T, M.S2 + .1, .6);
+  // the outline draws itself round, then the area fills
+  const draw = easeIO(seg(T, M.S2 + .05, M.area - .1));
+  if (draw > 0) {
+    const pts = POLY[0], n = Math.max(2, Math.round(pts.length * draw));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warnHi, .95); ctx.lineWidth = 3.5; ctx.shadowColor = C.warn; ctx.shadowBlur = 16; ctx.setLineDash([14, 9]);
+    pathPts(ctx, pts.slice(0, n), false); ctx.stroke(); ctx.restore();
+  }
+  site(.9 * ap(T, M.area - .15, .5), C.warn, { rim: 0 });
+  town(PL.semey, L.semey, ap(T, M.S2 + .3, .35), '#ffffff', { dy: -52, size: 30 });
+  town(PL.kurch, L.kurch, ap(T, M.S2 + .7, .35), '#ffffff', { dy: -52, size: 28 });
+  mapPill(PL.cen, L.poly, ap(T, M.area + .2, .35), { color: C.warn, dy: 0, size: 32 });
+}
+function mapS4(T) {                                          // forty years of explosions
+  lakes(.6); kzLand(.25); site(.55, C.warn, { rim: .7, glow: .25 });
+  const mk = (q, s, t0) => mapPill(q, s, ap(T, t0, .35) * (1 - seg(T, M.vill - .3, M.vill)), { color: C.warn, dy: -50, size: 26 });
+  mk(PL.field, L.field, M.S4 + .4); mk(PL.degelen, L.degelen, M.k340 - .1); mk(PL.balapan, L.balapan, M.k340 + .3);
+  explosions(T, 1, 1);
+  villages(T, M.vill - .1, 1);
+  town(PL.semey, L.semey, ap(T, M.vill + .5, .35), '#ffffff', { dy: -52, size: 28 });
+}
+// villages around the test site: an amber dot + name, and a cluster of tiny people
+const VQ = [PL.sarzhal, PL.kainar, PL.dolon];
+function villages(T, t0, a, people = 0) {
+  VQ.forEach((q, i) => {
+    const k = ap(T, t0 + i * .25, .35) * a; if (k <= 0) return;
+    town(q, L.vill[i], k, C.acc, { dy: 54, size: 28 });
+    if (people > 0) {
+      const c = P(q[0], q[1]); if (!c[2]) return;
+      ctx.save(); ctx.fillStyle = rgba('#ffe7a6', .9 * people * k);
+      for (let j = 0; j < 26; j++) { const ang = hash(i * 50 + j) * 6.28, r = 22 + 46 * Math.sqrt(hash(i * 70 + j * 3.1)); if (hash(j * 9.3 + i) > people) continue;
+        const x = c[0] + Math.cos(ang) * r, y = c[1] + Math.sin(ang) * r * .6; ctx.beginPath(); ctx.arc(x, y - 7, 3.6, 0, 7); ctx.fill(); rr(ctx, x - 3.6, y - 3, 7.2, 9, 3); ctx.fill(); }
+      ctx.restore();
+    }
+  });
+}
+// hospital mark: white disc with a red cross
+function hospital(x, y, k, s = 1) {
+  if (k <= 0) return; const r = 26 * s * easeBack(k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 12; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#d93a2b'; ctx.fillRect(x - r * .18, y - r * .62, r * .36, r * 1.24); ctx.fillRect(x - r * .62, y - r * .18, r * 1.24, r * .36); ctx.restore();
+}
+function mapS5(T) {                                          // the people around: dim, quiet
+  lakes(.5); kzLand(.2); site(.4, C.warn, { rim: .5, glow: .2 }); explosions(T, .5, 0);
+  villages(T, M.S5 - 1, 1, ease(seg(T, M.S5 + .2, M.mil + .6)));
+  town(PL.semey, L.semey, 1, '#ffffff', { dy: -52, size: 28 });
+  [[PL.sarzhal, -60, -20], [PL.kainar, 50, -30], [PL.dolon, -50, 10], [PL.semey, 60, 20]].forEach(([q, dx, dy], i) => { const c = P(q[0], q[1]); if (c[2]) hospital(c[0] + dx, c[1] + dy, ap(T, M.sick + i * .3, .3), .9); });
+}
+function mapS7(T) {                                          // closed: red turns to amber, the dots go out
+  lakes(.6); kzLand(.3);
+  const u = ease(seg(T, M.shut - .1, M.shut + .8));
+  site(.65 * (1 - u), C.warn, { rim: .7, glow: .25 }); site(.6 * u, C.acc, { hi: C.accHi, rim: .9, glow: .3 });
+  explosions(T, .5 * (1 - u), 0);
+  town(PL.semey, L.semey, ap(T, M.S7 + .2, .35), '#ffffff', { dy: -52, size: 28 });
+  mapPill(PL.cen, L.poly, ap(T, M.S7 + .3, .35) * (1 - seg(T, M.shut - .3, M.shut)), { color: C.warn, dy: 0, size: 30 });
+}
+function mapS9(T) {                                          // the sprout where the explosions were
+  lakes(.6); kzLand(.3); site(.35 * (1 - seg(T, M.S9, M.S9 + 1.5)), C.acc, { rim: .6, glow: .2 });
+  const p = P(...PL.cen); if (!p[2]) return; const g = easeOut(seg(T, M.S9 + .3, M.S9 + 2.4));
+  if (g <= 0) return; glowDot(p[0], p[1], 220 * g, GREEN, .45 * g);
+  ctx.save(); ctx.translate(p[0], p[1]); ctx.strokeStyle = '#3ddc84'; ctx.fillStyle = '#3ddc84'; ctx.lineCap = 'round'; ctx.lineWidth = 9; ctx.shadowColor = GREEN; ctx.shadowBlur = 18;
+  const h = 150 * g; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-10, -h * .5, 0, -h); ctx.stroke();
+  const lf = (side, at, s) => { const l = easeBack(seg(g, at, at + .4)) * s; if (l <= 0) return; ctx.save(); ctx.translate(0, -h * (at + .25)); ctx.scale(side * l, l);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(40, -50, 95, -40); ctx.quadraticCurveTo(55, 5, 0, 0); ctx.fill(); ctx.restore(); };
+  lf(1, .35, 1); lf(-1, .5, .85); ctx.restore();
+}
+
+// ---------------------------------------------------------------- titles and panels
+function vignette(top = 1) {
+  let g = ctx.createLinearGradient(0, 0, 0, 640); g.addColorStop(0, `rgba(0,0,0,${.9 * top})`); g.addColorStop(.5, `rgba(0,0,0,${.46 * top})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 640);
+  g = ctx.createLinearGradient(0, 1080, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.42, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,.92)');
+  ctx.fillStyle = g; ctx.fillRect(0, 1080, W, H - 1080);
+  g = ctx.createRadialGradient(W / 2, H / 2, 620, W / 2, H / 2, 1180); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+const titleLine = (parts, y, size, a, o = {}) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; line(parts.map(p => [p[0], PAL[p[1]]]), W / 2, y + (1 - a) * 14, { size, ...o }); ctx.restore(); };
+const tag = (s, y, a, col = C.acc) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; rr(ctx, W / 2 - 30, y - 52, 60, 6, 3); ctx.fill(); ctx.restore();
+  txt(s, W / 2, y + (1 - a) * 8, { size: 28, weight: 700, ls: 7, color: col, alpha: a, sb: 10 }); };
+function plate(s, x, y, size, a, o = {}) {
+  if (a <= 0) return;
+  ctx.save(); font(ctx, size, 800, 'IT'); ctx.letterSpacing = (o.ls ?? 4) + 'px'; const w = ctx.measureText(s).width + size * 1.1, h = size * 1.55, sc = o.pop ? lerp(1.25, 1, easeBack(a)) : 1;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.rotate((o.rot || 0) * RAD); ctx.globalAlpha *= clamp(a * 1.5);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6; rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = o.fill || C.acc; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = 3; ctx.stroke(); }
+  ctx.fillStyle = o.color || BR.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, (o.ls ?? 4) / 2, size * .06); ctx.restore();
+}
+function datePlate(s, a, y = 330, col = C.acc) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; font(ctx, 84, 800, 'IT'); const w = ctx.measureText(s).width + 90, h = 124, sc = lerp(.9, 1, easeBack(a));
+  ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = rgba(col, .7); ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  txt(s, W / 2, y + 30, { size: 84, weight: 800, fam: 'IT', color: col, alpha: a, shadow: 0, ls: 2 });
+}
+// a rubber stamp slammed on: rotated frame + word
+function rubber(s, x, y, size, T, t0, col, rot = -8) {
+  const u = seg(T, t0 - .06, t0 + .22); if (T < t0 - .06) return;
+  const sc = lerp(2.1, 1, easeOut(u));
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot * RAD); ctx.scale(sc, sc); ctx.globalAlpha *= clamp(u * 4) * .95;
+  font(ctx, size, 900, 'IT'); ctx.letterSpacing = '6px'; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
+  ctx.strokeStyle = col; ctx.lineWidth = 8; rr(ctx, -w / 2, -h / 2, w, h, 12); ctx.stroke(); ctx.lineWidth = 3; rr(ctx, -w / 2 + 12, -h / 2 + 12, w - 24, h - 24, 8); ctx.stroke();
+  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fillText(s, 3, size * .06); ctx.restore();
+}
+// the year counter of scene 4: 1949 -> 1989 together with the explosions
+function yearOf(T) {
+  const n = nEx(T); if (n === 0) return 1949;
+  const e = EX[n - 1]; return Math.round(e.air ? lerp(1949, 1962, e.u) : lerp(1962, 1989, e.u));
+}
+function ecg(T, y, a) {                                       // a slow heartbeat trace across the screen (scene 5)
+  if (a <= .004) return; const per = 1.15, x0 = 90, x1 = W - 90, head = x0 + (x1 - x0) * (((T - M.S5) / 3.2) % 1);
+  ctx.save(); ctx.lineWidth = 4; ctx.lineJoin = ctx.lineCap = 'round';
+  const yv = x => { const t = T - (head - x) / ((x1 - x0) / 3.2), ph = ((t - M.S5) % per + per) % per; return y - (ph < .05 ? ph * 300 : ph < .1 ? (0.1 - ph) * 600 - 15 : ph < .14 ? -(ph - .1) * 300 : 0); };
+  for (let x = x0; x < head; x += 4) { const f = 1 - (head - x) / (x1 - x0); if (f <= 0) continue; ctx.strokeStyle = rgba('#ff6b5a', a * f * .9); ctx.beginPath(); ctx.moveTo(x, yv(x)); ctx.lineTo(x + 4, yv(x + 4)); ctx.stroke(); }
+  glowDot(head, yv(head), 40, '#ff6b5a', .8 * a); ctx.restore();
+}
+function hud(T, sc) {
+  if (sc === 1) {                                            // the hook: 456 in the very first frame
+    const out = 1 - seg(T, M.S2 - .45, M.S2 - .05), fl = 1 + .9 * Math.exp(-Math.max(0, T - M.k456) * 5) * (T >= M.k456 ? 1 : 0);
+    if (out > 0) {
+      ctx.save(); ctx.globalAlpha = out; ctx.translate(W / 2, 560); const s = lerp(1.08, 1, easeOut(seg(T, 0, .6))); ctx.scale(s, s);
+      txt('456', 0, 0, { size: 300, weight: 900, fam: 'IT', color: '#fff', ls: 4, sb: 40 * fl, shadow: .7 });
+      if (fl > 1.02) txt('456', 0, 0, { size: 300, weight: 900, fam: 'IT', color: '#ffd9a0', ls: 4, alpha: (fl - 1) * .6, shadow: 0 });
+      ctx.restore();
+      ctx.save(); ctx.globalAlpha = out; ctx.fillStyle = C.warn; rr(ctx, W / 2 - 130, 600, 260, 8, 4); ctx.fill(); ctx.restore();
+      txt(L.hookSub, W / 2, 680, { size: 52, weight: 800, fam: 'IT', ls: 6, alpha: out, sb: 16 });
+      tag(L.hookTag, 790, ap(T, .6, .4) * out, 'rgba(255,255,255,.85)');
+      plate(L.people, W / 2, 900, 40, ap(T, M.people - .1, .35) * out, { pop: 1 });
+    }
+  } else if (sc === 2) {
+    const ak = ap(T, M.area - .1, .35);
+    if (ak > 0) { counter(T, 18500, M.area - .05, M.area + .9, W / 2 - 60, 470, 150, C.acc, ak); txt(L.km2, W / 2 + 330, 470, { size: 64, weight: 800, fam: 'IT', color: C.acc, alpha: ak, sb: 20 }); }
+    // the comparison: 27 little city blocks (Almaty ≈ 682 km²)
+    const ck = ap(T, M.area + 1.1, .4) * (1 - seg(T, M.S3 - .35, M.S3));
+    if (ck > 0) {
+      txt(L.cmp, W / 2, 545, { size: 34, weight: 700, alpha: ck, sb: 10 });
+      for (let i = 0; i < 27; i++) { const k = ap(T, M.area + 1.1 + i * .035, .25) * (1 - seg(T, M.S3 - .35, M.S3)); if (k <= 0) continue; const cx = W / 2 + (i % 9 - 4) * 54, cy = 600 + Math.floor(i / 9) * 50;
+        ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = 'rgba(255,255,255,.88)'; [[-14, 8, 10, 18], [-2, 0, 10, 26], [10, 12, 8, 14]].forEach(([x, y, w, h]) => ctx.fillRect(cx + x, cy - y - h + 18, w, h)); ctx.restore(); }
+    }
+    tag(L.ent, 262, ap(T, M.ent - .2, .35));
+  } else if (sc === 3) {
+    datePlate(L.date3, ap(T, M.S3 + .3, .4), 300);
+    const uk = ap(T, M.ussr - .1, .35); if (uk > 0) plate(L.ussr, W / 2, 420, 34, uk, { fill: C.card, color: '#fff', ls: 1 });
+  } else if (sc === 4) {
+    const k = ap(T, M.S4 + .2, .35), n = nEx(T);
+    if (k > 0) {
+      txt(String(yearOf(T)), W / 2, 285, { size: 56, weight: 800, fam: 'IT', color: 'rgba(255,255,255,.85)', alpha: k, ls: 4, sb: 14 });
+      txt(String(n), W / 2, 470, { size: 190, weight: 900, fam: 'IT', color: '#fff', alpha: k, ls: 3, sb: 30 });
+    }
+    const a1 = ap(T, M.k116 - .1, .35), a2 = ap(T, M.k340 - .1, .35);
+    const row = (num, s, y, a, col) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; const x = 150 + (1 - a) * -30;
+      txt(num, x, y, { size: 64, weight: 900, fam: 'IT', align: 'left', color: col, shadow: .6 }); txt('— ' + s, x + 150, y - 4, { size: 36, weight: 700, align: 'left', shadow: .6 }); ctx.restore(); };
+    const fin = ap(T, M.vill - .5, .4);
+    row('116', L.air, 580, a1 * (1 - fin), '#ffb347'); row('340', L.under, 650, a2 * (1 - fin), '#ff6a2a');
+    if (fin > 0) titleLine([['116', 1], [' + ', 0], ['340', 3], [' = ', 0], ['456', 0]], 600, 66, fin, { weight: 900 });
+    const nk = ap(T, M.nomove - .1, .3); if (nk > 0) plate(L.nomove, W / 2, 1290, 40, nk, { fill: C.warn, color: '#fff', pop: 1 });
+  } else if (sc === 5) {
+    const k = ap(T, M.mil - .25, .35);
+    counter(T, 1000000, M.mil - .2, M.mil + 1.0, W / 2 - 30, 450, 140, '#ffffff', k, { step: 10000 });
+    if (k > 0) { txt('+', W / 2 + 335, 450, { size: 140, weight: 900, fam: 'IT', color: C.warn, alpha: k, sb: 20 }); txt(L.milSub, W / 2, 530, { size: 36, weight: 800, ls: 4, alpha: k, sb: 14 }); }
+    const sk = ap(T, M.sick - .1, .35) * (1 - seg(T, M.silent - .4, M.silent - .1)); if (sk > 0) plate(L.sick, W / 2, 640, 36, sk, { fill: C.card, color: '#fff', ls: 3 });
+    ecg(T, 1640, ap(T, M.S5 + .2, .5) * (1 - seg(T, M.S6 - .6, M.S6 - .2)));
+    rubber(L.secret, W / 2, 680, 96, T, M.silent, '#e8502f', -9);
+  } else if (sc === 7) {
+    datePlate(L.closed, ap(T, M.closed - .1, .35), 300);
+    if (T >= M.shut - .06) { ctx.save(); ctx.globalAlpha = 1 - seg(T, M.d42 - .4, M.d42 - .1); rubber(L.shut, W / 2, 560, 110, T, M.shut, C.acc, -7); ctx.restore(); }
+    const dk = ap(T, M.d42 - .15, .35) * (1 - seg(T, M.un - .4, M.un - .1));
+    if (dk > 0) {                                             // 29.08.1949 —— 42 years —— 29.08.1991
+      const y = 760, x0 = 190, x1 = W - 190, g = easeIO(seg(T, M.d42 - .1, M.d42 + .9));
+      ctx.save(); ctx.globalAlpha = dk; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.strokeStyle = C.acc; ctx.shadowColor = C.acc; ctx.shadowBlur = 14; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(lerp(x0, x1, g), y); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = C.warn; ctx.beginPath(); ctx.arc(x0, y, 12, 0, 7); ctx.fill(); ctx.fillStyle = C.acc; ctx.beginPath(); ctx.arc(x1, y, 12 * g, 0, 7); ctx.fill(); ctx.restore();
+      txt('29.08.1949', x0, y + 56, { size: 30, weight: 700, alpha: dk, sb: 10 }); txt('29.08.1991', x1, y + 56, { size: 30, weight: 800, color: C.acc, alpha: dk * g, sb: 10 });
+      txt(L.d42, W / 2, y - 30, { size: 56, weight: 900, fam: 'IT', color: C.acc, alpha: dk, sb: 14 }); txt(L.dayday, W / 2, y + 110, { size: 34, weight: 600, alpha: dk * ap(T, M.d42 + .9, .3), sb: 10 });
+    }
+    const uk = ap(T, M.un - .1, .4);
+    if (uk > 0) {                                             // the United Nations day: a blue globe badge + the three lines
+      const cy = 790; ctx.save(); ctx.globalAlpha = uk; const s = lerp(.85, 1, easeBack(uk)); ctx.translate(W / 2, cy); ctx.scale(s, s);
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; rr(ctx, -440, -150, 880, 300, 26); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.strokeStyle = rgba('#5b92e5', .6); ctx.lineWidth = 3; ctx.stroke();
+      ctx.translate(-310, 0); ctx.fillStyle = '#5b92e5'; ctx.beginPath(); ctx.arc(0, 0, 92, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(0, 0, 62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.ellipse(0, 0, 26, 62, 0, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-62, 0); ctx.lineTo(62, 0); ctx.moveTo(-54, -30); ctx.lineTo(54, -30); ctx.moveTo(-54, 30); ctx.lineTo(54, 30); ctx.stroke();
+      ctx.restore();
+      txt(L.un, W / 2 - 310, cy + 145 + 40, { size: 30, weight: 800, ls: 4, color: '#9cc0ff', alpha: uk, sb: 10 });
+      L.unText.forEach((s2, i) => txt(s2, W / 2 - 180, cy - 50 + i * 56, { size: i ? 40 : 46, weight: i ? 700 : 900, fam: 'IT', align: 'left', color: i ? '#fff' : C.acc, alpha: uk, shadow: 0 }));
+    }
+  }
+}
+
+// ---------------------------------------------------------------- scene 6: 1989, the poet on television, the crowd, the signatures
+function person(x, y, s, col) {                               // a head-and-shoulders silhouette, (x, y) = bottom centre
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y - s * 1.55, s * .42, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - s * .85, y); ctx.quadraticCurveTo(x - s * .8, y - s * 1.0, x, y - s * 1.08); ctx.quadraticCurveTo(x + s * .8, y - s * 1.0, x + s * .85, y); ctx.closePath(); ctx.fill();
+}
+const CROWD = Array.from({ length: 260 }, (_, i) => { const row = Math.floor(hash(i * 3.1) * 7); return { row, x: hash(i * 1.7 + .3) * (W + 120) - 60, d: hash(i * 5.9), pl: false }; }).sort((a, b) => a.row - b.row);
+function s6(T) {
+  const bg = ctx.createRadialGradient(W / 2, 640, 80, W / 2, 800, 1300); bg.addColorStop(0, '#1d1466'); bg.addColorStop(.5, '#0d0838'); bg.addColorStop(1, '#030212'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  datePlate(L.y89, ap(T, M.S6 + .1, .35), 270);
+  // the TV: an old set with a glowing screen; inside, the poet at a desk microphone. It shrinks up when the crowd comes.
+  const tk = ap(T, M.S6 + .15, .5), up = easeIO(seg(T, M.nev - .4, M.nev + .6));
+  if (tk > 0) {
+    const s = lerp(1, .62, up) * lerp(.9, 1, easeBack(tk)), cx = W / 2, cy = lerp(760, 560, up);
+    ctx.save(); ctx.globalAlpha = tk; ctx.translate(cx, cy); ctx.scale(s, s);
+    ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 50; rr(ctx, -330, -250, 660, 500, 40); ctx.fillStyle = '#2a2234'; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#4a3f58'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.save(); rr(ctx, -280, -205, 470, 410, 46); ctx.clip();
+    const sg = ctx.createRadialGradient(-45, -10, 20, -45, 0, 340); sg.addColorStop(0, '#8fb1d8'); sg.addColorStop(1, '#2b3f63'); ctx.fillStyle = sg; ctx.fillRect(-280, -205, 470, 410);
+    person(-45, 230, 150, '#0e1424');                                           // the poet
+    ctx.fillStyle = '#0e1424'; ctx.fillRect(-200, 150, 310, 60);                // the desk
+    ctx.strokeStyle = '#0e1424'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-10, 150); ctx.lineTo(10, 95); ctx.stroke(); ctx.beginPath(); ctx.ellipse(14, 82, 14, 22, .3, 0, 7); ctx.fillStyle = '#0e1424'; ctx.fill();
+    for (let y = -205; y < 205; y += 6) { ctx.fillStyle = `rgba(0,0,0,${.12 + .05 * hash(y + Math.floor(T * 30))})`; ctx.fillRect(-280, y, 470, 2); }
+    ctx.fillStyle = `rgba(255,255,255,${.04 + .03 * hash(Math.floor(T * 24))})`; ctx.fillRect(-280, -205, 470, 410);
+    ctx.restore();
+    for (const [yy, r] of [[-120, 22], [-50, 22]]) { ctx.fillStyle = '#5a4f6a'; ctx.beginPath(); ctx.arc(250, yy, r, 0, 7); ctx.fill(); }
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = '#5a4f6a'; ctx.fillRect(225, 20 + i * 22, 50, 8); }
+    ctx.strokeStyle = '#4a3f58'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-60, -250); ctx.lineTo(-150, -350); ctx.moveTo(60, -250); ctx.lineTo(150, -340); ctx.stroke();
+    ctx.restore();
+    glowDot(cx - 45 * s, cy, 420 * s, '#7fa6ff', .18 * tk);
+  }
+  const nk = ap(T, M.olzhas - .1, .35) * (1 - up);
+  if (nk > 0) { plate(L.olzhas, W / 2, 1110, 46, nk, { fill: C.card, color: '#fff', ls: 1, stroke: rgba(C.acc, .6) }); txt(L.olzhasSub, W / 2, 1190, { size: 30, weight: 600, alpha: nk, color: 'rgba(255,255,255,.8)', sb: 10 }); }
+  // the crowd rises from below, row by row; a few placards
+  const ck = ease(seg(T, M.nev - .5, M.sign + .5));
+  if (ck > 0) {
+    for (const p of CROWD) {
+      const k = clamp(ck * 8 - p.row * .9 - p.d * 1.2); if (k <= 0) continue;
+      const y = 1900 - p.row * 70 + (1 - easeOut(k)) * 220, s = 62 - p.row * 4 + p.d * 8, sh = .25 + p.row * .1;
+      ctx.save(); ctx.globalAlpha = clamp(k * 1.4);
+      if (p.pl) { const px = p.x, py = y - s * 3.2, sway = Math.sin(T * 2 + p.d * 6) * 4; ctx.strokeStyle = '#3a2f1c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(px, y - s * 1.2); ctx.lineTo(px + sway, py); ctx.stroke();
+        ctx.save(); ctx.translate(px + sway, py); ctx.rotate(sway * .01); rr(ctx, -110, -46, 220, 70, 6); ctx.fillStyle = '#f3ecdd'; ctx.fill(); font(ctx, 24, 900, 'IT'); ctx.fillStyle = '#b5281e'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(L.placard, 0, -10); ctx.restore(); }
+      person(p.x, y, s, `rgb(${Math.round(14 + sh * 40)},${Math.round(10 + sh * 30)},${Math.round(48 + sh * 80)})`); ctx.restore();
+    }
+  }
+  const sk = ap(T, M.sign - .15, .35);
+  if (sk > 0) { counter(T, 100000, M.sign - .1, M.S7 - .3, W / 2 - 30, 1010, 130, C.acc, sk, { step: 1000, suf: '' }); txt('+', W / 2 + 290, 1010, { size: 120, weight: 900, fam: 'IT', color: C.acc, alpha: sk, sb: 20 }); txt(L.signs, W / 2, 1080, { size: 36, weight: 800, ls: 6, alpha: sk, sb: 14 }); }
+  const pk = ap(T, M.nev + .45, .35); if (pk > 0) plate(L.placard, W / 2, 830, 54, pk * (1 - sk * .0), { fill: '#f3ecdd', color: '#b5281e', pop: 1, rot: -2 });
+}
+
+// ---------------------------------------------------------------- scene 8: the ENT quiz over the blurred steppe of scene 3
+const QBG = (() => { const c = mk(); const x = c.getContext('2d'); if (HF3) { x.filter = 'blur(22px) brightness(.5) saturate(.8)'; const s = Math.max(W / HF3.width, H / HF3.height) * 1.08; x.drawImage(HF3, (W - HF3.width * s) / 2, (H - HF3.height * s) / 2, HF3.width * s, HF3.height * s); } return c; })();
+const GREEN = '#2fcf74';
+function quiz(T) {
+  ctx.drawImage(QBG, 0, 0); ctx.fillStyle = 'rgba(12,7,56,.35)'; ctx.fillRect(0, 0, W, H);
+  tag(L.quiz, 262, ap(T, M.S8 + .2, .35));
+  const qa = ap(T, M.S8 + .35, .4);
+  L.q.forEach((s, i) => txt(s, W / 2, 380 + i * 74 + (1 - qa) * 12, { size: 58, weight: 800, fam: 'IT', alpha: qa, sb: 18 }));
+  const ans = ap(T, M.ans + .55, .3), marks = [M.oA, M.oB, M.oC];
+  L.opts.forEach(([l, s], i) => {
+    const k = ap(T, marks[i] - .12, .3); if (k <= 0) return; const y = 640 + i * 150, x = 130 + (1 - k) * -40, w = W - 260, h = 116, ok = i === 1;
+    const dim = ok ? 1 : 1 - .6 * ans, col = ok && ans > 0 ? mixHex('#130B54', GREEN, ans) : BR.navy;
+    ctx.save(); ctx.globalAlpha = k * dim; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 26; rr(ctx, x, y, w, h, 24); ctx.fillStyle = ok && ans > 0 ? col : C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = ok && ans > 0 ? GREEN : C.line; ctx.lineWidth = ok && ans > 0 ? 4 : 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + 62, y + h / 2, 36, 0, 7); ctx.fillStyle = ok && ans > 0 ? '#fff' : C.acc; ctx.fill(); ctx.restore();
+    txt(l, x + 62, y + h / 2 + 15, { size: 40, weight: 800, fam: 'IT', color: ok && ans > 0 ? GREEN : BR.navy, alpha: k * dim, shadow: 0 });
+    txt(s, x + 130, y + h / 2 + 17, { size: 50, weight: 800, fam: 'IT', align: 'left', alpha: k * dim, shadow: 0 });
+    if (ok && ans > 0) { ctx.save(); ctx.globalAlpha = ans; ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = ctx.lineJoin = 'round'; const cx = x + w - 70, cy = y + h / 2;
+      ctx.beginPath(); ctx.moveTo(cx - 24, cy); ctx.lineTo(cx - 6, cy + 18); ctx.lineTo(cx + 26, cy - 20); ctx.stroke(); ctx.restore(); glowDot(x + w / 2, y + h / 2, 420, GREEN, .25 * ans); }
+  });
+  const p0 = M.ans - 3.0, tk = ap(T, p0 - .1, .25) * (1 - seg(T, M.ans + .3, M.ans + .6));
+  if (tk > 0) {
+    const u = clamp((T - p0) / 3), n = Math.max(1, 3 - Math.floor(u * 3 - 1e-6)), cx = W / 2, cy = 1170;
+    ctx.save(); ctx.globalAlpha = tk; ctx.beginPath(); ctx.arc(cx, cy, 72, 0, 7); ctx.fillStyle = C.card; ctx.fill();
+    ctx.lineWidth = 9; ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(cx, cy, 72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - u)); ctx.stroke(); ctx.restore();
+    if (u < 1) { const f = (u * 3) % 1; ctx.save(); ctx.translate(cx, cy + 26); const s = lerp(1.25, 1, easeOut(f * 3)); ctx.scale(s, s); txt(String(n), 0, 0, { size: 76, weight: 800, fam: 'IT', color: C.acc, alpha: tk, shadow: 0 }); ctx.restore(); }
+  }
+  const ck = ap(T, M.ans + 1.0, .35); if (ck > 0) plate(L.chip, W / 2, 1170, 40, ck, { ls: 1, fill: C.card, color: '#fff', stroke: rgba(GREEN, .7) });
+}
+
+// ---------------------------------------------------------------- scene 9: 456 goes out, a sprout grows on the map, then the profile card with the link
+function s9(T) {
+  const fk = 1 - seg(T, M.S9 + .3, M.S9 + 1.8);
+  if (fk > 0) { const sz = 220; txt('456', W / 2, 520, { size: sz, weight: 900, fam: 'IT', color: mixHex('#ffffff', '#6b6b7a', 1 - fk), alpha: fk, ls: 4, sb: 30 }); }
+  const pk = ap(T, M.S9 + .6, .4) * (1 - seg(T, M.link - .4, M.link + .1));
+  if (pk > 0) { ctx.save(); ctx.globalAlpha = pk; line(L.plate.map(p => [p[0], p[1] ? C.acc : '#fff']), W / 2, 330, { size: 40, sb: 12 }); ctx.restore(); }
+  const dim = ease(seg(T, M.link - .5, M.link + .1)); if (dim > 0) { ctx.fillStyle = rgba('#0c0738', .9 * dim); ctx.fillRect(0, 0, W, H); }
+  const X = W / 2, m = ap(T, M.link - .1, .5);
+  if (m > 0) {
+    const ay = 1080 + 14 * Math.sin(T * 6.5) * seg(T, M.link + .4, M.link + .8), hh = 150;
+    ctx.save(); ctx.globalAlpha = m; ctx.strokeStyle = C.acc; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.moveTo(X, ay + hh * .7); ctx.lineTo(X, ay - hh * .55); ctx.moveTo(X - 62, ay - hh * .05); ctx.lineTo(X, ay - hh * .6); ctx.lineTo(X + 62, ay - hh * .05); ctx.stroke(); ctx.restore();
+  }
+  const l = ap(T, M.link - .12, .4), hi = ap(T, M.bio - .25, .3);
+  if (l > 0) {
+    const cw = 840, ch = 206, cx = X - cw / 2, cyc = 740 + (1 - l) * 40;
+    ctx.save(); ctx.globalAlpha = l;
+    line(L.go.map(p => [p[0], p[1] ? C.acc : '#fff']), X, cyc - ch / 2 - 46, { size: 56, sb: 14 });
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cyc - ch / 2, cw, ch, 24); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 62, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 51, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
+    ctx.drawImage(LOGO_AV, cx + 106 - LOGO_AV.width / 2, cyc - LOGO_AV.height / 2);
+    txt('JAS EDUCATION', cx + 206, cyc - 43, { size: 36, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 206, cyc - 24, 504, 17, 8.5); ctx.fill();
+    const lx = cx + 199, ly = cyc + 14, lw = 360, lh = 60, my = ly + lh / 2;
+    rr(ctx, lx, ly, lw, lh, 30); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineWidth = 5.4; ctx.lineCap = 'round';
+    ctx.save(); ctx.translate(lx + 43, my); ctx.rotate(-.7); rr(ctx, -23, -8.5, 26.5, 17, 8.5); ctx.stroke(); rr(ctx, -3.5, -8.5, 26.5, 17, 8.5); ctx.stroke(); ctx.restore();
+    txt(L.linkword, lx + 82, my + 12, { size: 35, weight: 700, align: 'left', color: C.acc, shadow: 0 });
+    ctx.restore();
+    for (const dl of [0, .16]) { const u = (T - M.go - dl) / .6; if (u <= 0 || u >= 1) continue;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .75 * (1 - u) ** 2); ctx.lineWidth = 5 - 3 * u;
+      const g = 6 + 74 * easeOut(u); rr(ctx, lx - g, ly - g, lw + 2 * g, lh + 2 * g, 30 + g); ctx.stroke(); ctx.restore(); }
+    if (hi > 0) { glowDot(lx + lw / 2, my, 230, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6))); txt(L.where.toUpperCase(), X, 1330 + (1 - hi) * 10, { size: 40, weight: 700, ls: 5, alpha: hi, sb: 12 }); }
+  }
+}
+
+// ---------------------------------------------------------------- the brand in the frame
+const END0 = M.last - .1;
+function logo() { ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(LOGO, W - 48 - LOGO.width, 48); ctx.restore(); }
+function credit(T, sc) { if ([1, 2, 4, 5, 7].includes(sc)) txt(L.credit, W / 2, 1880, { size: 19, weight: 500, color: 'rgba(255,255,255,.42)', shadow: 0 }); }
+function endCard(T) {
+  const k = ease(seg(T, END0, END0 + .5)); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
+  const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
+}
+
+// ---------------------------------------------------------------- captions: the chunk being spoken, word by word
+const CAPCOL = { w: '#ffffff', t: C.acc, n: C.acc, r: C.warn, g: GREEN, b: C.acc };
+const CHUNKS = []; B.words.forEach(w => { if (!/[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(w.w)) return; (CHUNKS[w.k] ||= { ws: [], t0: w.t }).ws.push(w); CHUNKS[w.k].t1 = w.e; });
+const CH = CHUNKS.filter(Boolean);
+function captions(T, y) {
+  let i = -1; for (let k = 0; k < CH.length; k++) if (T >= CH[k].t0 - .07) i = k;
+  if (i < 0) return; const c = CH[i], tEnd = Math.min(i + 1 < CH.length ? CH[i + 1].t0 - .07 : 1e9, c.t1 + .5);
+  if (T > tEnd) return;
+  const its = c.ws.map(w => { const key = w.c !== 'w', size = key ? 60 : 54, weight = key ? 800 : 700, s = w.w.replace(/[.,:;!?]+$/, ''); font(ctx, size, weight); return { w, s, size, weight, wd: ctx.measureText(s).width }; });
+  let tot = 0; its.forEach((it, k) => { tot += it.wd + (k < its.length - 1 && !it.w.g ? 17 : 0); });
+  const sc = Math.min(1, 960 / tot), a = seg(T, c.t0 - .07, c.t0 + .03) * (1 - seg(T, tEnd - .06, tEnd));
+  ctx.save(); ctx.translate(W / 2, y + (1 - seg(T, c.t0 - .07, c.t0 + .05)) * 10); ctx.scale(sc, sc); let x = -tot / 2;
+  for (const it of its) {
+    const on = seg(T, it.w.t - .04, it.w.t + .05), pop = 1 + .07 * Math.sin(Math.PI * seg(T, it.w.t - .02, it.w.t + .2));
+    ctx.save(); ctx.translate(x + it.wd / 2, 0); ctx.scale(pop, pop); font(ctx, it.size, it.weight); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3; ctx.globalAlpha = a * lerp(.4, 1, on); ctx.fillStyle = CAPCOL[it.w.c] || '#fff';
+    ctx.fillText(it.s, 0, 0); ctx.shadowBlur = 5; ctx.fillText(it.s, 0, 0); ctx.restore();
+    x += it.wd + (it.w.g ? 0 : 17);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- frame
+// transitions: 3->4 «flash into white», 5->6 and 7->8 dips to black, the other cuts hard with a soft white flash
+const DIPS = [[M.S4, '#ffffff', .55], [M.S6, '#000000', .5], [M.S8, '#000000', .45]];
+const FLASH = [M.S2, M.S3, M.S5, M.S7, M.S9];
+async function render(T) {
+  T = clamp(T, 0, END);
+  const sc = T < M.S2 ? 1 : T < M.S3 ? 2 : T < M.S4 ? 3 : T < M.S5 ? 4 : T < M.S6 ? 5 : T < M.S7 ? 6 : T < M.S8 ? 7 : T < M.S9 ? 8 : 9;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (sc === 3) { await film(3, T); vignette(.8); }
+  else if (sc === 6) s6(T);
+  else if (sc === 8) quiz(T);
+  else {
+    const cam = window.CAMQ || camAt(sc, T); setCam(cam);
+    globeMat.uniforms.expo.value = sc === 1 ? lerp(.42, .6, seg(T, 0, M.S2)) : sc === 5 ? lerp(.55, .4, seg(T, M.S5, M.S6)) : .62;
+    globeMat.uniforms.sat.value = sc === 5 ? .55 : .85; globeMat.uniforms.haze.value = .7; atmo.material.uniforms.k.value = .5;
+    stars(sc === 1 ? .7 : .3);
+    renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+    borders(.16);
+    if (sc === 1) mapS1(T); else if (sc === 2) mapS2(T); else if (sc === 4) mapS4(T); else if (sc === 5) mapS5(T); else if (sc === 7) mapS7(T); else mapS9(T);
+    vignette(1);
+  }
+  if (sc === 9) s9(T); else if (sc !== 6 && sc !== 8) hud(T, sc);
+  captions(T, 1450);
+  credit(T, sc); logo(); if (sc === 9) endCard(T);
+  for (const [t0, col, d] of DIPS) { const u = Math.abs(T - t0) / d; if (u < 1) { ctx.fillStyle = rgba(col, (1 - u) ** 1.6 * (col === '#000000' ? 1 : .95)); ctx.fillRect(0, 0, W, H); } }
+  for (const tc of FLASH) if (T >= tc && T < tc + .16) { ctx.fillStyle = `rgba(255,255,255,${.2 * (1 - (T - tc) / .16) ** 2})`; ctx.fillRect(0, 0, W, H); }
+}
+window.render = render; window.setCamQ = c => { window.CAMQ = c; }; window.END = END; window.M = M;
+window.ready = true;
+</script>
+</body></html>
