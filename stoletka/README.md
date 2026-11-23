@@ -11,3 +11,4 @@ war/truce timeline · Black Death · Jacquerie 1358, Wat Tyler 1381 · 1428 occu
 - Voice: Arunur's own ElevenLabs voice «Arnur», eleven_v4, one take each; `pause.py` adds the 3 s quiz pause (raw takes in takes/).
 - Timing: `words.py` (faster-whisper medium) → `words_<lang>.json`; `beats.py` → `beats.json`, `caps_<lang>.json`.
 - Build: `./build.sh ru|kk` → `out/stoletka_<lang>.mp4` (synth music + SFX from `sfx.py`, mix from `mix.py`).
+- Film clips: `hf/video/s6.mp4`, `hf/video/s7.mp4` (Kling 3.0 Turbo, 5 s). Frames: `ffmpeg -i hf/video/s6.mp4 -vf "fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920" -q:v 3 clips/s6/%04d.jpg` (same for s7), then `clips/clips.json`. `./remux.sh ru|kk` re-records the picture with the existing mix.
