@@ -78,7 +78,7 @@ t = .3
 while t < M['s2'] - .9: put(sfx, t, shovel(), .6); t += 1 / 1.6
 put(sfx, M['s2'] - .9, whoosh(1.0, 150, 1800), .7)
 # scene 2: elevator ding, cabin starts
-put(sfx, M['icons'] - .1, ding(1320, 2.0), .6); put(sfx, M['icons'] + .1, ding(1046, 2.0), .45)
+put(sfx, M['icons'] - .1, ding(1320, 2.0), .3); put(sfx, M['icons'] + .1, ding(1046, 2.0), .2)
 put(sfx, M['s3'] - .8, whoosh(.9, 150, 1500), .6)
 # scene 3: rock rustle under the narration, little clicks on each bracket
 d3 = M['s4'] - M['s3']; put(sfx, M['s3'], fade(band(noise(d3), 100, 1200) * .25, .5, .6), .5)
@@ -88,7 +88,7 @@ dg = M['res'] + .8 - M['drill']; put(sfx, M['drill'], grind(dg), .55)
 put(sfx, M['hot'], hiss(1.8), .3); put(sfx, M['hot'] + 2.0, thud(), .8)
 put(sfx, M['s5'] - .8, whoosh(1.0, 200, 2000), .5)
 # scene 5: silence and a "tuk"
-put(sfx, M['s5'] + .6, thud(), .7); put(sfx, M['crust'] + .1, click(), .6)
+put(sfx, M['s5'] + .3, thud(), .45); put(sfx, M['crust'] + .1, click(), .6)
 put(sfx, M['s6'] - .9, whoosh(1.1, 120, 1600), .7)
 # scene 6: deep rumble of the mantle
 d6 = M['s7'] - M['s6']; put(sfx, M['s6'], fade(band(noise(d6), 25, 160) * 1.6 + drone(d6, 41) * .25, .8, .8), .6)
@@ -98,7 +98,7 @@ put(sfx, M['s7'] - .4, whoosh(.8, 600, 6000), .6); put(sfx, M['core'], shimmer(1
 put(sfx, M['s8'] + .1, ding(1480, 1.6), .5)
 t = M['wait'] - 3.0
 while t < M['wait'] - .05: put(sfx, t, tick(), .8); t += .5
-put(sfx, M['wait'], ding(1760, 2.2), .7); put(sfx, M['wait'] + .12, ding(2217, 2.0), .45)
+put(sfx, M['wait'] - .25, ding(1760, 2.2), .4); put(sfx, M['wait'] - .13, ding(2217, 2.0), .22)
 # scene 9: whoosh up, final chord
 put(sfx, M['cta'] + .2, whoosh(1.1, 300, 4000), .55)
 for f in (523.25, 659.25, 783.99, 1046.5): put(sfx, END - 2.2, ding(f, 2.0), .22)
