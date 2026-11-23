@@ -1,0 +1,373 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Балқаш: бір көл, екі су» / «Балхаш: одно озеро, две воды» — KZ + RU, voice «Arnur». Times = voice beats (beats.json) + OFF.
+const OFF = .3, LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+let B = {}, CAPS = [], END = 60, SH = null;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'bal', l0: 72, l1: 81, b0: 43.5, b1: 48.5, minppd: 60 });
+const GOLD = BR.acc, RED = BR.red, AQUA = '#5fd8ff', FRESH = '#2f8dff', SALTY = '#25d6a0', GREEN = '#7ed957';
+const SPLIT = 75.52, STRAIT = [75.5, 46.70];
+const TXT = {
+  ru: { h1: 'Одно озеро —', h2: 'две воды', fresh: 'ПРЕСНАЯ', salty: 'СОЛЁНАЯ', bal: 'Балхаш', kaz: 'Казахстан', trap: 'ЛОВУШКА ЕНТ',
+    len: '600+ км', cmpA: 'Балхаш', cmpB: 'Алматы → Шымкент', cmpBv: '≈ 700 км', narrow: 'узкий и мелкий', depth: 'средняя глубина ≈ 6 м', strait: 'пролив',
+    uzy1: 'УЗЫНАРАЛ', uzy2: 'пролив', width: '≈ 3–4 км', slow: 'вода идёт медленно', saltq: 'А при чём тут соль?',
+    ili: 'ИЛИ', src: 'Восточный Тянь-Шань', china: 'КИТАЙ', kap: 'Капшагай', p80: 'воды Балхаша', west: 'ЗАПАД', east: 'ВОСТОК',
+    karatal: 'Каратал', lepsy: 'Лепсы', ayagoz: 'Аягоз', evap1: 'ИСПАРЯЕТСЯ', evap2: 'СОЛЬ ОСТАЁТСЯ', nomix: 'воды не смешиваются',
+    times: 'в несколько раз солонее', freshS: 'пресная', saltyS: 'солонее', threat: 'УГРОЗА', fields: 'поля', dams: 'водохранилища',
+    aralq: 'СУДЬБА АРАЛА?', a1960: 'Арал 1960', anow: 'сейчас', photo: 'Берег Балхаша', quiz: 'ВОПРОС ЕНТ', q1: 'Какая река приносит', q2: 'в Балхаш больше всего воды?',
+    opts: [['А', 'Шу'], ['Б', 'Или'], ['В', 'Иртыш']], cta1: 'Ссылка', cta2: 'в шапке профиля', level: 'уровень',
+    src2: 'Источники: География-21, Казгидромет · карта: NASA Blue Marble, Copernicus Sentinel-2 · фото: Wikimedia Commons' },
+  kk: { h1: 'Бір көл —', h2: 'екі су', fresh: 'ТҰЩЫ', salty: 'ТҰЗДЫ', bal: 'Балқаш', kaz: 'Қазақстан', trap: 'ҰБТ ТҰЗАҒЫ',
+    len: '600+ км', cmpA: 'Балқаш', cmpB: 'Алматы → Шымкент', cmpBv: '≈ 700 км', narrow: 'тар әрі тайыз', depth: 'орташа тереңдігі ≈ 6 м', strait: 'бұғаз',
+    uzy1: 'ҰЗЫНАРАЛ', uzy2: 'бұғазы', width: '≈ 3–4 км', slow: 'су баяу өтеді', saltq: 'Тұзға қандай қатысы бар?',
+    ili: 'ІЛЕ', src: 'Шығыс Тянь-Шань', china: 'ҚЫТАЙ', kap: 'Қапшағай', p80: 'Балқаш суының', west: 'БАТЫС', east: 'ШЫҒЫС',
+    karatal: 'Қаратал', lepsy: 'Лепсі', ayagoz: 'Аягөз', evap1: 'БУЛАНАДЫ', evap2: 'ТҰЗ ҚАЛАДЫ', nomix: 'су араласпайды',
+    times: 'бірнеше есе тұздырақ', freshS: 'тұщы', saltyS: 'тұздырақ', threat: 'ҚАУІП', fields: 'егістік', dams: 'су қоймалары',
+    aralq: 'АРАЛДЫҢ ТАҒДЫРЫ?', a1960: 'Арал 1960', anow: 'қазір', photo: 'Балқаш жағасы', quiz: 'ҰБТ СҰРАҒЫ', q1: 'Балқашқа ең көп су', q2: 'әкелетін өзен?',
+    opts: [['А', 'Шу'], ['Ә', 'Іле'], ['Б', 'Ертіс']], cta1: 'Сілтеме', cta2: 'профиль шапкасында', level: 'деңгей',
+    src2: 'Дереккөздер: География-21, Қазгидромет · карта: NASA Blue Marble, Copernicus Sentinel-2 · фото: Wikimedia Commons' } }[LANG];
+</script>
+<script src="helpers.js"></script>
+<script>
+logo = function (a = .9) {   // corner logo, bigger since 18.11.2026 (anti-theft): ~122 px high
+  const im = IM.logo; if (!im) return; const h = 122, w = im.width / im.height * h;
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 12; ctx.drawImage(im, W - 44 - w, 44, w, h); ctx.restore();
+};
+captions = function (t) {   // 2-3 words, the spoken word amber
+  const vt = t - OFF; if (vt >= B.cta - .05 || (vt >= B.quiz - .05)) return;
+  const c = CAPS.find(c => vt >= c[0] - .05 && vt < c[1] + .12); if (!c) return;
+  const a = Math.min(ap(vt, c[0] - .05, .12), 1), size = 54, sp = tw(' ', size, 'MX');
+  const ws = c[2].map(w => w[0]), tot = ws.reduce((s, w) => s + tw(w, size, 'MX'), 0) + sp * (ws.length - 1);
+  const k = Math.min(1, 980 / tot); let x = W / 2 - tot * k / 2;
+  ctx.save(); ctx.globalAlpha = a;
+  c[2].forEach(([w, w0, w1]) => { const ww = tw(w, size, 'MX') * k, on = vt >= w0 - .03 && vt < w1;
+    txt(w, x + ww / 2, H * .835, size * k, on ? GOLD : '#fff', 'MX', { shadow: 'rgba(0,0,0,.9)', blur: 14, dy: 2, stroke: 8, sc: 'rgba(0,0,0,.55)' }); x += ww + sp * k; });
+  ctx.restore();
+};
+let TT = 0;
+const A = (k0, k1, f = .3) => win(TT, V(k0), V(k1), f);
+const pop = (t0, d = .4) => back(clamp(ap(TT, t0, d)));
+function head2(l1, l2, a, y = H * .15) {
+  if (a <= 0) return; const p = back(clamp(a * 1.5));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, y); ctx.scale(p, p);
+  txt(l1, 0, 0, Math.min(70, 70 * 960 / tw(l1, 70, 'MX')), '#fff', 'MX', { stroke: 7, sc: 'rgba(0,0,0,.5)' });
+  txt(l2, 0, 104, Math.min(124, 124 * 960 / tw(l2, 124, 'MB')), GOLD, 'MB', { shadow: 'rgba(0,0,0,.7)', blur: 20, stroke: 9, sc: 'rgba(0,0,0,.5)' });
+  ctx.restore();
+}
+function bigPill(s, y, a, t0, o = {}) { if (a > 0) pill(s, W / 2, y, o.size || 50, a, { bg: o.bg || GOLD, col: o.col || BR.navy, line: o.line || GOLD, font: 'MB', scale: pop(t0) }); }
+function stampW(s, x, y, a, t0, col = GOLD) {
+  const sp = ap(TT, t0, .35); if (sp <= 0 || a <= 0) return; const sc = 1 + 1.4 * (1 - eout(sp)), w = tw(s, 70, 'MB') + 80;
+  ctx.save(); ctx.globalAlpha = a * clamp(sp * 2); ctx.translate(x, y); ctx.rotate(-.12); ctx.scale(sc, sc);
+  rr(-w / 2, -62, w, 124, 22); ctx.lineWidth = 9; ctx.strokeStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.stroke(); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.fill();
+  txt(s, 0, 5, 70, col, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function upArrow(x, y, s, a, col = GOLD) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(34, 0); ctx.lineTo(12, 0); ctx.lineTo(12, 34); ctx.lineTo(-12, 34); ctx.lineTo(-12, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function ring(lon, lat, a, col = GOLD, r0 = 30, sp = 1) {
+  if (a <= 0) return; const [x, y] = P(lon, lat);
+  for (let i = 0; i < 2; i++) { const ph = (TT * .9 * sp + i * .5) % 1; ctx.save(); ctx.globalAlpha = a * (1 - ph); ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(x, y, r0 + ph * r0 * 2.2, 0, 7); ctx.stroke(); ctx.restore(); }
+}
+// ---------- lake water tint ----------
+function tint(rings, col, a, o = {}) {
+  if (a <= 0 || !rings) return;
+  ctx.save(); pathRings(rings); ctx.globalAlpha = a * (o.fill ?? .5); ctx.fillStyle = col; ctx.fill('evenodd');
+  ctx.globalAlpha = a; ctx.shadowColor = col; ctx.shadowBlur = o.blur ?? 18; ctx.strokeStyle = o.edge || col; ctx.lineWidth = o.lw ?? 3; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.clip('evenodd'); ctx.shadowBlur = 0; ctx.globalAlpha = a * .13; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;   // ripples
+  for (let y = -40; y < H + 40; y += 40) { ctx.beginPath(); for (let x = 0; x <= W; x += 30) { const yy = y + Math.sin(x * .02 + TT * 1.5 + y) * 5; x ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); } ctx.stroke(); }
+  ctx.restore();
+}
+function splitLine(a, p = 1) {
+  if (a <= 0) return; const [x, y0] = P(SPLIT, 46.86), [, y1] = P(SPLIT, 46.52); const ym = (y0 + y1) / 2, hh = Math.min(260, (y1 - y0) / 2 * 2.2) * p;
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = GOLD; ctx.shadowBlur = 30;
+  ctx.beginPath(); ctx.moveTo(x, ym - hh); ctx.lineTo(x, ym + hh); ctx.stroke(); ctx.restore();
+}
+// ---------- icons ----------
+function sun(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(TT * .4);
+  ctx.fillStyle = GOLD; ctx.shadowColor = '#ffcf4d'; ctx.shadowBlur = 50;
+  for (let i = 0; i < 12; i++) { ctx.save(); ctx.rotate(i * Math.PI / 6); ctx.beginPath(); ctx.moveTo(-9, -62); ctx.lineTo(0, -92 - 6 * Math.sin(TT * 4 + i)); ctx.lineTo(9, -62); ctx.fill(); ctx.restore(); }
+  ctx.beginPath(); ctx.arc(0, 0, 52, 0, 7); ctx.fill(); ctx.restore();
+}
+function evapArrow(x, y, ph, a) {   // wavy arrow rising and fading
+  if (a <= 0) return; const yy = y - ph * 170, al = a * Math.sin(Math.PI * ph);
+  ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(255,255,255,.8)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); for (let i = 0; i <= 12; i++) { const k = i / 12; const px = x + Math.sin(k * 6 + TT * 3) * 7, py = yy + 50 - k * 70; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 12, yy - 8); ctx.lineTo(x + Math.sin(6 + TT * 3) * 7, yy - 24); ctx.lineTo(x + 12, yy - 8); ctx.stroke(); ctx.restore();
+}
+function damIcon(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.92)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = GOLD; ctx.stroke();
+  ctx.fillStyle = '#d9dde8'; ctx.beginPath(); ctx.moveTo(-24, -18); ctx.lineTo(-10, -18); ctx.lineTo(-4, 20); ctx.lineTo(-30, 20); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = AQUA; ctx.fillRect(-4, -8, 30, 28); ctx.fillStyle = '#fff'; for (let i = 0; i < 3; i++) ctx.fillRect(2 + i * 8, -2 + Math.sin(TT * 3 + i) * 2, 5, 2);
+  ctx.restore();
+}
+function fieldIcon(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.92)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = GOLD; ctx.stroke();
+  ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 36, 0, 7); ctx.clip();
+  ctx.fillStyle = '#4c9a3a'; ctx.fillRect(-36, 2, 72, 40); ctx.strokeStyle = '#9be27a'; ctx.lineWidth = 3;
+  for (let i = -5; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(i * 9, 40); ctx.lineTo(i * 3, 4); ctx.stroke(); }
+  ctx.fillStyle = GREEN; for (const [px, py] of [[-14, -6], [0, -12], [14, -6]]) { ctx.beginPath(); ctx.ellipse(px, py, 5, 10, 0, 0, 7); ctx.fill(); } ctx.restore();
+  ctx.restore();
+}
+function glass(x, y, lvl, a) {   // lake level gauge
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  rr(-46, -90, 92, 180, 18); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.save(); rr(-38, -82, 76, 164, 12); ctx.clip(); const h = 164 * lvl; const g = ctx.createLinearGradient(0, 82 - h, 0, 82); g.addColorStop(0, '#4fc3ff'); g.addColorStop(1, '#1d6fb0');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-40, 82); for (let i = 0; i <= 8; i++) ctx.lineTo(-40 + i * 10, 82 - h + Math.sin(TT * 4 + i) * 3); ctx.lineTo(40, 82); ctx.closePath(); ctx.fill(); ctx.restore();
+  txt(TXT.level, 0, 120, 30, '#fff', 'MX'); ctx.restore();
+}
+function photoCard(a, t0) {
+  const im = IM.shore; if (!im || a <= 0) return; const p = eout(ap(TT, t0, .5)), w = 660, h = w * im.height / im.width;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * .6 + (1 - p) * 120); ctx.rotate(-.045 + (1 - p) * .1); const s = 1 + .03 * ap(TT, t0, 3); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.fillStyle = '#f6f3ea'; ctx.fillRect(-w / 2 - 22, -h / 2 - 22, w + 44, h + 120); ctx.shadowBlur = 0;
+  ctx.drawImage(im, -w / 2, -h / 2, w, h);
+  txt(TXT.photo, 0, h / 2 + 52, 46, BR.navy, 'MB', { blur: 0, dy: 0 }); txt('фото: Wikimedia Commons, public domain', 0, h / 2 + 88, 20, '#6a6a7a', 'MS', { blur: 0, dy: 0 });
+  ctx.restore();
+}
+function flowDash(pts, a, col, lw, speed, dash = [26, 22]) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); pts.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.setLineDash(dash); ctx.lineDashOffset = -TT * speed; ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.stroke(); ctx.restore();
+}
+function chevrons(pts, a, speed, n = 5, s = 1) {   // arrows moving along a lon/lat path
+  if (a <= 0) return; const S = pts.map(c => P(c[0], c[1])); let L = 0; const d = [0];
+  for (let i = 1; i < S.length; i++) { L += Math.hypot(S[i][0] - S[i - 1][0], S[i][1] - S[i - 1][1]); d.push(L); }
+  for (let j = 0; j < n; j++) { const u = ((TT * speed + j / n) % 1), l = u * L; let i = 1; while (i < S.length - 1 && d[i] < l) i++;
+    const k = (l - d[i - 1]) / (d[i] - d[i - 1] || 1), x = lerp(S[i - 1][0], S[i][0], k), y = lerp(S[i - 1][1], S[i][1], k), an = Math.atan2(S[i][1] - S[i - 1][1], S[i][0] - S[i - 1][0]);
+    ctx.save(); ctx.globalAlpha = a * Math.sin(Math.PI * u); ctx.translate(x, y); ctx.rotate(an); ctx.scale(s, s); ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.shadowColor = AQUA; ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.moveTo(-14, -16); ctx.lineTo(4, 0); ctx.lineTo(-14, 16); ctx.stroke(); ctx.restore(); }
+}
+function bars(a, t0) {   // salinity: west vs east
+  if (a <= 0) return; const p = ease(ap(TT, t0 + .2, .9)), y0 = H * .70, by = y0 + 90;
+  ctx.save(); ctx.globalAlpha = a; rr(W / 2 - 330, y0 - 230, 660, 380, 30); ctx.fillStyle = 'rgba(19,11,84,.86)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(254,179,0,.5)'; ctx.stroke();
+  [[W / 2 - 150, .22, FRESH, TXT.west, TXT.freshS], [W / 2 + 150, .95, SALTY, TXT.east, TXT.saltyS]].forEach(([x, v, col, l1, l2]) => {
+    const h = 220 * v * p; rr(x - 55, by - h, 110, h, 14); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0;
+    for (let i = 0; i < 18 * v * p; i++) { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(x - 40 + (i * 37) % 80, by - 14 - Math.floor(i / 3) * 22 * (h / 220 / v || 0), 7, 7); }
+    txt(l1, x, by + 34, 32, '#fff', 'MB'); txt(l2, x, y0 - 196, 30, col, 'MB'); });
+  ctx.restore();
+}
+function aralInset(a, t0) {
+  if (a <= 0) return; const p = pop(t0), cx = W * .27, cy = H * .36, k = 62;
+  ctx.save(); ctx.globalAlpha = clamp(a); ctx.translate(cx, cy); ctx.scale(p, p);
+  rr(-215, -250, 430, 510, 28); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(254,179,0,.6)'; ctx.stroke();
+  const c0 = [59.9, 45.0], kx = Math.cos(45 * Math.PI / 180) * k, Q = ([lo, la]) => [(lo - c0[0]) * kx, -(la - c0[1]) * k + 10];
+  const path = R => { ctx.beginPath(); for (const r of R) r.forEach((c, i) => { const [x, y] = Q(c); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); };
+  path(SH.aral1960); ctx.setLineDash([12, 9]); ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 3; ctx.stroke(); ctx.setLineDash([]);
+  path(SH.aralnow); ctx.fillStyle = '#2f9fb4'; ctx.fill(); ctx.strokeStyle = AQUA; ctx.lineWidth = 2; ctx.stroke();
+  txt(TXT.a1960, 0, -210, 32, '#fff', 'MB'); txt(TXT.anow + ': −90%', 0, 220, 32, RED, 'MB');
+  ctx.restore();
+}
+// ---------- quiz ----------
+function quiz(t) {
+  const a = Math.min(ap(t, V('quiz') - .1, .35), 1 - ap(t, V('cta') - .25, .3)); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .72; ctx.fillStyle = '#05061a'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save(); ctx.globalAlpha = a;
+  pill(TXT.quiz, W / 2, H * .2, 54, 1, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: pop(V('quiz')) });
+  const qa = ap(t, V('qq') - .1, .35); ctx.globalAlpha = a * qa; txt(TXT.q1, W / 2, H * .3, 62, '#fff', 'MX'); txt(TXT.q2, W / 2, H * .3 + 80, 62, '#fff', 'MX'); ctx.globalAlpha = a;
+  const right = ap(t, V('right'), .3), keys = ['o1', 'o2', 'o3'];
+  TXT.opts.forEach(([l, s], i) => { const t0 = V(keys[i]) - .1, p = pop(t0, .35); if (p <= 0) return; const ok = i === 1, y = H * .48 + i * 150;
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(p, p); ctx.globalAlpha = a * (ok ? 1 : 1 - .6 * right);
+    rr(-330, -58, 660, 116, 30); ctx.fillStyle = ok && right > 0 ? GOLD : 'rgba(19,11,84,.92)'; ctx.shadowColor = ok && right > 0 ? 'rgba(254,179,0,.7)' : 'rgba(0,0,0,.5)'; ctx.shadowBlur = 26; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.lineWidth = 4; ctx.strokeStyle = ok && right > 0 ? '#fff' : 'rgba(254,179,0,.6)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(-260, 0, 38, 0, 7); ctx.fillStyle = ok && right > 0 ? BR.navy : GOLD; ctx.fill(); txt(l, -260, 3, 44, ok && right > 0 ? GOLD : BR.navy, 'MB', { blur: 0, dy: 0 });
+    txt(s, 20, 3, 64, ok && right > 0 ? BR.navy : '#fff', 'MB', { blur: 0, dy: 0 });
+    if (ok && right > 0) { ctx.save(); ctx.globalAlpha = right; ctx.strokeStyle = BR.navy; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(220, 0); ctx.lineTo(245, 26); ctx.lineTo(290, -28); ctx.stroke(); ctx.restore(); }
+    ctx.restore(); });
+  // 3-2-1 timer in the pause
+  const ts = B.o3 + OFF + .7, te = V('right'), tp = ap(t, ts, .2) * (1 - ap(t, te - .15, .2));
+  if (tp > 0) { const n = Math.max(1, 3 - Math.floor((t - ts) / ((te - ts) / 3))), fr = ((t - ts) / ((te - ts) / 3)) % 1;
+    ctx.save(); ctx.globalAlpha = a * tp; ctx.translate(W / 2, H * .9 - 40); ctx.beginPath(); ctx.arc(0, 0, 66, 0, 7); ctx.fillStyle = 'rgba(19,11,84,.95)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 66, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - fr)); ctx.strokeStyle = GOLD; ctx.lineWidth = 10; ctx.stroke();
+    txt(String(n), 0, 4, 76, '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+  ctx.restore();
+}
+// ---------- camera ----------
+let CAMK = [], ILE = [], SALT = [], EVAP = [];
+const HOOK = [76.35, 46.12, 212];
+function buildCam() {
+  CAMK = [
+    [0, HOOK[0], HOOK[1], 200], [V('bal') - .3, HOOK[0], HOOK[1], 228, 'l'],
+    [V('bal') + 1.0, 69.0, 47.6, 24, 'e'], [V('len') - .25, 69.3, 47.6, 26, 'l'],
+    [V('len') + 1.0, 76.3, 46.0, 196, 'e'], [V('mid') - .1, 76.3, 46.05, 208, 'l'],
+    [V('mid') + 1.0, 75.55, 46.6, 480, 'e'], [V('uzy') + .7, 75.5, 46.66, 1450, 'e'], [V('ans') - .35, 75.52, 46.68, 1600, 'l'],
+    [V('ans') + 1.5, 79.2, 44.9, 92, 'e'], [V('west') - .2, 79.0, 44.95, 98, 'l'],
+    [V('west') + 1.0, 74.55, 45.85, 320, 'e'], [V('east') - .1, 74.6, 45.9, 340, 'l'],
+    [V('east') + 1.2, 77.95, 46.5, 290, 'e'], [V('mix') - .3, 77.9, 46.5, 305, 'l'],
+    [V('mix') + .9, 76.3, 46.12, 214, 'e'], [V('threat') - .2, 76.3, 46.12, 225, 'l'],
+    [V('threat') + 1.2, 80.2, 44.55, 82, 'e'], [V('quiz') - .2, 80.0, 44.6, 88, 'l'],
+    [V('quiz') + 1.2, HOOK[0], HOOK[1], 200, 'e'], [END, HOOK[0], HOOK[1], 232, 'l'] ];
+}
+function render(t) {
+  TT = t; CAM = camAt(CAMK, t);
+  drawMap(.1);
+  // strait close-up texture (Sentinel-2), feathered, fades in with zoom
+  { const sa = clamp((CAM.ppd - 420) / 300); if (sa > 0 && IM.straitF) { ctx.save(); ctx.globalAlpha = sa; const im = IM.straitF; const [x0, y0] = P(74.95, 47.3), [x1, y1] = P(76.05, 45.95); ctx.drawImage(im, x0, y0, x1 - x0, y1 - y0); ctx.restore(); } }
+  const wide = 1 - ap(CAM.ppd, 40, 60);
+  { ctx.save(); ctx.globalAlpha = .45 * (1 - ap(CAM.ppd, 400, 200)); ctx.beginPath(); for (const r of SH.borders) r.forEach((c, i) => { const [x, y] = P(c[0], c[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.8; ctx.stroke(); ctx.restore(); }
+  glowFill(SH.cty.KAZ, GOLD, .9 * Math.max(wide, .3) * (1 - ap(CAM.ppd, 400, 200)), { fill: .08, blur: 22, lw: 4 });
+
+  // ---- lake two colours: tint strength per scene
+  const close = 1 - ap(CAM.ppd, 520, 400);           // the vector shore is coarse: fade the tint in the close-up
+  const wA = ap(t, V('fr') - .3, .5), eA = ap(t, V('sa') - .3, .5);
+  let wS = 1, eS = 1;
+  if (t > V('west') && t < V('east') + .5) wS = 1.25 + .15 * Math.sin(t * 4);
+  const salty = ap(t, V('saltst'), 2.5); eS = 1 + .4 * salty * (t < V('threat') ? 1 : 0);
+  tint(SH.west, FRESH, wA * close * .9, { fill: .42 * wS, edge: '#bfe4ff' });
+  tint(SH.east, SALTY, eA * close * .9, { fill: .42 * eS, edge: '#bdf7e4' });
+  { const fl = ap(t, V('s1b') - .4, .35); const a = fl * Math.min(1, (1 - ap(t, V('bal') - .2, .3)) + A('mid', 'uzy') + A('mix', 'salty', .3) + ap(t, V('quiz') + 1.2, .4)); splitLine(a * close, eout(ap(t, V('s1b') - .4, .4))); }
+
+  // ---- S1 hook
+  { const a = win(t, .1, V('bal') - .1, .3); head2(TXT.h1, TXT.h2, a, H * .13); }
+  { const a = win(t, V('fr') - .2, V('bal') + .2, .3); const [x, y] = P(74.5, 45.4); if (a > 0) { ctx.save(); ctx.globalAlpha = 1; label2([TXT.fresh], 74.6, 45.2, a, FRESH, 70); ctx.restore(); } }
+  { const a = win(t, V('sa') - .2, V('bal') + .2, .3); label2([TXT.salty], 77.9, 47.0, a, SALTY, 70); }
+  // ---- S2 Kazakhstan + ENT trap
+  { const a = A('bal', 'len', .3); if (a > 0) {
+      label2([TXT.kaz], 63.5, 44.9, a * ap(t, V('bal') + .7, .3), GOLD, 56);
+      ring(76.3, 46.3, a, GOLD, 26); const [x, y] = P(76.3, 46.3); pill(TXT.bal, x, y - 95, 48, a * ap(t, V('bal') + .5, .3), { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: pop(V('bal') + .5) });
+      stampW(TXT.trap, W / 2, H * .24, a, V('ent') + .1, GOLD);
+      // ENT text badge (small)
+    } }
+  // ---- S3 600+ km, narrow and shallow, strait
+  { const a = A('len', 'uzy', .3); if (a > 0) {
+      const ax = [[73.55, 45.45], [74.1, 45.85], [74.6, 46.3], [75.2, 46.6], [75.8, 46.66], [76.5, 46.6], [77.3, 46.55], [78.1, 46.47], [78.7, 46.55], [79.2, 46.72]];
+      const p = ease(ap(t, V('len') + .6, 1.3)); polyPartial(ax, p, { col: '#fff', lw: 6, glow: GOLD, blur: 18, a: a * (1 - ap(t, V('mid'), .4) * .7) });
+      ax.forEach((c, i) => { if (i / (ax.length - 1) <= p + .001) { const [x, y] = P(...c); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill(); ctx.restore(); } });
+      bigPill(TXT.len, H * .2, a * ap(t, V('len') + 1.0, .3), V('len') + 1.0, { size: 64 });
+      // comparison bars: lake vs Almaty -> Shymkent at one scale
+      const cb = a * ap(t, V('len') + 1.2, .35) * (1 - ap(t, V('mid') + .3, .3)); if (cb > 0) {
+        const k = 1.15, x0 = W / 2 - 700 * k / 2, y = H * .66, pa = ease(ap(t, V('len') + 1.3, .7)), pb = ease(ap(t, V('len') + 1.7, .7));
+        ctx.save(); ctx.globalAlpha = cb; rr(x0 - 30, y - 90, 700 * k + 60, 250, 26); ctx.fillStyle = 'rgba(19,11,84,.85)'; ctx.fill();
+        rr(x0, y - 12, 600 * k * pa, 26, 13); ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 16; ctx.fill(); ctx.shadowBlur = 0;
+        txt(`${TXT.cmpA}  600+ км`, x0, y - 50, 34, GOLD, 'MB', { align: 'left', blur: 0 });
+        rr(x0, y + 90, 700 * k * pb, 26, 13); ctx.fillStyle = '#fff'; ctx.fill();
+        txt(`${TXT.cmpB}  ${TXT.cmpBv}`, x0, y + 52, 34, '#fff', 'MB', { align: 'left', blur: 0 }); ctx.restore(); }
+      const na = a * ap(t, V('narrow'), .3) * (1 - ap(t, V('mid'), .3));
+      if (na > 0) { bigPill(TXT.narrow, H * .275, na, V('narrow'), { bg: 'rgba(19,11,84,.9)', col: '#fff' }); pill(TXT.depth, W / 2, H * .335, 36, na * ap(t, V('narrow') + .5, .3), { line: AQUA }); }
+      const ma = a * ap(t, V('mid') - .1, .3); if (ma > 0) { ring(...STRAIT, ma, '#fff', 22); }
+    } }
+  // ---- S4 Uzynaral strait close-up
+  { const a = A('uzy', 'ans', .3); if (a > 0) {
+      label2([TXT.uzy1], 75.5, 46.84, a * ap(t, V('uzy') + .3, .3), GOLD, 88); label2([TXT.uzy2], 75.5, 46.805, a * ap(t, V('uzy') + .5, .3), GOLD, 46);
+      const ba = a * ap(t, V('uzyw') - .2, .3); if (ba > 0) {   // width bracket across the narrows
+        const [x, y0] = P(75.475, 46.728), [, y1] = P(75.475, 46.674), p = eout(ap(t, V('uzyw') - .2, .5)), ym = (y0 + y1) / 2;
+        ctx.save(); ctx.globalAlpha = ba; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 10; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x, ym - (ym - y0) * p); ctx.lineTo(x, ym + (y1 - ym) * p); ctx.stroke();
+        for (const yy of [ym - (ym - y0) * p, ym + (y1 - ym) * p]) { ctx.beginPath(); ctx.moveTo(x - 24, yy); ctx.lineTo(x + 24, yy); ctx.stroke(); } ctx.restore();
+        pill(TXT.width, x - 210, ym, 46, ba, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: pop(V('uzyw')) }); }
+      const fa = a * ap(t, V('slow') - .2, .4); if (fa > 0) {
+        const path = [[75.28, 46.69], [75.4, 46.7], [75.5, 46.705], [75.62, 46.715], [75.75, 46.73]];
+        chevrons(path, fa, .12, 4, .9); pill(TXT.slow, W / 2, H * .7, 40, fa * (1 - ap(t, V('salt') - .1, .3)), { line: AQUA }); }
+      const qa = a * ap(t, V('salt') - .1, .3); if (qa > 0) {
+        bigPill(TXT.saltq, H * .7, qa, V('salt') - .1, { size: 46 });
+        const s = pop(V('salt')); ctx.save(); ctx.globalAlpha = qa; ctx.translate(W / 2, H * .26); ctx.scale(s, s); txt('?', 0, 0, 240, GOLD, 'MB', { shadow: 'rgba(0,0,0,.8)', blur: 30, stroke: 12, sc: 'rgba(19,11,84,.9)' }); ctx.restore(); }
+    } }
+  // ---- S5 Ile: from the Eastern Tian Shan in China into the west part
+  { const a = A('ans', 'east', .3); if (a > 0) {
+      const p = ease(ap(t, V('ans') + .9, 2.2)), aw = (1 - ap(t, V('west') + .3, .5));
+      { ctx.save(); ctx.globalAlpha = a * aw * .9; pathRings(SH.cty.CHN); ctx.setLineDash([14, 10]); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); }
+      polyPartial(ILE, p, { col: AQUA, lw: 9, glow: AQUA, blur: 22, a });
+      if (p > .98) flowDash(ILE, a * .9, '#e9fbff', 4, 60);
+      tint(SH.kap, AQUA, a * aw * ap(t, V('ans') + 2, .4), { fill: .6 });
+      label2([TXT.ili], 80.3, 44.25, a * aw * ap(t, V('ili') - .1, .3), AQUA, 84);
+      { const q = a * aw * ap(t, V('src') + .5, .3); if (q > 0) { ring(84.9, 43.37, q, AQUA, 22); const [x, y] = P(84.9, 43.37); pill(TXT.src, Math.min(x, W - 230), y + 70, 34, q, { line: AQUA }); } }
+      label2([TXT.china], 83.2, 45.6, a * aw * ap(t, V('china'), .3), RED, 60);
+      { const q = a * aw * ap(t, V('ans') + 2.3, .3); if (q > 0) { const [x, y] = P(77.6, 43.9); pill(TXT.kap, x, y + 50, 28, q, {}); } }
+      const pa = a * ap(t, V('p80') - .1, .3) * aw; if (pa > 0) { const n = Math.round(80 * ease(ap(t, V('p80'), 1.1)));
+        ctx.save(); ctx.globalAlpha = pa; const s = pop(V('p80') - .1); ctx.translate(W / 2, H * .2); ctx.scale(s, s); rr(-230, -110, 460, 220, 34); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = AQUA; ctx.stroke();
+        txt(`≈${n}%`, 0, -18, 120, AQUA, 'MB', { blur: 0 }); txt(TXT.p80, 0, 70, 36, '#fff', 'MX', { blur: 0 }); ctx.restore(); }
+      // west part fills with fresh water
+      const wa = a * ap(t, V('west') + .4, .4); if (wa > 0) {
+        chevrons([[74.15, 45.3], [74.3, 45.6], [74.5, 45.9], [74.75, 46.2]], wa, .35, 5, 1.1);
+        chevrons([[74.05, 45.35], [73.85, 45.6], [73.75, 45.85]], wa, .35, 3, 1.1);
+        label2([TXT.fresh], 74.55, 46.62, wa * ap(t, V('fresh') - .1, .3), FRESH, 84); label2([TXT.west], 74.55, 46.74, wa * ap(t, V('west') + .6, .3) * 0, '#fff', 40); }
+    } }
+  // ---- S6 east: little river water, the sun evaporates it, salt stays
+  { const a = A('east', 'threat', .3); if (a > 0) {
+      const ra = a * ap(t, V('east') + .6, .5) * (1 - ap(t, V('mix'), .4));
+      [['karatal', TXT.karatal, 77.6, 45.75], ['lepsy', TXT.lepsy, 79.4, 46.05], ['ayagoz', TXT.ayagoz, 79.75, 47.35]].forEach(([k, n, lo, la], i) => {
+        polyPartial(SH[k], ease(ap(t, V('east') + .6 + i * .2, .8)), { col: '#9fe8ff', lw: 3, glow: AQUA, blur: 8, a: ra * .8 });
+        const [x, y] = P(lo, la); pill(n, x, y, 26, ra * ap(t, V('east') + 1.2 + i * .15, .3), {}); });
+      const sa = a * ap(t, V('sun') - .2, .4) * (1 - ap(t, V('mix'), .4));
+      if (sa > 0) { sun(W * .78, H * .2, pop(V('sun') - .2, .5) * .95, sa);
+        for (const e of EVAP) { const [x, y] = P(e.lon, e.lat); evapArrow(x, y, (t * .45 + e.ph) % 1, sa * .9); } }
+      const ca = a * ap(t, V('saltst') - .1, .4); if (ca > 0) {
+        ctx.save(); for (const s of SALT) { const q = ca * ap(t, V('saltst') + s.d, .3); if (q <= 0) continue; const [x, y] = P(s.lon, s.lat); ctx.globalAlpha = q * (.7 + .3 * Math.sin(t * 6 + s.d * 9)); ctx.fillStyle = '#fff';
+          ctx.save(); ctx.translate(x, y); ctx.rotate(.785); ctx.shadowColor = '#fff'; ctx.shadowBlur = 8; ctx.fillRect(-s.s, -s.s, s.s * 2, s.s * 2); ctx.restore(); } ctx.restore(); }
+      { const q = a * ap(t, V('sun') + .3, .3) * (1 - ap(t, V('mix') - .2, .3)); if (q > 0) { pill(TXT.evap1, W / 2 - 10, H * .33, 44, q, { line: GOLD, scale: pop(V('sun') + .3) });
+          const q2 = q * ap(t, V('saltst'), .3); if (q2 > 0) { upArrow(W / 2 - 10, H * .375, .5, q2, '#fff'); pill(TXT.evap2, W / 2 - 10, H * .42, 44, q2, { bg: GOLD, col: BR.navy, line: GOLD, font: 'MB', scale: pop(V('saltst')) }); } } }
+      photoCard(win(t, V('sun') + 1.4, V('sun') + 4.4, .3), V('sun') + 1.4);
+      const ma = a * ap(t, V('mix') + .5, .3); if (ma > 0) {
+        const [x, y] = P(SPLIT, 46.7); chevrons([[74.9, 46.55], [SPLIT - .08, 46.68]], ma * (1 - ap(t, V('salty'), .3)), .8, 2, 1); chevrons([[76.3, 46.75], [SPLIT + .08, 46.71]], ma * (1 - ap(t, V('salty'), .3)), .8, 2, 1);
+        const s = pop(V('mix') + .7); ctx.save(); ctx.globalAlpha = ma; ctx.translate(x, y - 110); ctx.scale(s, s); ctx.beginPath(); ctx.arc(0, 0, 44, 0, 7); ctx.fillStyle = RED; ctx.shadowColor = RED; ctx.shadowBlur = 20; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-16, -16); ctx.lineTo(16, 16); ctx.moveTo(16, -16); ctx.lineTo(-16, 16); ctx.stroke(); ctx.restore();
+        pill(TXT.nomix, W / 2, H * .3, 40, ma * (1 - ap(t, V('salty'), .3)), { line: GOLD }); }
+      const ba = a * ap(t, V('salty') - .1, .3); if (ba > 0) { bars(ba, V('salty') - .1); bigPill(TXT.times, H * .3, ba, V('salty') + .4, { size: 44 }); }
+    } }
+  // ---- S7 threat: fields and reservoirs take the Ile water; Aral's fate
+  { const a = A('threat', 'quiz', .3); if (a > 0) {
+      const take = ap(t, V('fields') + .4, V('aral') - V('fields'));
+      polyPartial(ILE, 1, { col: AQUA, lw: 9 - 5 * take, glow: AQUA, blur: 18, a });
+      flowDash(ILE, a * (1 - .6 * take), '#e9fbff', 4 - 2 * take, 60 - 40 * take);
+      tint(SH.kap, AQUA, a, { fill: .6 });
+      stampW(TXT.threat, W / 2, H * .2, a * (1 - ap(t, V('aral') - .1, .3)), V('threat'), RED);
+      const fa = a * ap(t, V('fields') - .1, .3); if (fa > 0) {
+        [[81.3, 44.25, 'f'], [80.4, 44.2, 'f'], [79.2, 43.55, 'f'], [77.15, 43.6, 'd'], [83.6, 43.75, 'd']].forEach(([lo, la, k], i) => {
+          const [x, y] = P(lo, la), q = fa * ap(t, V('fields') + i * .25, .3), s = pop(V('fields') + i * .25) * .95; (k === 'f' ? fieldIcon : damIcon)(x, y, s, q); });
+        const [x1, y1] = P(81.3, 44.25); pill(TXT.fields, x1, y1 + 62, 28, fa * ap(t, V('fields') + .5, .3), {});
+        const [x2, y2] = P(77.15, 43.6); pill(TXT.dams, x2, y2 + 62, 28, fa * ap(t, V('fields') + 1.2, .3), {});
+        glass(W * .84, H * .33, .85 - .4 * take, fa * (1 - ap(t, V('aral') - .1, .3))); }
+      const aa = a * ap(t, V('aral') - .1, .35); if (aa > 0) { aralInset(aa, V('aral') - .1); bigPill(TXT.aralq, H * .2, aa * ap(t, V('aralw') - .2, .3), V('aralw') - .2, { bg: RED, col: '#fff', line: '#fff', size: 50 }); }
+    } }
+  // source line
+  { const q = Math.min(win(t, 1.0, V('quiz'), .3), 1); if (q > 0) { ctx.save(); ctx.globalAlpha = q * .6; txt(TXT.src2, W / 2, H * .965, 19, '#fff', 'MS', { blur: 6 }); ctx.restore(); } }
+  vignette(.55);
+  quiz(t);
+  // ---- loop back: two colours + CTA
+  { const a = ap(t, V('cta') - .1, .4) * (1 - ap(t, V('vend') + .3, .3)); }
+  ctaEnd(t);
+  captions(t);
+  logo(.9);
+  endCard(t, V('vend') + .4);
+}
+function ctaEnd(t) {
+  const a = ap(t, V('cta'), .4); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a * .45; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const pk = back(ap(t, V('cta') + .2, .45)); if (pk <= 0) return;
+  ctx.save(); ctx.translate(W / 2, H * .6); ctx.scale(pk, pk);
+  txt(TXT.cta1, 0, -70, 66, '#fff', 'MX'); const s = TXT.cta2, size = 64, w = tw(s, size, 'MB') + 90;
+  rr(-w / 2, 0, w, 124, 40); ctx.fillStyle = GOLD; ctx.shadowColor = 'rgba(254,179,0,.6)'; ctx.shadowBlur = 40; ctx.fill(); txt(s, 0, 66, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+  upArrow(W / 2, H * .45 + Math.sin(t * 6) * 14, 1.6 * clamp(pk), clamp(pk));
+}
+function endCard(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 420 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TXT.cta1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TXT.cta2, W / 2, H * .62 + 95, 80, GOLD, 'MB', { blur: 0 });
+  upArrow(W / 2, H * .62 + 230 + Math.sin(t * 6) * 10, 1, 1);
+  ctx.restore();
+}
+function feather(im, f) {   // copy with soft transparent edges (f = fraction of each side)
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+  x.globalCompositeOperation = 'destination-in';
+  const gx = x.createLinearGradient(0, 0, c.width, 0); gx.addColorStop(0, 'rgba(0,0,0,0)'); gx.addColorStop(f, '#000'); gx.addColorStop(1 - f, '#000'); gx.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gx; x.fillRect(0, 0, c.width, c.height);
+  const gy = x.createLinearGradient(0, 0, 0, c.height); gy.addColorStop(0, 'rgba(0,0,0,0)'); gy.addColorStop(f, '#000'); gy.addColorStop(1 - f, '#000'); gy.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gy; x.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+function inPoly(pt, rings) { let ins = false; for (const r of rings) for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) ins = !ins; } return ins; }
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json();
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  ILE = [...SH.kunes[0], ...SH.ile.find(l => l[0][0] > 80), ...SH.ile.find(l => l[0][0] < 80)];
+  const r = rng(11); while (SALT.length < 140) { const p = [75.6 + r() * 3.7, 46.3 + r() * .6]; if (inPoly(p, SH.east)) SALT.push({ lon: p[0], lat: p[1], d: r() * 2.2, s: 2 + r() * 3 }); }
+  while (EVAP.length < 9) { const p = [76.2 + r() * 3, 46.45 + r() * .25]; if (inPoly(p, SH.east)) EVAP.push({ lon: p[0], lat: p[1], ph: r() }); }
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('bal', 'tex/bal.jpg'), loadImg('strait', 'tex/strait.jpg'), loadImg('shore', 'photos/shore.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  IM.straitF = feather(IM.strait, .12);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

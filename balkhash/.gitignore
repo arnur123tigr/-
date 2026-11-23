@@ -1,0 +1,7 @@
+out/
+chk/
+*.log
+prev/vo_*.mp3
+old/
+prev/
+*_x.wav
