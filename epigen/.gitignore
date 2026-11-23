@@ -1,0 +1,11 @@
+clip/f*.jpg
+clip/*.mp4
+clip/still.png
+*.mp3
+*.wav
+*.mp4
+stills/
+old_female/
+words_*.json
+tr_*.txt
+*.log
