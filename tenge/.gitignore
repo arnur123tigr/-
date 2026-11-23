@@ -1,0 +1,12 @@
+out/
+chk/
+*.log
+takes/
+*.log
+chk2/
+photos_src/
+chk_kk/
+seg*.wav
+s1.json
+s2.json
+chk*/

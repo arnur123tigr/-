@@ -1,0 +1,312 @@
+// ---------- tenge kit ----------
+function banknote(x, y, w, h, rot, kind, a = 1, sc = 1) {   // flat note: 'rub' soviet ruble, 'tng' tenge
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc);
+  const R = kind === 'rub'; const bg = R ? '#c9b98a' : F.am, ink = R ? '#7a5c3a' : F.dk, ac = R ? '#a8875a' : F.tq;
+  ctx.fillStyle = F.sh; rr(-w / 2 + 5, -h / 2 + 6, w, h, h * .08); ctx.fill();
+  ctx.fillStyle = bg; rr(-w / 2, -h / 2, w, h, h * .08); ctx.fill();
+  ctx.strokeStyle = ink; ctx.lineWidth = Math.max(2, h * .04); rr(-w / 2 + h * .1, -h / 2 + h * .1, w - h * .2, h * .8, h * .05); ctx.stroke();
+  ctx.fillStyle = ac; ctx.beginPath(); ctx.arc(w * .22, 0, h * .28, 0, 7); ctx.fill();
+  if (R) { ctx.fillStyle = ink; star(w * .22, 0, h * .18, 1, ink); txt('РУБЛЬ', -w * .12, 0, h * .24, ink, 'MB', { blur: 0, dy: 0 }); }
+  else { txt('₸', w * .22, h * .02, h * .4, F.dk, 'MB', { blur: 0, dy: 0 }); ctx.strokeStyle = F.dk; ctx.lineWidth = Math.max(2, h * .035);
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-w * .18, 0); ctx.bezierCurveTo(-w * .18 + sx * h * .2, -h * .25, -w * .18 + sx * h * .35, -h * .05, -w * .18 + sx * h * .25, h * .1); ctx.stroke(); }
+    txt('ТЕҢГЕ', -w * .18, h * .27, h * .14, F.dk, 'MB', { blur: 0, dy: 0 }); }
+  ctx.restore();
+}
+function stampMark(s, x, y, p, size = 70, rot = -.12, col = F.co) {   // rubber stamp slams in
+  if (p <= 0) return; const k = 1 + 1.4 * (1 - eout(clamp(p))); const w = tw(s, size, 'MB') + size * .9, h = size * 1.6;
+  ctx.save(); ctx.globalAlpha = clamp(p * 3); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(k, k);
+  ctx.strokeStyle = col; ctx.lineWidth = size * .1; rr(-w / 2, -h / 2, w, h, size * .18); ctx.stroke(); ctx.lineWidth = size * .04; rr(-w / 2 + size * .16, -h / 2 + size * .16, w - size * .32, h - size * .32, size * .1); ctx.stroke();
+  ctx.fillStyle = 'rgba(239,71,111,.12)'; rr(-w / 2, -h / 2, w, h, size * .18); ctx.fill();
+  txt(s, 0, size * .05, size, col, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function suitcase(x, y, s, open, glare = 1, glow = 0) {   // (x,y) = bottom centre; open 0..1 lifts the lid
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  const W2 = 300, Hb = 250, oc = Math.cos(clamp(open) * Math.PI * .55);
+  // body
+  shade(c => { ctx.fillStyle = c || '#2a3a6e'; rr(-W2, -Hb, W2 * 2, Hb, 26); ctx.fill(); if (!c) { ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(-W2, -Hb * .52, W2 * 2, 14);
+    ctx.fillStyle = F.am; for (const sx of [-1, 1]) { rr(sx * 200 - 28, -Hb - 6, 56, 46, 8); ctx.fill(); } } }, 12, 14);
+  // money inside (visible when open)
+  if (open > .05) {
+    ctx.save(); ctx.beginPath(); ctx.rect(-W2 + 20, -Hb - 10, W2 * 2 - 40, 60); ctx.clip();
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) banknote(-210 + i * 140, -Hb + 26 - r * 18, 130, 64, (i % 2 ? .04 : -.04), 'tng', 1);
+    ctx.restore();
+    const gl = glare * clamp(open * 2); if (gl > 0) { ctx.save(); ctx.globalAlpha = gl; const g = ctx.createRadialGradient(0, -Hb, 10, 0, -Hb, 380); g.addColorStop(0, 'rgba(255,255,240,1)'); g.addColorStop(.35, 'rgba(255,240,200,.85)'); g.addColorStop(1, 'rgba(255,230,160,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, -Hb, 420, 200, 0, 0, 7); ctx.fill(); ctx.restore(); }
+    if (glow > 0) { ctx.save(); ctx.globalAlpha = glow; ctx.fillStyle = GOLD; ctx.shadowColor = GOLD; ctx.shadowBlur = 80; ctx.beginPath(); ctx.moveTo(-W2 + 30, -Hb); ctx.lineTo(-W2 - 200, -Hb - 900); ctx.lineTo(W2 + 200, -Hb - 900); ctx.lineTo(W2 - 30, -Hb); ctx.closePath(); ctx.globalAlpha = glow * .25; ctx.fill(); ctx.restore(); }
+  }
+  // lid: hinged at the back edge (y=-Hb), drawn foreshortened
+  const lh = Hb * .9 * oc; ctx.save(); ctx.translate(0, -Hb);
+  if (open < .5) { shade(c => { ctx.fillStyle = c || '#334680'; rr(-W2, -lh * (open > 0 ? 1 : 0) - 0, W2 * 2, Math.max(8, lh * (1 - clamp(open * 2)) + 8), 22); ctx.fill(); }, 0, 0); }
+  else { ctx.fillStyle = '#1e2a55'; ctx.beginPath(); ctx.moveTo(-W2, 0); ctx.lineTo(-W2 + 30, -Hb * .8 * clamp((open - .5) * 2)); ctx.lineTo(W2 - 30, -Hb * .8 * clamp((open - .5) * 2)); ctx.lineTo(W2, 0); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  // handle
+  ctx.strokeStyle = F.dk; ctx.lineWidth = 18; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-70, -Hb * (open > .05 ? 1 : 1) + 4); ctx.lineTo(-70, -Hb + 4); ctx.stroke();
+  ctx.restore();
+}
+function suitcaseStamp(x, y, s, label, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); stampMark(label, 0, -70, 1, 62, -.1); ctx.restore(); }
+function artist(x, y, s, ph, col) {   // seated silhouette with a moving pencil hand
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  shade(c => { ctx.fillStyle = c || col; ctx.beginPath(); ctx.moveTo(-70, 0); ctx.quadraticCurveTo(-75, -150, 0, -160); ctx.quadraticCurveTo(75, -150, 70, 0); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -205, 46, 0, 7); ctx.fill(); }, 6, 8);
+  const hx = 40 + Math.sin(ph) * 22, hy = -20 + Math.cos(ph * 1.3) * 8;
+  ctx.strokeStyle = col; ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(30, -120); ctx.lineTo(hx, hy); ctx.stroke();
+  ctx.strokeStyle = F.am; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + 26, hy + 30); ctx.stroke();
+  ctx.restore();
+}
+function sketch(x, y, w, h, p, a = 1, rot = 0, sc = 1) {   // banknote design sketch drawn on with p
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.fillRect(-w / 2, -h / 2, w, h); }, 8, 10);
+  ctx.strokeStyle = F.dk; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.setLineDash([w * 4 * p, 9999]);
+  ctx.beginPath(); ctx.rect(-w / 2 + 18, -h / 2 + 18, w - 36, h - 36); ctx.stroke(); ctx.setLineDash([]);
+  const q = clamp(p * 1.5 - .3);
+  if (q > 0) { ctx.save(); ctx.globalAlpha *= q; ctx.strokeStyle = F.tq; ctx.lineWidth = 6;   // ornament
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-w * .2, 0); ctx.bezierCurveTo(-w * .2 + sx * 40, -60, -w * .2 + sx * 75, -10, -w * .2 + sx * 50, 25); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(14,22,56,.25)'; ctx.beginPath(); ctx.arc(w * .22, -8, h * .26, 0, 7); ctx.fill();   // portrait silhouette
+    ctx.fillStyle = 'rgba(14,22,56,.45)'; ctx.beginPath(); ctx.arc(w * .22, -22, h * .1, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(w * .22, h * .14, h * .17, h * .1, 0, Math.PI, 0); ctx.fill();
+    txt('₸', -w * .2, h * .3, h * .16, F.co, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+  ctx.restore();
+}
+function plane(x, y, ang, s, a = 1, crate = '') {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.save(); ctx.translate(10, 18); planeShape(); ctx.restore(); ctx.fillStyle = F.cr; planeShape();
+  ctx.fillStyle = F.co; ctx.fillRect(-58, -6, 30, 12); ctx.restore();
+  if (crate) { ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y + 62 * s); ctx.fillStyle = '#b07a3e'; rr(-48 * s, -24 * s, 96 * s, 48 * s, 6); ctx.fill(); ctx.strokeStyle = F.dk; ctx.lineWidth = 3; ctx.stroke();
+    txt(crate, 0, 2, 20 * s, F.cr, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+}
+function planeShape() { ctx.beginPath(); ctx.moveTo(70, 0); ctx.quadraticCurveTo(60, -10, 40, -10); ctx.lineTo(-60, -9); ctx.lineTo(-78, -34); ctx.lineTo(-88, -34); ctx.lineTo(-78, 0);
+  ctx.lineTo(-88, 34); ctx.lineTo(-78, 34); ctx.lineTo(-60, 9); ctx.lineTo(40, 10); ctx.quadraticCurveTo(60, 10, 70, 0); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(14, -8); ctx.lineTo(-18, -70); ctx.lineTo(-34, -70); ctx.lineTo(-18, -8); ctx.moveTo(14, 8); ctx.lineTo(-18, 70); ctx.lineTo(-34, 70); ctx.lineTo(-18, 8); ctx.fill(); }
+function press(x, y, s, a, sc) {   // printing house
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc);
+  shade(c => { ctx.fillStyle = c || '#8a3b3b'; ctx.fillRect(-130, -150, 260, 150); ctx.beginPath(); ctx.moveTo(-145, -150); ctx.lineTo(0, -220); ctx.lineTo(145, -150); ctx.fill();
+    if (!c) { ctx.fillStyle = F.cr; for (let i = 0; i < 3; i++) ctx.fillRect(-100 + i * 75, -120, 50, 50); ctx.fillStyle = F.dk; ctx.fillRect(-25, -60, 50, 60); } }, 8, 10);
+  ctx.fillStyle = F.cr; ctx.fillRect(110, -260, 26, 90); ctx.globalAlpha *= .5; for (let i = 0; i < 3; i++) { const ph = (TT * .6 + i / 3) % 1; ctx.beginPath(); ctx.arc(123 + ph * 30, -270 - ph * 90, 14 + ph * 18, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function lockIcon(x, y, s, a, sc) { if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc);
+  ctx.strokeStyle = F.cr; ctx.lineWidth = 22; ctx.beginPath(); ctx.arc(0, -60, 50, Math.PI, 0); ctx.lineTo(50, -20); ctx.moveTo(-50, -20); ctx.lineTo(-50, -60); ctx.stroke();
+  shade(c => { ctx.fillStyle = c || F.am; rr(-80, -30, 160, 130, 20); ctx.fill(); }, 6, 8); ctx.fillStyle = F.dk; ctx.beginPath(); ctx.arc(0, 25, 18, 0, 7); ctx.fill(); ctx.fillRect(-7, 25, 14, 40); ctx.restore(); }
+function scales(x, y, tilt, a = 1) {   // beam pivot at (x,y); returns pan anchor points
+  const L = 330, c = Math.cos(tilt), s_ = Math.sin(tilt); const pl = [x - L * c, y - L * s_], pr = [x + L * c, y + L * s_];
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = F.dk; ctx.beginPath(); ctx.moveTo(x - 120, y + 520); ctx.lineTo(x + 120, y + 520); ctx.lineTo(x + 30, y + 470); ctx.lineTo(x - 30, y + 470); ctx.fill(); ctx.fillRect(x - 14, y, 28, 480);
+  ctx.strokeStyle = F.am; ctx.lineWidth = 20; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(...pl); ctx.lineTo(...pr); ctx.stroke();
+  ctx.fillStyle = F.am; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fill();
+  for (const p of [pl, pr]) { ctx.strokeStyle = F.cr; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] - 140, p[1] + 200); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] + 140, p[1] + 200); ctx.stroke();
+    ctx.fillStyle = F.tq; ctx.beginPath(); ctx.ellipse(p[0], p[1] + 205, 170, 30, 0, 0, Math.PI); ctx.fill(); ctx.fillStyle = '#25a89c'; ctx.beginPath(); ctx.ellipse(p[0], p[1] + 205, 170, 14, 0, 0, 7); ctx.fill(); }
+  ctx.restore(); return [[pl[0], pl[1] + 200], [pr[0], pr[1] + 200]];
+}
+function silverCoin(x, y, r, spin, a = 1, sc = 1) {
+  if (a <= 0 || sc <= 0) return; const k = Math.max(.06, Math.abs(Math.cos(spin))); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc * k, sc);
+  ctx.fillStyle = '#7d8798'; ctx.beginPath(); ctx.arc(10, 12, r, 0, 7); ctx.fill();
+  const g = ctx.createLinearGradient(-r, -r, r, r); g.addColorStop(0, '#f2f4f8'); g.addColorStop(.5, '#b9c1cf'); g.addColorStop(1, '#e3e7ee'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#8c95a6'; ctx.lineWidth = r * .05; ctx.beginPath(); ctx.arc(0, 0, r * .86, 0, 7); ctx.stroke();
+  ctx.fillStyle = '#8c95a6'; for (let i = 0; i < 24; i++) { const an = i * Math.PI / 12; ctx.beginPath(); ctx.arc(Math.cos(an) * r * .93, Math.sin(an) * r * .93, r * .025, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = '#6f7889'; ctx.lineWidth = r * .06; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-r * .45, r * .1); ctx.bezierCurveTo(-r * .3, -r * .45, r * .05, -r * .1, -r * .05, r * .2); ctx.bezierCurveTo(-r * .1, r * .45, r * .4, r * .35, r * .45, -r * .1);
+  ctx.moveTo(-r * .35, -r * .35); ctx.lineTo(r * .3, -r * .4); ctx.moveTo(-r * .2, r * .5); ctx.lineTo(r * .25, r * .48); ctx.stroke(); ctx.restore();
+}
+function goldCoin(x, y, r, spin, n, a) { if (a <= 0) return; const k = Math.max(.08, Math.abs(Math.cos(spin))); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(k, 1);
+  ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(6, 8, r, 0, 7); ctx.fill(); ctx.fillStyle = F.am; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#d4a017'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0, 0, r * .8, 0, 7); ctx.stroke(); if (k > .4) txt(String(n), 0, 5, r * 1.05, F.dk, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+function man(x, y, s, a, sc) {   // little flat man with a soviet ruble in his pocket
+  if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s * sc, s * sc);
+  shade(c => { ctx.fillStyle = c || F.tq; rr(-60, -190, 120, 190, 30); ctx.fill(); ctx.fillStyle = c || '#e9b98f'; ctx.beginPath(); ctx.arc(0, -235, 44, 0, 7); ctx.fill();
+    if (!c) { ctx.fillStyle = F.dk; ctx.beginPath(); ctx.arc(0, -250, 46, Math.PI, 0); ctx.fill(); ctx.fillStyle = F.dk; ctx.beginPath(); ctx.arc(-15, -232, 5, 0, 7); ctx.arc(15, -232, 5, 0, 7); ctx.fill(); } }, 6, 8);
+  banknote(30, -80, 110, 54, -.5, 'rub', 1); ctx.fillStyle = '#239e93'; rr(0, -78, 64, 50, 8); ctx.fill();
+  ctx.restore();
+}
+function priceTag(x, y, val, a, sc) { if (a <= 0 || sc <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(sc, sc); ctx.rotate(.08);
+  shade(c => { ctx.fillStyle = c || F.cr; ctx.beginPath(); ctx.moveTo(-170, -70); ctx.lineTo(130, -70); ctx.lineTo(190, 0); ctx.lineTo(130, 70); ctx.lineTo(-170, 70); ctx.closePath(); ctx.fill(); }, 8, 10);
+  ctx.fillStyle = F.dk; ctx.beginPath(); ctx.arc(130, 0, 14, 0, 7); ctx.fill(); txt(val, -25, 4, 72, F.co, 'MB', { blur: 0, dy: 0 }); ctx.restore(); }
+function upArrow(x, y, s, a, col = F.co) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(0, -90); ctx.lineTo(70, -10); ctx.lineTo(26, -10); ctx.lineTo(26, 80); ctx.lineTo(-26, 80); ctx.lineTo(-26, -10); ctx.lineTo(-70, -10); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function photoImg(img, x, y, w, rot, a, sc) {   // real banknote photo with white border + shadow
+  if (!img || a <= 0 || sc <= 0) return; const h = w * img.height / img.width; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc);
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(-w / 2 - 6, -h / 2 + 4, w + 24, h + 24); ctx.fillStyle = '#fff'; ctx.fillRect(-w / 2 - 12, -h / 2 - 12, w + 24, h + 24);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h); ctx.restore(); }
+function darken(a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#050a20'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+// ---------- scenes ----------
+function sceneIntro(t, again = false) {
+  bgFlat(); ground(H * .74, '#16224a');
+  const tE = V('date');
+  let op = again ? eout(ap(t, V('cta') + .1, .9)) : eout(ap(t, .35, .7)) * (1 - ease(ap(t, tE - .7, .45)));
+  suitcase(W / 2, H * .66, 1.35, op, 1, again ? ap(t, V('cta') + .5, .8) : 0);
+  suitcaseStamp(W / 2, H * .66, 1.35, TX.secret, again ? 0 : 1 - clamp(op * 3));
+  if (!again) {
+    plate(TX.top, W / 2, H * .15, 64, F.co, F.cr, 1, pop(t, .2));
+    const pn = ap(t, V('nobody') + .2, .3); stampMark(TX.secret, W / 2, H * .3, pn, 96, -.14);
+    lockIcon(W * .82, H * .42, .7, clamp(pn), back(ap(t, V('nobody') + .6, .4)));
+  }
+}
+function sceneCal(t) {
+  bgFlat(); const t0 = V('date'); const n = Math.min(15, 1 + Math.floor(ap(t, t0, 1.3) * 14));
+  const flip = (ap(t, t0, 1.3) * 14) % 1;
+  calendar(W / 2, H * .44, 1.9, TX.nov, String(n), 1, pop(t, t0 - .05, .4));
+  if (n < 15 && flip > 0) { ctx.save(); ctx.globalAlpha = 1 - flip; ctx.translate(W / 2, H * .44 - 260 * flip); ctx.rotate(-.3 * flip); ctx.fillStyle = F.cr; rr(-200, -110, 400, 260, 30); ctx.fill(); ctx.restore(); }
+  plate(TX.big, W / 2, H * .14, 80, F.am, F.dk, 1, pop(t, t0 + 1.4));
+  plate(TX.entD, W / 2, H * .66, 56, F.tq, F.dk, 1, pop(t, V('ent') + .1), { rot: -.05 });
+  stampMark(TX.op, W / 2, H * .75, ap(t, V('op') + .4, .3), 66, -.1);
+}
+let CK3 = [], CK5 = [];
+function sceneMap3(t) {
+  CAM = camAt(CK3, t); drawMap(.12); borders(.4);
+  kzGlow(ap(t, V('y91') + .2, .8));
+  mapPill(TX.kz, ...KZC, ap(t, V('y91') + .5, .4), 0, 44, GOLD);
+  const a93 = ap(t, V('y93'), .5);
+  spot(...MOS, a93, F.co); mapPill(TX.mos, ...MOS, ap(t, V('y93') + .2, .4), -70, 38);
+  if (a93 > 0) { const [x, y] = P(...MOS); plate(TX.nrub, x + 40, y + 110, 40, F.co, F.cr, 1, pop(t, V('y93') + .7), { rot: -.05 }); }
+  const fl = t - V('flood');
+  if (fl > 0) { const [x0, y0] = P(...MOS), [x1, y1] = P(64, 47);
+    for (let i = 0; i < 12; i++) { const k = clamp((fl - i * .16) / 1.2); if (k <= 0 || k >= 1) continue; const e = ease(k);
+      const x = lerp(x0, x1, e) + Math.sin(i * 2.1) * 90 * Math.sin(Math.PI * e), y = lerp(y0, y1, e) - 160 * Math.sin(Math.PI * e) + Math.cos(i) * 40;
+      banknote(x, y, 120, 58, Math.sin(t * 5 + i) * .5, 'rub', clamp(Math.min(k * 5, (1 - k) * 5 + .4))); }
+    const ar = ap(t, V('flood') + .1, .9); if (ar > 0) arrow(x0 + 30, y0 + 40, x1 - 40, y1 - 20, (x0 + x1) / 2, Math.min(y0, y1) - 140, ar, 1, 10); }
+  vignette(.55);
+  // headline: 1991 + independence, later the money problem
+  const hA = 1 - ap(t, V('rub') - .2, .3);
+  plate('1991', W / 2, H * .12, 80, F.am, F.dk, hA, pop(t, V('y91') + .1));
+  plate(TX.ind, W / 2, H * .2, 46, F.tq, F.dk, hA, pop(t, V('y91') + .8));
+  const hB = ap(t, V('rub'), .3) * (1 - ap(t, V('y93') - .2, .3));
+  if (hB > 0) { plate(TX.h3a, W / 2, H * .12, 56, F.tq, F.dk, hB, back(hB)); plate(TX.h3b, W / 2, H * .195, 56, F.co, F.cr, hB, back(ap(t, V('rub') + .4, .4))); }
+  const mA = ap(t, V('rub') + .2, .4) * (1 - ap(t, V('y93') - .2, .3));
+  if (mA > 0) { ctx.save(); ctx.globalAlpha = mA * .85; ctx.fillStyle = 'rgba(19,11,84,.88)'; rr(W * .5 - 260, H * .5, 520, 420, 40); ctx.fill(); ctx.restore();
+    man(W / 2 - 60, H * .5 + 380, 1.1, mA, back(mA)); plate(TX.rub, W / 2 + 110, H * .5 + 90, 34, F.cr, F.dk, mA, pop(t, V('rub') + .6)); }
+  plate('1993', W / 2, H * .12, 80, F.co, F.cr, ap(t, V('y93'), .3), pop(t, V('y93')));
+  const pa = ap(t, V('price'), .4);
+  if (pa > 0) { const v = Math.round(10 * Math.pow(100, ease(ap(t, V('price'), 1.6)))); priceTag(W * .42, H * .7, TX.price + ' ' + v, 1, back(pa)); upArrow(W * .78, H * .68 - 40 * ap(t, V('price'), 1.6), 1, clamp(pa * 2)); }
+  txt(TX.src, W / 2, H * .965, 20, 'rgba(255,255,255,.55)', 'MS', { blur: 0 });
+}
+function sceneArt(t) {
+  bgFlat(); const t0 = V('so');
+  stampMark(TX.fast, W / 2, H * .13, ap(t, t0 + .5, .3), 70, -.08);
+  const hA = ap(t, V('art'), .3); if (hA > 0) plate(TX.h4, W / 2, H * .13, 72, F.am, F.dk, 1, pop(t, V('art')));
+  const out = ease(ap(t, V('print') - .6, .6));
+  sketch(W / 2 + out * 700, H * .3 - out * 500, 520, 270, ap(t, t0 + .3, 4), 1 - out * .3, -.04 + out * .5, pop(t, t0 + .2) * (1 - out * .5));
+  const ty = H * .7, cols = [F.co, F.tq, '#6c7bd6', F.am], ts = ['a1', 'a2', 'a3', 'a4'];
+  for (let i = 0; i < 4; i++) { const x = W * (.14 + i * .24); const p = pop(t, V('art') - .3 + i * .15); if (p <= 0) continue;
+    ctx.save(); ctx.translate(x, ty); ctx.scale(p, p); artist(0, 0, .72, t * 4 + i * 1.7, cols[i]); ctx.restore();
+    const on = ap(t, V(ts[i]) - .05, .2); const lit = on > 0 && (i === 3 || t < V(ts[i + 1]) - .05);
+    plate(TX.names[i], x, H * .5 + (i % 2) * 70, 34, lit ? F.am : F.cr, F.dk, 1, back(on) * (lit ? 1.12 : 1)); }
+  ctx.fillStyle = '#7a4f2c'; ctx.fillRect(0, ty, W, 30); ctx.fillStyle = '#5c3a20'; ctx.fillRect(40, ty + 30, 30, 200); ctx.fillRect(W - 70, ty + 30, 30, 200);
+  for (let i = 0; i < 4; i++) sketch(W * (.14 + i * .24), ty - 12, 150, 80, ap(t, V('art') + i * .4, 3), 1, (i % 2 ? .08 : -.08), 1);
+}
+function sceneMap5(t) {
+  CAM = camAt(CK5, t); drawMap(.12); borders(.4); kzGlow(.5);
+  spot(...ALA, 1); spot(...LON, ap(t, V('print') + .6, .4), F.co);
+  mapPill(TX.ala, ...ALA, 1, 70, 40, GOLD); mapPill(TX.lon, ...LON, ap(t, V('print') + .8, .4), -70, 40);
+  const [ax, ay] = P(...ALA), [lx, ly] = P(...LON), cx = (ax + lx) / 2, cy = Math.min(ay, ly) - 220;
+  const sp = ap(t, V('print') + .2, 1.4); if (sp > 0 && sp < 1) { const k = ease(sp), x = (1 - k) * (1 - k) * ax + 2 * (1 - k) * k * cx + k * k * lx, y = (1 - k) * (1 - k) * ay + 2 * (1 - k) * k * cy + k * k * ly; sketch(x, y, 150, 80, 1, 1, -.1, 1); }
+  dashLine(ALA, LON, ap(t, V('print') + .2, 1.4), .8);
+  press(lx + 40, ly + 330, .9, ap(t, V('print') + 1.4, .3), pop(t, V('print') + 1.4));
+  plate(TX.hs, lx + 60, ly + 400, 34, F.co, F.cr, 1, pop(t, V('print') + 1.9));
+  const tf = t - V('fly');
+  for (let i = 0; i < 3; i++) { const k = clamp((tf - i * .6) / 2.6); if (k <= 0) continue; const e = ease(k), c2y = cy - 60 + i * 90;
+    const x = (1 - e) * (1 - e) * lx + 2 * (1 - e) * e * cx + e * e * ax, y = (1 - e) * (1 - e) * (ly + i * 40) + 2 * (1 - e) * e * c2y + e * e * ay;
+    const dx = 2 * (1 - e) * (cx - lx) + 2 * e * (ax - cx), dy = 2 * (1 - e) * (c2y - ly) + 2 * e * (ay - c2y);
+    plane(x, y, Math.atan2(dy, dx), .75, k < 1 ? 1 : 1 - clamp((tf - i * .6 - 2.6) * 3), TX.secret); }
+  vignette(.55);
+  plate(TX.route, W / 2, H * .13, 54, F.am, F.dk, 1, pop(t, V('fly') + .2));
+  const pp = ap(t, V('ppl'), .4); darken(pp * .55); lockIcon(W / 2, H * .5, 1.1, clamp(pp * 2), back(pp)); plate(TX.nobody, W / 2, H * .63, 60, F.co, F.cr, 1, pop(t, V('ppl') + .3));
+  stampMark(TX.stamp, W / 2, H * .3, ap(t, V('d15') - .55, .3), 60, -.08);
+  txt(TX.src, W / 2, H * .965, 20, 'rgba(255,255,255,.55)', 'MS', { blur: 0 });
+}
+function sceneScale(t) {
+  bgFlat(); const t0 = V('d15');
+  plate(TX.big, W / 2, H * .12, 72, F.am, F.dk, 1 - ap(t, V('rate') - .2, .3), pop(t, t0 + .1));
+  plate(TX.rate, W / 2, H * .12, 72, F.co, F.cr, ap(t, V('rate'), .3), pop(t, V('rate')));
+  const tilt = lerp(.32, 0, back(ap(t, V('rate') + .8, .9))) * (1 - .0); const sa = pop(t, t0 + .2);
+  ctx.save(); ctx.translate(W / 2, H * .3); ctx.scale(sa, sa); ctx.translate(-W / 2, -H * .3);
+  const [pl, pr] = scales(W / 2, H * .3, tilt);
+  for (let i = 0; i < 9; i++) banknote(pl[0] + ((i * 37) % 120) - 60, pl[1] - 12 - i * 16, 170, 70, Math.sin(i * 1.7) * .15, 'rub', clamp((t - t0 - .6 - i * .05) * 4));
+  plate(TX.rubs, pl[0], pl[1] + 80, 36, F.cr, F.dk, 1, pop(t, t0 + 1.0));
+  const ka = ap(t, V('rate') + .2, .35);
+  if (IM.b1) photoImg(IM.b1, pr[0], pr[1] - 50 - (1 - eout(ka)) * 400, 230, .05, ka, 1); else banknote(pr[0], pr[1] - 40 - (1 - eout(ka)) * 400, 220, 100, .05, 'tng', ka);
+  plate('1 ₸', pr[0], pr[1] + 80, 40, F.am, F.dk, 1, pop(t, V('rate') + .5));
+  ctx.restore();
+  // real first banknotes, fanned (overlay ~3.5 s)
+  const pa = win(t, V('own') - .2, V('day') - .1, .35); darken(pa * .7);
+  if (pa > 0) { const imgs = [IM.b100, IM.b20, IM.b1].filter(Boolean), n = imgs.length;
+    imgs.forEach((im, i) => { const k = back(ap(t, V('own') - .2 + i * .25, .5)); const off = (i - (n - 1) / 2); photoImg(im, W / 2 + off * 70, H * .42 + off * 150, 760, off * .12, pa, k); });
+    plate(TX.photoCap, W / 2, H * .63, 46, F.am, F.dk, pa, 1); txt(TX.photoSub, W / 2, H * .68, 32, '#fff', 'MX', { blur: 8 });
+    ctx.save(); ctx.globalAlpha = pa * .8; txt(TX.photoCr, W / 2, H * .715, 20, '#fff', 'MS', { blur: 0 }); ctx.restore();
+    plate(TX.ind2, W / 2, H * .2, 44, F.tq, F.dk, pa, pop(t, V('own') + 1.2)); }
+}
+function sceneDay(t) {
+  bgFlat(); const t0 = V('day');
+  plate(TX.day, W / 2, H * .13, 56, F.am, F.dk, 1, pop(t, t0 + .2));
+  const cm = ease(ap(t, V('word') - .2, .6));
+  calendar(lerp(W / 2, W * .25, cm), lerp(H * .42, H * .28, cm), lerp(1.6, .8, cm), TX.nov, '15', 1, pop(t, t0));
+  const ca = ap(t, V('word'), .5);
+  silverCoin(W / 2 + 60 * cm, H * .5, 220, t * 1.6, clamp(ca * 2), back(ca));
+  plate(TX.coin, W / 2 + 60, H * .66, 44, F.cr, F.dk, 1, pop(t, V('word') + 1.2));
+  plate(TX.tamga, W * .7, H * .3, 40, F.tq, F.dk, 1, pop(t, V('word') + 2.0), { rot: .06 });
+}
+function sceneQuiz(t) {
+  bgFlat(); const fin = ap(t, V('q') - .05, .35);
+  ctx.save(); ctx.translate(W / 2, H * .5); ctx.scale(fin, 1); ctx.translate(-W / 2, -H * .5);
+  shade(c => { ctx.fillStyle = c || F.cr; rr(80, H * .16, W - 160, H * .6, 40); ctx.fill(); }, 12, 14); ctx.fillStyle = F.co; rr(80, H * .16, W - 160, 130, [40, 40, 0, 0]); ctx.fill();
+  txt(TX.qT, W / 2, H * .16 + 66, 54, F.cr, 'MB', { blur: 0, dy: 0 });
+  const qa = ap(t, V('when'), .4); ctx.save(); ctx.globalAlpha = qa; TX.qq.forEach((l, i) => txt(l, W / 2, H * .3 + i * 70, Math.min(58, 58 * 820 / tw(l, 58, 'MB')), F.dk, 'MB', { blur: 0, dy: 0 })); ctx.restore();
+  const ans = ap(t, V('ans'), .35);
+  TX.opts.forEach(([L, s], i) => { const p = pop(t, V('when') + .8 + i * .45); if (p <= 0) return; const ok = i === 1, y = H * .45 + i * 150;
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(p * (ok ? 1 + .06 * ans : 1), p); ctx.globalAlpha = ok ? 1 : 1 - .6 * ans;
+    ctx.fillStyle = ok && ans > 0 ? F.tq : '#e8dcc0'; rr(-380, -58, 760, 116, 30); ctx.fill();
+    ctx.fillStyle = ok && ans > 0 ? F.dk : F.co; ctx.beginPath(); ctx.arc(-310, 0, 40, 0, 7); ctx.fill(); txt(L, -310, 4, 46, F.cr, 'MB', { blur: 0, dy: 0 });
+    txt(s, 30, 4, 58, F.dk, 'MB', { blur: 0, dy: 0 }); if (ok && ans > 0) { ctx.strokeStyle = F.dk; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(280, 0); ctx.lineTo(305, 26); ctx.lineTo(350, -26); ctx.stroke(); }
+    ctx.restore(); });
+  ctx.restore();
+  const t0 = B._p0 + OFF, t1 = V('ans') - .1;
+  const da = win(t, t0, t1 + .2, .2); if (da > 0) { const p = clamp((t - t0) / (t1 - t0)); goldCoin(W / 2, H * .86 - 40, 72, t * 7, Math.max(1, 3 - Math.floor(p * 3)), da); }
+  const pa = pop(t, V('ans') + .8); if (pa > 0) plate(TX.ans, W / 2, H * .705, 48, F.am, F.dk, 1, pa);
+}
+function buildCam() {
+  CK3 = [[V('y91'), 67.5, 47.5, 19], [V('y93') - .3, 67, 48, 21, 'l'], [V('y93') + 1.0, 55, 50, 13.5], [V('so'), 57, 49.5, 14.5, 'l']];
+  CK5 = [[V('print'), ALA[0], ALA[1], 40], [V('print') + 1.4, 38, 47, 12.5], [V('d15'), 38.5, 47, 13.2, 'l']];
+}
+function render(t) {
+  TT = t; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  if (t < V('date')) sceneIntro(t);
+  else if (t < V('y91')) sceneCal(t);
+  else if (t < V('so')) sceneMap3(t);
+  else if (t < V('print')) sceneArt(t);
+  else if (t < V('d15')) sceneMap5(t);
+  else if (t < V('day')) sceneScale(t);
+  else if (t < V('q')) sceneDay(t);
+  else if (t < V('cta')) sceneQuiz(t);
+  else sceneIntro(t, true);
+  cutFade(t, [V('y91'), V('so'), V('print'), V('day'), V('q'), V('cta')]);
+  const fl = 1 - Math.abs(t - V('date')) / .25; if (fl > 0) { ctx.save(); ctx.globalAlpha = clamp(fl); ctx.fillStyle = F.cr; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  const fl2 = 1 - Math.abs(t - V('d15')) / .2; if (fl2 > 0) { ctx.save(); ctx.globalAlpha = clamp(fl2); ctx.fillStyle = F.co; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  captions(t);
+  if (t >= V('cta')) ctaLink2(t);
+  logo(.9);
+  endCardLink2(t, V('vend') + .6);
+}
+function ctaLink2(t) {
+  const t0 = V('cta') + .1, p = pop(t, t0 + .5);
+  ctx.save(); ctx.globalAlpha = .45 * ap(t, t0, .4); ctx.fillStyle = '#050a20'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save(); ctx.globalAlpha = ap(t, t0 + .3, .3); txt(TX.link1, W / 2, H * .19, 70, '#fff', 'MB', { shadow: F.sh, blur: 0, dy: 8 }); ctx.restore();
+  plate(TX.link2, W / 2, H * .27, 66, F.am, F.dk, clamp(p), p);
+  const bob = Math.sin(t * 6) * 14; if (p > 0) { ctx.save(); ctx.globalAlpha = clamp(p); ctx.translate(W / 2, H * .1 + bob); ctx.fillStyle = F.am;
+    ctx.beginPath(); ctx.moveTo(0, -60); ctx.lineTo(50, 0); ctx.lineTo(18, 0); ctx.lineTo(18, 50); ctx.lineTo(-18, 50); ctx.lineTo(-18, 0); ctx.lineTo(-50, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  const la = ap(t, V('cta') + .9, .6); const im = IM.logo; if (im && la > 0) { const h = 190 * back(la), w = im.width / im.height * h; ctx.save(); ctx.globalAlpha = clamp(la * 2); ctx.drawImage(im, W / 2 - w / 2, H * .5 - h / 2, w, h); ctx.restore(); }
+}
+function endCardLink2(t, t0) {
+  const a = ap(t, t0, .45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const im = IM.logo, s = .92 + .08 * eout(ap(t, t0, 1.2));
+  if (im) { const h = 400 * s, w = im.width / im.height * h; ctx.drawImage(im, W / 2 - w / 2, H * .4 - h / 2, w, h); }
+  txt(TX.link1, W / 2, H * .62, 64, '#fff', 'MX', { blur: 0 }); txt(TX.link2, W / 2, H * .62 + 95, 80, BR.acc, 'MB', { blur: 0 });
+  ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  CAPS = await (await fetch(`caps_${LANG}.json`)).json(); B = (await (await fetch('beats.json')).json())[LANG];
+  SH = await (await fetch('shapes.json')).json();
+  END = V('vend') + 2.6; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('ca', 'tex/ca.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  await Promise.all(['b1', 'b20', 'b100'].map(k => loadImg(k, `photos/${k}.jpg`).catch(() => 0)));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
