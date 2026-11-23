@@ -1,0 +1,523 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:MB;src:url(fonts/Montserrat-Black.ttf)}
+@font-face{font-family:MX;src:url(fonts/Montserrat-ExtraBold.ttf)}
+html,body{margin:0;background:#000}
+canvas{width:540px;height:960px;display:block}
+</style></head><body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// «Долли қойының үш анасы болған»: Flat Vector (flat shapes, no outlines, one-tone soft shadow, «pop & slide»).
+// Scene 6 is a Higgsfield film shot (frames in hf/f_###.jpg, loaded by prep(T) before each frame). render(T) is deterministic.
+const LANG = new URLSearchParams(location.search).get('lang') || 'ru';
+const OW = 1080, OH = 1920;
+const NV = '#1D2B53', NV2 = '#16213F', TQ = '#2EC4B6', TQ2 = '#239E93', Y = '#FFD23F', Y2 = '#E0B21F', CO = '#EF476F', CO2 = '#C9375A', CR = '#FFF3D6', CR2 = '#EADBB8';
+const WOOL = '#FFFFFF', WOOL2 = '#F2EBDD', BFACE = '#2B2730', HORN = '#E6D3A8', LEG = '#3A3340', PINK = '#F6B9B5';
+const BR = { navy: '#130B54', amber: '#FEB300' };
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+let B, M, IMG = {}, CLIP = { n: 0, i: -1, im: null };
+
+const L = {
+  kk: {
+    t1: ['3 АНА', '0 ӘКЕ'], ana: 'АНА', papa: 'ӘКЕ',
+    h: { s2: 'ДОЛЛИ · 1996', s3: '№1 · ДНҚ БЕРДІ', s4: '№2 · ЖҰМЫРТҚА ЖАСУШАСЫ', s5: '№3 · ТУЫП БЕРДІ', s7: 'ГЕНДЕРІ — №1-ДІКІ', s8: 'ҰБТ СҰРАҒЫ', s9: 'СІЛТЕМЕ ШАПКАДА' },
+    tagSub: '1996 · ШОТЛАНДИЯ', first: 'ересек жасушадан алғашқы клон', ent: 'ҰБТ: КЛОНДАУ',
+    white: 'ақ тұмсық', black: 'қара тұмсық', cell: 'желін жасушасы', dna: 'ДНҚ', egg: 'жұмыртқа жасушасы', empty: 'БОС', emb: 'ұрық',
+    tries: 'әрекет', date: '05.07.1996', dolly: 'ДОЛЛИ', copy: ['КЛОН =', 'ГЕНЕТИКАЛЫҚ КӨШІРМЕ'],
+    q: ['Клон қай ағзаның', 'көшірмесі?'], opts: [['А', 'Ядро берген'], ['Ә', 'Жұмыртқа берген'], ['Б', 'Туған ана']], ok: 0,
+    cta: ['Профиль шапкасындағы', 'сілтемеге өтіңіз']
+  },
+  ru: {
+    t1: ['3 МАТЕРИ', '0 ОТЦОВ'], ana: 'МАМА', papa: 'ПАПА',
+    h: { s2: 'ДОЛЛИ · 1996', s3: '№1 · ДАЛА ДНК', s4: '№2 · ЯЙЦЕКЛЕТКА', s5: '№3 · ВЫНОСИЛА', s7: 'ГЕНЫ — ОТ №1', s8: 'ВОПРОС ЕНТ', s9: 'ССЫЛКА В ШАПКЕ' },
+    tagSub: '1996 · ШОТЛАНДИЯ', first: 'первый клон из взрослой клетки', ent: 'ЕНТ: КЛОНИРОВАНИЕ',
+    white: 'белая морда', black: 'чёрная морда', cell: 'клетка вымени', dna: 'ДНК', egg: 'яйцеклетка', empty: 'ПУСТАЯ', emb: 'зародыш',
+    tries: 'попыток', date: '05.07.1996', dolly: 'ДОЛЛИ', copy: ['КЛОН =', 'ГЕНЕТИЧЕСКАЯ КОПИЯ'],
+    q: ['Копией кого', 'является клон?'], opts: [['А', 'Кто дал ядро'], ['Б', 'Кто дал яйцеклетку'], ['В', 'Кто родил']], ok: 0,
+    cta: ['Перейдите по ссылке', 'в шапке профиля']
+  }
+}[LANG];
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const ei = x => Math.pow(clamp(x), 3);
+const eob = x => { x = clamp(x); const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const win = (T, t0, d) => clamp((T - t0) / d);
+const pop = (T, t0, d = .45) => T < t0 ? 0 : eob(win(T, t0, d));            // spring pop-in 0 -> 1 (overshoots)
+const out = (T, t0, d = .35) => 1 - ei(win(T, t0, d));                        // 1 -> 0
+const live = (T, a, b) => T >= a && T < b;
+
+// ---------- flat drawing ----------
+function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function shadowed(fn, dy = 12, col = 'rgba(8,12,30,.28)') { ctx.save(); ctx.translate(0, dy); fn(col); ctx.restore(); fn(null); }
+function box(x, y, w, h, r, fill, sh = 12, shc) { shadowed(cc => { rr(x, y, w, h, r); ctx.fillStyle = cc || fill; ctx.fill(); }, sh, shc); }
+function circ(x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fillStyle = fill; ctx.fill(); }
+function circS(x, y, r, fill, sh = 10) { shadowed(cc => circ(x, y, r, cc || fill), sh); }
+function txt(t, x, y, size, col, o = {}) {
+  ctx.save(); ctx.font = `${size}px ${o.f || 'MB'}`; ctx.fillStyle = col; ctx.textAlign = o.align || 'center'; ctx.textBaseline = 'middle';
+  if (o.sh) { ctx.fillStyle = o.sh; ctx.fillText(t, x, y + (o.shd || 6)); ctx.fillStyle = col; }
+  ctx.fillText(t, x, y); ctx.restore();
+}
+function tw(t, size, f = 'MB') { ctx.save(); ctx.font = `${size}px ${f}`; const w = ctx.measureText(t).width; ctx.restore(); return w; }
+function fit(t, base, maxW, f = 'MB') { return Math.min(base, Math.floor(base * maxW / tw(t, base, f))); }
+function pill(t, x, y, size, bg, fg, o = {}) {           // rounded label, centred on x,y
+  const w = tw(t, size, o.f || 'MB') + size * 1.1, h = size * 1.75;
+  box(x - w / 2, y - h / 2, w, h, h / 2, bg, o.sh ?? 8); txt(t, x, y + size * .04, size, fg, { f: o.f }); return w;
+}
+function scaleAt(x, y, s, r = 0) { ctx.translate(x, y); if (r) ctx.rotate(r); ctx.scale(s, s); ctx.translate(-x, -y); }
+
+// ---------- flat icons ----------
+function sheep(x, y, s, T, o = {}) {      // flat sheep; (x,y) = feet centre. o.face 'w' (white) | 'b' (Scottish Blackface, horns), o.flip faces left
+  const blk = o.face === 'b', face = blk ? BFACE : WOOL, wool = blk ? WOOL2 : WOOL, ph = o.ph || 0;
+  ctx.save(); ctx.translate(x, y); ctx.scale(o.flip ? -s : s, s);
+  if (o.dim) ctx.filter = `saturate(${1 - .8 * o.dim}) brightness(${1 - .5 * o.dim})`;
+  const hop = o.hop ? -Math.abs(Math.sin(T * 4.5 + ph)) * 45 : 0;
+  ctx.fillStyle = 'rgba(8,12,30,.22)'; ctx.beginPath(); ctx.ellipse(0, 4, 185 * (1 + hop / 300), 24, 0, 0, 7); ctx.fill();
+  ctx.translate(0, hop);
+  [[-105, 0], [-45, 1], [55, 0], [115, 1]].forEach(([lx, p]) => { ctx.save(); ctx.translate(lx, -150); ctx.rotate(o.walk ? Math.sin(T * 7 + p * 3) * .12 : 0); rr(-15, 0, 30, 150, 14); ctx.fillStyle = LEG; ctx.fill(); ctx.restore(); });
+  ctx.translate(0, Math.sin(T * 2.6 + ph) * 4);
+  const blobs = [[-120, -245, 78], [-55, -300, 88], [40, -302, 88], [118, -255, 78], [-95, -185, 76], [0, -178, 86], [95, -188, 76], [0, -245, 110]];
+  shadowed(cc => { for (const [bx, by, br] of blobs) circ(bx, by, br, cc || wool); circ(-192, -262, 34, cc || wool); }, 10);
+  ctx.fillStyle = blk ? 'rgba(150,120,80,.12)' : 'rgba(29,43,83,.06)';
+  for (const [bx, by, br] of blobs.slice(4, 7)) { ctx.beginPath(); ctx.arc(bx, by + br * .35, br * .62, 0, 7); ctx.fill(); }
+  // head
+  ctx.save(); ctx.translate(178, -312); ctx.rotate(.35 + (o.tilt || 0) + Math.sin(T * 1.7 + ph) * .05);
+  const ear = (sx, r) => { ctx.save(); ctx.translate(sx * 52, -34); ctx.rotate(r + (o.ear ? Math.sin(T * 9) * .15 : 0)); ctx.beginPath(); ctx.ellipse(sx * 26, 0, 40, 17, 0, 0, 7); ctx.fillStyle = face; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx * 28, 0, 26, 8, 0, 0, 7); ctx.fillStyle = blk ? '#4a4450' : PINK; ctx.fill(); ctx.restore(); };
+  ear(-1, .45);
+  shadowed(cc => { ctx.beginPath(); ctx.ellipse(0, 10, 56, 80, 0, 0, 7); ctx.fillStyle = cc || face; ctx.fill(); }, 8);
+  if (blk) {                                                                                   // curled horns
+    ctx.strokeStyle = HORN; ctx.lineWidth = 15; ctx.lineCap = 'round';
+    [-1, 1].forEach(sx => { ctx.beginPath(); for (let a = 0; a <= 1; a += .05) { const ang = sx * (-1.2 + a * 4.2), rad = 34 * (1 - a * .55); const px = sx * 52 + Math.cos(ang) * rad * sx, py = -18 + Math.sin(ang) * rad; a ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); });
+  }
+  [[-22, -62, 30], [10, -72, 30], [36, -58, 24], [-40, -48, 20]].forEach(([a, b, r]) => circ(a, b, r, wool));
+  ear(1, -.45);
+  const bl = ((T + ph * 1.3) % 3.4) < .12 ? .15 : 1;
+  [-22, 22].forEach(ex => {
+    ctx.save(); ctx.translate(ex, -4); ctx.scale(1, bl);
+    if (blk) { circ(0, 0, 11, '#fff'); circ(2, 1, 6.5, '#15131a'); } else { circ(0, 0, 9, '#1D1B26'); circ(-3, -3, 3, '#fff'); }
+    ctx.restore();
+  });
+  ctx.beginPath(); ctx.ellipse(0, 66, 15, 9, 0, 0, 7); ctx.fillStyle = blk ? '#57525e' : PINK; ctx.fill();
+  ctx.restore(); ctx.restore();
+}
+function faceAt(x, y, s, flip) { const k = flip ? -1 : 1; return [x + k * 182 * s, y - 300 * s]; }
+function heart(x, y, r, col) {
+  y -= r * .4; ctx.beginPath(); ctx.moveTo(x, y + r * .35);
+  ctx.bezierCurveTo(x, y - r * .3, x - r, y - r * .3, x - r, y + r * .15); ctx.bezierCurveTo(x - r, y + r * .6, x, y + r * .85, x, y + r * 1.1);
+  ctx.bezierCurveTo(x, y + r * .85, x + r, y + r * .6, x + r, y + r * .15); ctx.bezierCurveTo(x + r, y - r * .3, x, y - r * .3, x, y + r * .35);
+  ctx.fillStyle = col; ctx.fill();
+}
+function heartS(x, y, r, col) { shadowed(cc => heart(x, y, r, cc || col), 10); }
+function check(x, y, r, col, k) {                      // flat check badge
+  if (k <= 0) return; ctx.save(); scaleAt(x, y, k); circS(x, y, r, col, 6);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = r * .26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(x - r * .45, y + r * .02); ctx.lineTo(x - r * .1, y + r * .36); ctx.lineTo(x + r * .48, y - r * .34); ctx.stroke(); ctx.restore();
+}
+function cross(x, y, r, col, k) {
+  if (k <= 0) return; ctx.save(); scaleAt(x, y, k); circS(x, y, r, col, 6);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = r * .24; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - r * .38, y - r * .38); ctx.lineTo(x + r * .38, y + r * .38); ctx.moveTo(x + r * .38, y - r * .38); ctx.lineTo(x - r * .38, y + r * .38); ctx.stroke(); ctx.restore();
+}
+function cell(x, y, r, fill, rim, T, ph = 0) {          // wobbly flat cell
+  const n = 40; ctx.beginPath();
+  for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2, rr2 = r * (1 + .025 * Math.sin(a * 3 + T * 2 + ph) + .015 * Math.sin(a * 5 - T * 3)); const px = x + Math.cos(a) * rr2, py = y + Math.sin(a) * rr2; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+  ctx.save(); ctx.translate(0, 10); ctx.fillStyle = 'rgba(8,12,30,.25)'; ctx.fill(); ctx.restore();
+  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = Math.max(3, r * .07); ctx.strokeStyle = rim; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(x - r * .35, y - r * .4, r * .22, r * .12, -.6, 0, 7); ctx.fill();
+}
+function nucleus(x, y, r, col = Y) {
+  circS(x, y, r, col, 6); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.ellipse(x - r * .3, y - r * .35, r * .3, r * .16, -.6, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(29,43,83,.35)'; ctx.lineWidth = Math.max(2, r * .07); ctx.lineCap = 'round';      // DNA squiggle
+  ctx.beginPath(); for (let i = 0; i <= 12; i++) { const px = x - r * .45 + i * r * .075, py = y + r * .1 + Math.sin(i * 1.3) * r * .18; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke();
+}
+function bolt(x, y, s, col = Y) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  shadowed(cc => { ctx.beginPath(); ctx.moveTo(10, -90); ctx.lineTo(-40, 10); ctx.lineTo(0, 10); ctx.lineTo(-15, 90); ctx.lineTo(45, -15); ctx.lineTo(5, -15); ctx.lineTo(25, -90); ctx.closePath(); ctx.fillStyle = cc || col; ctx.fill(); }, 8);
+  ctx.restore();
+}
+function papaIcon(x, y, r, k) {
+  if (k <= 0) return; ctx.save(); scaleAt(x, y, k);
+  circS(x, y, r, CR2, 8);
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip();
+  circ(x, y - r * .22, r * .3, NV); ctx.beginPath(); ctx.ellipse(x, y + r * .62, r * .55, r * .48, 0, 0, 7); ctx.fillStyle = NV; ctx.fill(); ctx.restore();
+  ctx.strokeStyle = CO; ctx.lineWidth = r * .16; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - r * .72, y + r * .72); ctx.lineTo(x + r * .72, y - r * .72); ctx.stroke();
+  ctx.restore();
+}
+const slideX = (T, a, b) => OW * (1 - ease(win(T, a - .15, .5))) - OW * ease(win(T, b - .35, .5));
+
+// ---------- backgrounds ----------
+function bgNavy(T) {
+  ctx.fillStyle = NV; ctx.fillRect(0, 0, OW, OH);
+  [[160, 300, 260], [940, 760, 340], [220, 1500, 300], [900, 1750, 200]].forEach(([x, y, r], i) => circ(x + Math.sin(T * .3 + i) * 30, y + Math.cos(T * .25 + i) * 30, r, 'rgba(255,255,255,.035)'));
+}
+function bgCream(T) {
+  ctx.fillStyle = CR; ctx.fillRect(0, 0, OW, OH);
+  [[150, 360, 240], [960, 1300, 330], [300, 1650, 200]].forEach(([x, y, r], i) => circ(x + Math.sin(T * .3 + i) * 25, y + Math.cos(T * .25 + i) * 25, r, 'rgba(29,43,83,.05)'));
+}
+
+// ---------- scene 1: three mothers, zero fathers ----------
+function scene1(T) {
+  const tEnd = M.s2; if (T > tEnd + .1) return;
+  const slide = ease(win(T, tEnd - .55, .55));
+  ctx.save(); ctx.translate(-OW * 1.1 * slide, 0);
+  // title: «3 АНА» then «0 ӘКЕ»
+  const k1 = pop(T, .15, .5), k2 = pop(T, M.oke, .5);
+  ctx.save(); scaleAt(540, 330, k1); txt(L.t1[0], 540, 330, fit(L.t1[0], 120, 900), NV, { sh: Y, shd: 10 }); ctx.restore();
+  if (k2 > 0) { ctx.save(); scaleAt(540, 470, k2); txt(L.t1[1], 540, 470, fit(L.t1[1], 96, 900), CO, { sh: 'rgba(29,43,83,.15)' }); ctx.restore(); }
+  // sheep jumps in
+  const ks = pop(T, .05, .6), jump = T < .7 ? -Math.sin(Math.PI * clamp(T / .7)) * 120 : 0;
+  ctx.save(); scaleAt(540, 1540, ks); sheep(540 - 30, 1540 + jump, 1.05, T, { face: 'w', ear: true }); ctx.restore();
+  // three hearts
+  [[300, 700], [540, 640], [780, 700]].forEach(([x, y], i) => {
+    const k = pop(T, .45 + i * .3, .45); if (k <= 0) return; const b = Math.sin(T * 3 + i) * 8;
+    ctx.save(); scaleAt(x, y, k); heartS(x, y + b, 90, CO); txt(L.ana, x, y + b - 4, fit(L.ana, 36, 120), '#fff'); ctx.restore();
+  });
+  // crossed father
+  papaIcon(840, 960, 80, pop(T, M.oke + .1, .45));
+  if (T > M.oke + .1) { const k = pop(T, M.oke + .3, .4); ctx.save(); scaleAt(840, 1070, k); pill(L.papa, 840, 1070, 34, NV, CR, { sh: 6 }); ctx.restore(); }
+  ctx.restore();
+}
+
+// ---------- scene 2: ear tag «DOLLY · 1996» ----------
+function scene2(T) {
+  if (T < M.s2 - .3 || T > M.s3 + .3) return;
+  ctx.save(); ctx.translate(slideX(T, M.s2, M.s3), 0);
+  const k = pop(T, M.s2 + .1, .55), sw = Math.sin(T * 1.6) * .03;
+  ctx.save(); scaleAt(540, 690, k, sw);
+  shadowed(cc => { rr(150, 640, 780, 470, 60); ctx.fillStyle = cc || Y; ctx.fill(); }, 14);
+  circ(540, 715, 40, Y2); circ(540, 715, 24, NV);
+  txt('DOLLY', 540, 860, 170, NV);
+  txt(L.tagSub, 540, 1000, fit(L.tagSub, 58, 680), NV2, { f: 'MX' });
+  ctx.restore();
+  const kf = pop(T, M.s2 + 1.2, .5); if (kf > 0) { ctx.save(); scaleAt(540, 1200, kf); txt(L.first, 540, 1200, fit(L.first, 48, 920, 'MX'), CR, { f: 'MX' }); ctx.restore(); }
+  const ke = pop(T, M.ent, .5); if (ke > 0) { ctx.save(); scaleAt(560, 1360, ke, -.05); pill(L.ent, 560, 1360, fit(L.ent, 60, 820), CO, '#fff', { sh: 10 }); ctx.restore(); }
+  ctx.restore();
+}
+
+// ---------- scenes 3-5: the three mothers + the cell layer ----------
+const M1 = { x: 300, y: 1500, s: .95 }, M2 = { x: 790, y: 1500, s: .95 }, EGG = { x: 400, y: 880, r: 210 }, PARK = [905, 470], EMB = [540, 700];
+function momBadge(x, y, n, k, label) {
+  if (k <= 0) return; ctx.save(); scaleAt(x, y, k); pill('№' + n, x, y, 52, Y, NV, { sh: 8 }); ctx.restore();
+  if (label) { ctx.save(); scaleAt(x, y + 530, k); pill(label, x, y + 530, 34, 'rgba(255,243,214,.95)', NV, { sh: 6 }); ctx.restore(); }
+}
+function scene3(T) {
+  if (T < M.s3 - .3 || T > M.s4 + .3) return;
+  ctx.save(); ctx.translate(slideX(T, M.s3, M.s4), 0);
+  const k = pop(T, M.s3, .55);
+  ctx.save(); scaleAt(M1.x, M1.y, k); sheep(M1.x, M1.y, M1.s, T, { face: 'w' }); ctx.restore();
+  momBadge(M1.x, 1030, 1, pop(T, M.s3 + .3, .45), L.white);
+  ctx.restore();
+}
+function scene4(T) {
+  if (T < M.s4 - .3 || T > M.s5 + .3) return;
+  ctx.save(); ctx.translate(slideX(T, M.s4, M.s5), 0);
+  const k = pop(T, M.s4, .55);
+  ctx.save(); scaleAt(M2.x, M2.y, k); sheep(M2.x, M2.y, M2.s, T, { face: 'b', flip: true, ph: 1 }); ctx.restore();
+  momBadge(M2.x, 1030, 2, pop(T, M.s4 + .3, .45), L.black);
+  ctx.restore();
+}
+function mom3Pose(T) {
+  const k = ease(win(T, M.hard - .2, .6));
+  return { x: 540, y: lerp(1500, 1590, k), s: lerp(.9, .5, k) };
+}
+function scene5(T) {
+  if (T < M.s5 - .3 || T > M.s6 + .2) return;
+  ctx.save(); ctx.translate(slideX(T, M.s5, 999), 0);
+  const p = mom3Pose(T), k = pop(T, M.s5 + .1, .55);
+  ctx.save(); scaleAt(p.x, p.y, k); sheep(p.x, p.y, p.s, T, { face: 'b', ph: 2 }); ctx.restore();
+  // embryo glowing in the belly once it has landed
+  const land = M.s5 + 2.6;
+  if (T > land) { const bx = p.x - 10 * p.s, by = p.y - 190 * p.s, pu = .6 + .4 * Math.sin((T - land) * 5); ctx.save(); ctx.globalAlpha = .5 * pu; circ(bx, by, 60 * p.s, TQ); ctx.restore(); circ(bx, by, 26 * p.s, TQ); circ(bx, by, 11 * p.s, Y); }
+  const bk = pop(T, M.s5 + .4, .45) * (1 - win(T, M.hard - .2, .3));
+  if (bk > 0) { ctx.save(); scaleAt(540, 1060, bk); pill('№3', 540, 1060, 52, Y, NV, { sh: 8 }); ctx.restore(); }
+  // 277 attempts: grid of dots, all fail except one
+  if (T > M.hard) {
+    const N = 277, cols = 17, sp = 44, x0 = 540 - (cols - 1) * sp / 2, y0 = 640, WIN = 236;
+    const tf = M.try + .25, dur = 1.9;
+    for (let i = 0; i < N; i++) {
+      const x = x0 + (i % cols) * sp, y = y0 + Math.floor(i / cols) * sp, ka = pop(T, M.hard + i / N * 1.0, .3);
+      if (ka <= 0) continue;
+      const tfi = tf + (i / N) * dur, failed = i !== WIN && T > tfi, won = i === WIN && T > tf + dur + .1;
+      if (won) continue;
+      const fl = failed ? win(T, tfi, .2) : 0;
+      circ(x, y, 15 * ka, failed ? `rgba(239,71,111,${lerp(1, .55, fl)})` : 'rgba(255,243,214,.92)');
+      if (failed) { ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke(); }
+    }
+    const tw0 = tf + dur + .1;
+    if (T > tw0) { const x = x0 + (WIN % cols) * sp, y = y0 + Math.floor(WIN / cols) * sp, kk = pop(T, tw0, .5), gl = .5 + .5 * Math.sin((T - tw0) * 6); ctx.save(); ctx.globalAlpha = .35 * gl; circ(x, y, 70 * kk, TQ); ctx.restore(); check(x, y, 40 * kk, TQ, 1); }
+    // counter
+    const kc = pop(T, M.try, .45); if (kc > 0) {
+      ctx.save(); scaleAt(540, 470, kc);
+      const won = T > tw0, s = won ? '277 → 1' : '277';
+      txt(s, 540, 470, 104, won ? Y : CR, { sh: 'rgba(0,0,0,.3)', shd: 8 });
+      txt(L.tries, 540, 560, 40, 'rgba(255,243,214,.7)', { f: 'MX' });
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+// the cells live in one layer so they can travel from scene to scene
+function cells(T) {
+  if (T < M.cell || T > M.s5 + 2.8) return;
+  const uX = M1.x - 20, uY = M1.y - 110;
+  // somatic cell from mother 1
+  const cIn = ease(win(T, M.cell, .8)), cGone = 1 - win(T, M.s4 - .5, .4), cx = lerp(uX, 680, cIn), cy = lerp(uY, 900, cIn), cr = lerp(25, 170, cIn);
+  const slide3 = -OW * ease(win(T, M.s4 - .35, .5));
+  if (cGone > 0 && T < M.s4 + .2) {
+    ctx.save(); ctx.globalAlpha = cGone; ctx.translate(slide3, 0); cell(cx, cy, cr, '#BFEFEA', TQ, T);
+    if (T < M.dna) nucleus(cx, cy, cr * .32);
+    const lk = pop(T, M.cell + .6, .45) * (1 - win(T, M.dna, .3)); if (lk > 0) { ctx.save(); scaleAt(680, 1120, lk); pill(L.cell, 680, 1120, 38, TQ, NV, { sh: 6 }); ctx.restore(); }
+    ctx.restore();
+  }
+  // egg from mother 2
+  const eIn = ease(win(T, M.egg, .8)), toEmb = ease(win(T, M.s5 - .35, .6));
+  let ex = lerp(M2.x - 30, EGG.x, eIn), ey = lerp(M2.y - 110, EGG.y, eIn), er = lerp(30, EGG.r, eIn);
+  ex = lerp(ex, EMB[0], toEmb); ey = lerp(ey, EMB[1], toEmb); er = lerp(er, 170, toEmb);
+  const fused = T > M.zap;
+  // division and the flight into mother 3
+  const fly = ease(win(T, M.s5 + 1.9, .7)), m3 = mom3Pose(T);
+  if (fly > 0) { ex = lerp(ex, m3.x - 10 * m3.s, fly); ey = lerp(ey, m3.y - 190 * m3.s, fly); er = lerp(er, 26 * m3.s, fly); }
+  const zapK = T > M.zap ? Math.exp(-(T - M.zap) * 5) : 0, shake = zapK * Math.sin((T - M.zap) * 50) * 12;
+  if (T > M.egg && T < M.s5 + 2.7) {
+    ctx.save(); ctx.translate(shake, 0);
+    if (fused) { ctx.save(); ctx.globalAlpha = .25 + .15 * Math.sin(T * 4); circ(ex, ey, er * 1.12, TQ); ctx.restore(); }
+    cell(ex, ey, er, CR, fused ? TQ : CO, T, 1);
+    // division 1 -> 2 -> 4 -> 8
+    const n = T < M.s5 + .4 ? 1 : T < M.s5 + .9 ? 2 : T < M.s5 + 1.4 ? 4 : 8;
+    if (n > 1) {
+      const t0 = M.s5 + [0, 0, .4, 0, .9, 0, 0, 0, 1.4][n], kd = eob(win(T, t0, .35));
+      const POS = { 2: [[-.42, 0], [.42, 0]], 4: [[-.38, -.38], [.38, -.38], [-.38, .38], [.38, .38]], 8: [[-.5, -.18], [-.18, -.5], [.2, -.5], [.52, -.18], [-.5, .22], [-.15, .52], [.22, .5], [.5, .22]] }[n];
+      const sr = er * { 2: .4, 4: .34, 8: .27 }[n];
+      POS.forEach(([px, py]) => { const x = ex + px * er * kd, y = ey + py * er * kd; cell(x, y, sr, '#D7F4F0', TQ2, T, px * 7); circ(x, y, sr * .3, Y); });
+    }
+    ctx.restore();
+    if (n === 1 && T > M.egg) {
+      // the egg's own nucleus until the pipette takes it
+      const rm = M.rm, tip = ease(win(T, rm, .5)) * (1 - ease(win(T, rm + 1.0, .5))), suck = ease(win(T, rm + .5, .45));
+      if (T < rm + .95) nucleus(lerp(ex, ex - 120, suck), ey, lerp(er * .26, er * .08, suck), '#B7A3D6');
+      if (T > rm && T < rm + 1.6) {                     // glass pipette from the left
+        const tx = lerp(-60, ex - 70, tip);
+        ctx.save(); ctx.fillStyle = 'rgba(220,240,255,.55)'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(tx, ey - 8); ctx.lineTo(tx - 160, ey - 30); ctx.lineTo(tx - 900, ey - 30); ctx.lineTo(tx - 900, ey + 30); ctx.lineTo(tx - 160, ey + 30); ctx.lineTo(tx, ey + 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+        if (suck > .9) circ(tx - 80, ey, 14, '#B7A3D6');
+        ctx.restore();
+      }
+      const bk = pop(T, rm + 1.3, .4) * (1 - win(T, M.put + .6, .3));
+      if (bk > 0 && T < M.put + .9) { ctx.save(); scaleAt(ex, ey + 60, bk, -.08); pill(L.empty, ex, ey + 60, 44, CO, '#fff', { sh: 6 }); ctx.restore(); }
+      const lk = pop(T, M.egg + .6, .45) * (1 - win(T, M.rm, .3)); if (lk > 0) { ctx.save(); scaleAt(ex, ey + er + 50, lk); pill(L.egg, ex, ey + er + 50, 38, CO, '#fff', { sh: 6 }); ctx.restore(); }
+    }
+    // lightning
+    if (T > M.zap && T < M.zap + 1.2) {
+      const fk = 1 - win(T, M.zap, 1.2), fl = (Math.floor((T - M.zap) * 14) % 2) ? .6 : 1;
+      ctx.save(); ctx.globalAlpha = fk * fl; bolt(ex - er - 70, ey - 40, 1.1); bolt(ex + er + 70, ey + 20, -1.1); ctx.restore();
+      const rk = win(T, M.zap, .6); ctx.save(); ctx.globalAlpha = 1 - rk; ctx.strokeStyle = Y; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(ex, ey, er * (1 + rk * .8), 0, 7); ctx.stroke(); ctx.restore();
+    }
+  }
+  // the DNA nucleus: out of cell 1, parked, into the empty egg
+  let nx, ny, nr, show = T > M.dna && T < M.s5 + .4;
+  if (show) {
+    const a = ease(win(T, M.dna, .7)), b = ease(win(T, M.s4 - .45, .6)), d = ease(win(T, M.put, .8));
+    nx = lerp(lerp(lerp(cx, 700, a), PARK[0], b), ex, d); ny = lerp(lerp(lerp(cy, 560, a), PARK[1], b), ey, d); nr = lerp(lerp(lerp(cr * .32, 66, a), 44, b), er * .27, d);
+    if (n1(T)) { ctx.save(); ctx.translate(shake, 0); nucleus(nx, ny, nr); ctx.restore(); }
+    const lk = pop(T, M.dna + .5, .4) * (1 - win(T, M.put + .5, .3));
+    if (lk > 0) { ctx.save(); scaleAt(nx, ny - nr - 40, lk); pill(L.dna, nx, ny - nr - 40, lerp(52, 36, ease(win(T, M.s4 - .45, .6))), Y, NV, { sh: 6 }); ctx.restore(); }
+  }
+}
+function n1(T) { return T < M.s5 + .4; }
+
+// ---------- scene 6: the film shot ----------
+function film(T) {
+  const a = M.s6 - .35, b = M.s7 + .35; if (T < a || T > b) return;
+  const im = CLIP.im || IMG.still; if (!im) return;
+  const rin = ease(win(T, a, .55)), sh = ease(win(T, M.s7 - .2, .55));
+  ctx.save();
+  const R = Math.hypot(OW, OH) / 2 * rin; ctx.beginPath(); ctx.arc(540, 960, Math.max(1, R), 0, 7); ctx.clip();
+  if (sh > 0) { scaleAt(540, 960, 1 - .7 * sh); ctx.globalAlpha = 1 - sh; }
+  const z = 1 + .05 * win(T, a, b - a);
+  const s = Math.max(OW / im.width, OH / im.height) * z, w = im.width * s, h = im.height * s;
+  ctx.drawImage(im, 540 - w / 2, 960 - h / 2, w, h);
+  let g = ctx.createLinearGradient(0, 0, 0, 360); g.addColorStop(0, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, OW, 360);
+  g = ctx.createLinearGradient(0, OH - 520, 0, OH); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)'); ctx.fillStyle = g; ctx.fillRect(0, OH - 520, OW, 520);
+  const kd = pop(T, M.s6 + .45, .5); if (kd > 0) { ctx.save(); scaleAt(540, 330, kd); pill(L.date, 540, 330, 84, Y, NV, { sh: 10 }); ctx.restore(); }
+  ctx.restore();
+}
+
+// ---------- scene 7: whom does Dolly look like ----------
+const MOMS = [{ x: 195, f: 'w', fl: false }, { x: 540, f: 'b', fl: false }, { x: 885, f: 'b', fl: true }], MY = 960, MS = .45, DOL = { x: 520, y: 1540, s: .66 };
+function scene7(T) {
+  if (T < M.s7 - .2 || T > M.s8 + .3) return;
+  ctx.save(); ctx.translate(slideX(T, M.s7 + .25, M.s8), 0);
+  const judged = T > M.face;
+  // lines from Dolly to the mothers
+  if (T > M.first - .2) {
+    const [dx, dy] = faceAt(DOL.x, DOL.y, DOL.s, false);
+    MOMS.forEach((m, i) => {
+      const k = ease(win(T, M.first - .2 + i * .15, .45)), [fx, fy] = faceAt(m.x, MY, MS, m.fl), ok = i === 0;
+      if (k <= 0 || (judged && !ok && win(T, M.face, .4) >= 1)) return;
+      ctx.save(); ctx.globalAlpha = judged && !ok ? 1 - win(T, M.face, .4) : 1; ctx.setLineDash([18, 16]); ctx.lineDashOffset = -T * 60; ctx.strokeStyle = ok && judged ? Y : 'rgba(255,243,214,.6)'; ctx.lineWidth = ok && judged ? 10 : 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(dx, dy - 40); ctx.lineTo(lerp(dx, fx, k), lerp(dy - 40, fy + 70, k)); ctx.stroke(); ctx.restore();
+    });
+  }
+  MOMS.forEach((m, i) => {
+    const k = pop(T, M.s7 + .3 + i * .15, .45); if (k <= 0) return;
+    const dim = judged && i > 0 ? lerp(1, .45, win(T, M.face, .4)) : 1;
+    ctx.save(); scaleAt(m.x, MY, k); sheep(m.x, MY, MS, T, { face: m.f, flip: m.fl, ph: i, dim: (1 - dim) / .55 }); ctx.restore();
+    ctx.save(); ctx.globalAlpha = dim; ctx.save(); scaleAt(m.x, 700, k); pill('№' + (i + 1), m.x, 700, 42, Y, NV, { sh: 6 }); ctx.restore(); ctx.restore();
+    if (judged) { const [fx, fy] = faceAt(m.x, MY, MS, m.fl); (i === 0 ? check : cross)(m.x + 60, 640, 30, i === 0 ? TQ : CO, pop(T, M.face + .1 + i * .12, .4)); if (i === 0) { const pu = .5 + .5 * Math.sin((T - M.face) * 6); ctx.save(); ctx.globalAlpha = .6 * pu; ctx.strokeStyle = Y; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(fx, fy, 62, 0, 7); ctx.stroke(); ctx.restore(); } }
+  });
+  // Dolly
+  const kd = pop(T, M.s7 + .7, .5);
+  if (kd > 0) {
+    ctx.save(); scaleAt(DOL.x, DOL.y, kd); sheep(DOL.x, DOL.y, DOL.s, T, { face: 'w', ear: true, ph: 3 }); ctx.restore();
+    if (judged) { const [fx, fy] = faceAt(DOL.x, DOL.y, DOL.s, false), pu = .5 + .5 * Math.sin((T - M.face) * 6); ctx.save(); ctx.globalAlpha = .7 * pu; ctx.strokeStyle = Y; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(fx, fy, 85, 0, 7); ctx.stroke(); ctx.restore(); }
+    ctx.save(); scaleAt(DOL.x, 1600, kd); pill(L.dolly, DOL.x, 1600, 40, TQ, NV, { sh: 6 }); ctx.restore();
+  }
+  // clone = genetic copy
+  const kc = pop(T, M.copy, .5) * (1 - win(T, M.s8 - .3, .3));
+  if (kc > 0) {
+    ctx.save(); scaleAt(540, 1110, kc);
+    const w = 920, h = 150; box(540 - w / 2, 1110 - h / 2, w, h, 40, Y, 10);
+    txt(L.copy[0], 540, 1075, 40, NV2, { f: 'MX' }); txt(L.copy[1], 540, 1135, fit(L.copy[1], 58, w - 60), NV);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- scene 8: quiz with a yarn-ball timer ----------
+const CARD = { x: 110, y: 700, w: 860, h: 720 };
+function scene8(T) {
+  if (T < M.s8 - .2 || T > M.s9 + .5) return;
+  const { x, y, w, h } = CARD, kIn = pop(T, M.s8 + .05, .5);
+  ctx.save(); scaleAt(540, y + h / 2, kIn);
+  box(x, y, w, h, 40, CR, 14);
+  const kq = win(T, M.q - .1, .4);
+  ctx.save(); ctx.globalAlpha *= kq; L.q.forEach((s, i) => txt(s, x + w / 2, y + 100 + i * 78, fit(s, 66, w - 120), NV)); ctx.restore();
+  const ans = T >= M.ans;
+  L.opts.forEach(([a, b], i) => {
+    const t0 = M.o1 + i * .9, k = pop(T, t0, .4); if (k <= 0) return;
+    const yy = y + 330 + i * 120, ok = i === L.ok, dim = ans && !ok;
+    ctx.save(); scaleAt(x + w / 2, yy, k * (ans && ok ? 1 + .06 * eob(win(T, M.ans, .4)) : 1)); ctx.globalAlpha *= dim ? .45 : 1;
+    box(x + 60, yy - 46, w - 120, 92, 46, ans && ok ? TQ : '#fff', 6);
+    circ(x + 112, yy, 32, ans && ok ? '#fff' : NV); txt(a, x + 112, yy + 2, 36, ans && ok ? TQ2 : Y);
+    txt(b, x + 170, yy + 2, fit(b, 46, w - 300), NV, { align: 'left' });
+    if (ans && ok) check(x + w - 110, yy, 30, NV, pop(T, M.ans + .1, .4));
+    if (dim) { ctx.strokeStyle = CO; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + 170, yy + 2); ctx.lineTo(x + 170 + tw(b, fit(b, 46, w - 300)), yy + 2); ctx.stroke(); }
+    ctx.restore();
+  });
+  ctx.restore();
+  // yarn-ball timer 3-2-1
+  if (T >= M.qa - .3 && T < M.ans + .4) {
+    const k = pop(T, M.qa - .3, .4) * out(T, M.ans, .35), f = clamp((T - M.qa) / (M.qb - M.qa)), n = Math.max(1, 3 - Math.floor(f * 3));
+    const tx = 540, ty = 520, R = 115;
+    ctx.save(); scaleAt(tx, ty, k);
+    ctx.strokeStyle = CO2; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx + R * .7, ty + R * .7); ctx.quadraticCurveTo(tx + R * 1.6, ty + R * 1.2, tx + R * 1.3 + Math.sin(T * 3) * 20, ty + R * 1.9); ctx.stroke();
+    circS(tx, ty, R, CR2, 10);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.arc(tx, ty, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - f)); ctx.closePath(); ctx.fillStyle = CO; ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(tx, ty, R, 0, 7); ctx.clip(); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 5;
+    for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.ellipse(tx + i * 30, ty, 26, R * 1.1, .5, 0, 7); ctx.stroke(); }
+    ctx.restore();
+    circ(tx, ty, 60, NV);
+    const pulse = 1 + .15 * Math.exp(-((f * 3) % 1) * 8); ctx.save(); scaleAt(tx, ty, pulse); txt(String(n), tx, ty + 4, 76, '#fff'); ctx.restore();
+    ctx.restore();
+  }
+}
+
+// ---------- scene 9: everybody waves + arrow up ----------
+function scene9(T) {
+  if (T < M.s9 - .1) return;
+  const sl = ease(win(T, M.s9 - .1, .55));
+  ctx.save(); ctx.translate(OW * (1 - sl), 0);
+  bgCream(T);
+  [[190, 'w', false], [420, 'b', false], [650, 'b', true]].forEach(([x, f, fl], i) => { const k = pop(T, M.s9 + .3 + i * .15, .45); ctx.save(); scaleAt(x, 1380, k); sheep(x, 1380, .42, T, { face: f, flip: fl, hop: true, ph: i * 1.1 }); ctx.restore(); });
+  const kd = pop(T, M.s9 + .8, .45); ctx.save(); scaleAt(890, 1380, kd); sheep(890, 1380, .5, T, { face: 'w', flip: true, hop: true, ph: 3.3, ear: true }); ctx.restore();
+  ctx.save(); scaleAt(890, 1450, kd); pill(L.dolly, 890, 1450, 34, TQ, NV, { sh: 6 }); ctx.restore();
+  const ka = pop(T, M.cta - .2, .5), bo = Math.sin((T - M.cta) * 6) * 18;
+  if (ka > 0) {
+    ctx.save(); scaleAt(540, 640, ka); ctx.translate(0, -Math.abs(bo));
+    shadowed(cc => { ctx.beginPath(); ctx.moveTo(540, 440); ctx.lineTo(660, 580); ctx.lineTo(590, 580); ctx.lineTo(590, 760); ctx.lineTo(490, 760); ctx.lineTo(490, 580); ctx.lineTo(420, 580); ctx.closePath(); ctx.fillStyle = cc || Y; ctx.fill(); }, 12);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- headline, captions, logo, end card ----------
+const HEADS = ['s2', 's3', 's4', 's5', 's6', 's7', 's8', 's9'];
+function onCream(T) { return T < M.s2 - .3 || T >= M.s9 + .3; }
+function headline(T) {
+  let id = null; for (const h of HEADS) if (T >= M[h] + .25) id = h; if (!id || !L.h[id] || T > B.end - 2.3) return;
+  const nx = HEADS[HEADS.indexOf(id) + 1], t0 = M[id] + .25, o = nx ? out(T, M[nx] - .15, .25) : 1;
+  const txtH = L.h[id], f = fit(txtH, 58, 760), k = pop(T, t0, .45) * o; if (k <= 0) return;
+  const cream = id === 's9';
+  ctx.save(); ctx.globalAlpha = clamp(k); scaleAt(470, 268, k);
+  const wdt = tw(txtH, f) + 60;
+  box(470 - wdt / 2, 268 - 52, wdt, 104, 52, cream ? NV : Y, 8);
+  txt(txtH, 470, 271, f, cream ? Y : NV);
+  ctx.restore();
+}
+function captions(T) {
+  if (T > B.end - 2.3) return;
+  const cp = B.caps.find(x => T >= x.t0 && T < x.t1); if (!cp) return;
+  const k = clamp((T - cp.t0) / .12), cream = onCream(T);
+  ctx.save(); let sz = 64; ctx.font = `${sz}px MB`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cp.words.map(w => ({ ...w, t: w.w.toUpperCase() })), sp = 20;
+  let wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1);
+  if (wd > 960) { sz = Math.floor(sz * 960 / wd); ctx.font = `${sz}px MB`; wd = words.reduce((s, w) => s + ctx.measureText(w.t).width, 0) + sp * (words.length - 1); }
+  let x = OW / 2 - wd / 2; const y = 1700, s = .85 + .15 * eob(k);
+  ctx.globalAlpha = k; ctx.translate(OW / 2, y); ctx.scale(s, s); ctx.translate(-OW / 2, -y); ctx.lineJoin = 'round';
+  for (const w of words) {
+    ctx.fillStyle = 'rgba(8,12,30,.55)'; ctx.fillText(w.t, x, y + 6);
+    ctx.lineWidth = 12; ctx.strokeStyle = NV; ctx.strokeText(w.t, x, y);
+    ctx.fillStyle = w.c === 'a' ? Y : '#fff'; ctx.fillText(w.t, x, y);
+    x += ctx.measureText(w.t).width + sp;
+  }
+  ctx.restore();
+}
+function logo(T) {
+  const im = onCream(T) ? IMG.logoN : IMG.logo, lh = 120, lw = lh * im.width / im.height;
+  ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(im, OW - 44 - lw, 44, lw, lh); ctx.restore();
+}
+function endCard(T) {
+  const t0 = B.end - 2.2; if (T < t0) return;
+  const a = clamp((T - t0) / .35);
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, OW, OH);
+  const lw = 440, lh = lw * IMG.logo.height / IMG.logo.width, s = .9 + .1 * eob(clamp((T - t0) / .45));
+  ctx.drawImage(IMG.logo, OW / 2 - lw * s / 2, 700 - lh * s / 2, lw * s, lh * s);
+  L.cta.forEach((t, i) => txt(t, OW / 2, 1080 + i * 84, 62, BR.amber));
+  const bo = Math.sin(T * 6) * 10; ctx.fillStyle = BR.amber;
+  ctx.beginPath(); ctx.moveTo(540, 1250 + bo); ctx.lineTo(610, 1330 + bo); ctx.lineTo(570, 1330 + bo); ctx.lineTo(570, 1420 + bo); ctx.lineTo(510, 1420 + bo); ctx.lineTo(510, 1330 + bo); ctx.lineTo(470, 1330 + bo); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ---------- frame ----------
+window.render = function (T) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  bgNavy(T);
+  if (T < M.s2 + .1) { const sl = ease(win(T, M.s2 - .55, .55)); ctx.save(); ctx.translate(-OW * 1.1 * sl, 0); bgCream(T); ctx.restore(); scene1(T); }
+  scene2(T); scene3(T); scene4(T); scene5(T); cells(T); scene7(T); scene8(T);
+  film(T);
+  scene9(T);
+  headline(T); captions(T); logo(T); endCard(T);
+  if (T < .15) { ctx.fillStyle = `rgba(255,243,214,${1 - T / .15})`; ctx.fillRect(0, 0, OW, OH); }
+};
+// film frames: loaded before render(T) so every frame is deterministic
+window.prep = async function (T) {
+  if (!CLIP.n) return; const a = M.s6 - .35, b = M.s7 + .35; if (T < a || T > b) return;
+  const i = Math.max(0, Math.min(CLIP.n - 1, CLIP.n - 1 - Math.floor((b - .25 - T) * CLIP.fps))); if (i === CLIP.i) return;   // real speed, ends with the scene; before that the first frame holds
+  CLIP.im = await load(`hf/f_${String(i + 1).padStart(3, '0')}.jpg`); CLIP.i = i;
+};
+
+// ---------- load ----------
+function load(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+(async () => {
+  B = (await (await fetch('beats.json')).json())[LANG]; M = B.m;
+  try { const fj = await (await fetch('hf/frames.json')).json(); CLIP.n = fj.n; CLIP.fps = fj.fps; } catch (e) { CLIP.n = 0; }
+  [IMG.logo, IMG.logoN, IMG.still] = await Promise.all(['brand/logo_white_transparent.png', 'brand/logo_navy_transparent.png', 'hf/still.jpg'].map(load));
+  await Promise.all(['60px MB', '40px MX'].map(f => document.fonts.load(f, 'АӘҒҚҢӨҰҮІ№')));
+  window.ready = true;
+})();
+</script></body></html>

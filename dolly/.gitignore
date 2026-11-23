@@ -1,0 +1,8 @@
+video_silent_*.mp4
+dolly_*.mp4
+mix_*.wav
+sfx_*.wav
+music_*.wav
+vo_??.wav
+*.log
+hf/f_*.jpg
