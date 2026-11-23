@@ -1,0 +1,10 @@
+video_silent_*.mp4
+pivo_*.mp4
+mix_*.wav
+sfx_*.wav
+music_*.wav
+vo_??.wav
+*.log
+old/
+hf/f/
+build_*.log
