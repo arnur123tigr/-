@@ -182,10 +182,10 @@ add(s, a, drone(b - a + .5, 41.2), .12)
 a, b = seg_(2); add(s, a, drone(b - a, 46.25), .16); add(s, m('area') - .05, pop(), .22); add(s, m('area') + 1.1, shimmer(.8), .05)
 add(s, m('ent') - .1, pop(), .18); add(s, m('S3') - 1.6, riser(1.5, 140, 900), .1)
 # 3. the film shot: wind, a distant roll of thunder, the blast wave
-a, b = seg_(3); add(s, a, wind(b - a + .3, 200, 1200, .4, 4), .2); add(s, a + .4, rumble(3.0), .45); add(s, a + .3, boom(34, 3.5, 1.1), .4)
+a, b = seg_(3); add(s, a, wind(b - a + .3, 200, 1200, .4, 4), .2); add(s, a - .1, rumble(3.0), .3); add(s, a - .15, boom(34, 3.5, 1.1), .3)
 add(s, a + 2.2, wind(2.5, 300, 2500, .9, 8), .2)
 # 4. forty years of blasts: thuds that come faster and faster
-a, b = seg_(4); add(s, a, boom(40, 1.8, 2), .45)
+a, b = seg_(4); add(s, a - .1, boom(40, 1.8, 2), .3)
 ts = sorted(set(round(x, 2) for x in np.concatenate([np.linspace(0, 1, 30) ** .9 * (m('k340') - .25 - m('S4') - .35) + m('S4') + .35, np.linspace(0, 1, 46) ** .85 * (m('vill') - .35 - m('k340') + .15) + m('k340') - .15])))
 for i, t0 in enumerate(ts): add(s, t0, drum(52 + 8 * rng.random(), .5, 8), .18 + .08 * rng.random())
 add(s, m('k116') - .05, pop(), .2); add(s, m('k340') - .05, pop(), .2); add(s, m('nomove') - .05, stamp(), .35)
@@ -194,7 +194,7 @@ a, b = seg_(5); add(s, a + .2, heart(b - a - .6), .3); add(s, a, drone(b - a, 36
 add(s, m('mil') - .05, boom(48, 1.4, 2.4), .3); add(s, m('silent') - .02, stamp(), .55)
 # 6. 1989: TV hum, then the crowd grows
 a, b = seg_(6); t = tt(b - a); add(s, a, .3 * norm(np.sin(2 * np.pi * 50 * t) + .4 * np.sin(2 * np.pi * 150 * t)) * np.minimum(1, t / .3) * np.minimum(1, (b - a - t) / .3), .05)
-add(s, m('nev') - .6, crowd(b - m('nev') + .6), .22); add(s, m('nev') - .05, drum(70, .6, 6), .3); add(s, m('sign') - .05, pop(), .22)
+add(s, m('nev') - .6, crowd(b - m('nev') + .6), .14); add(s, m('nev') - .05, drum(70, .6, 6), .3); add(s, m('sign') - .05, pop(), .22)
 # 7. closed: the stamp and a bright chord
 a, b = seg_(7); add(s, m('closed') - .05, pop(), .2); add(s, m('shut') - .02, stamp(), .6)
 for i, f in enumerate((587, 740, 880)): add(s, m('shut') + .1 + i * .06, chime(f, 1.8), .14)
