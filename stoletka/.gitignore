@@ -1,0 +1,7 @@
+out/
+chk/
+*.log
+takes/
+*.log
+chk2/
+hf/*.png
