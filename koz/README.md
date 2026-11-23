@@ -17,3 +17,7 @@ Scenes: s1 tree -> inverted image on the retina, s2 ENT trap plaque + the eye is
 cornea, choroid, retina), s4 rays through pupil and lens cross -> small inverted tree, s5 rods (~120 mln) and cones (~6–7 mln),
 s6 brain turns the picture + Stratton 1896–1897 with prism goggles, s7 blind-spot self-test (the dot stays on screen so the
 test works), s8 ENT quiz with a 3-2-1 timer, s9 tree turns upright + link in the profile header, end card.
+
+ҰБТ fix (KZ): after `timing.py`, the two «ҰБТ» spots in vo_kk.wav (7.00–7.64 s «ҰБТ-да», 74.64–75.62 s «ҰБТ сұрағы»)
+are replaced with Arnur-voice clips from /mnt/project-files/animation/common/ubt_kk_parts/ (ubt_da.mp3, ubt_surag.mp3),
+fitted to the same length (atempo, 12 ms crossfades), so the video timing is unchanged. Re-running timing.py undoes it.
