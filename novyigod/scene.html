@@ -128,7 +128,7 @@ function render(t) {
       for (const [z, rs] of SH.tz) { const d = z - Z; if (d < -.6) continue; const al = d < .6 ? 1 - Math.abs(d) / .6 : 0;
         for (const dx of [0, 360, -360]) { ctx.save(); ctx.globalAlpha = a * (.22 + .5 * al); pathRings(offR(rs, dx)); ctx.fillStyle = al > 0 ? GOLD : '#ffcf5a'; ctx.fill('evenodd'); ctx.restore(); } }
       pill('С Новым годом!', W / 2, H * .15, 50, a, { col: GOLD }); }
-    const L = [['Новая Зеландия', 163, -47, 'nz'], ['Австралия', 134, -25, 'aus'], ['Азия', 100, 38, 'asia'], ['Европа', 15, 50, 'eur'], ['Африка', 20, 5, 'afr'], ['Америка', -100, 40, 'amer']];
+    const L = [['Новая Зеландия', 158, -47, 'nz'], ['Австралия', 134, -25, 'aus'], ['Азия', 100, 38, 'asia'], ['Европа', 15, 50, 'eur'], ['Африка', 20, 5, 'afr'], ['Америка', -100, 40, 'amer']];
     L.forEach(([n, lo, la, b], i) => { cp(t, n, lo, la, b, 'world', GOLD, 46); show(lo, la + 6, V(b) - .1, t, [GOLD, BLUE, RED, GREEN][i % 4], 40 + i, 120); }); }
   // 6. American Samoa vs Samoa
   { head('Последнее обитаемое место', A('lastp', 'asm', .25), BLUE, H * .15, 76);
@@ -149,7 +149,7 @@ function render(t) {
   { const a = A('baker', 'vend', .3); fill(offR(SH.FQI, -360), BLUE, a, { fill: .8, lw: 5 }); fill(offR(SH.HQI, -360), BLUE, a, { fill: .8, lw: 5 });
     pin(t, 'остров Бейкер', -176.475, 0.21, 120, 170, 'baker', 'vend', BLUE, 42); pin(t, 'остров Хауленд', -176.635, 0.805, -110, -170, 'how', 'vend', BLUE, 42);
     pill('тоже территория США', W / 2, H * .15, 44, A('usa2', 'hour', .3), { line: BLUE });
-    bigNum('ещё на 1 час позже', H * .17, 96, A('hour', 'empty', .3), GOLD);
+    bigNum('ещё на 1 час позже', H * .17, 84, A('hour', 'empty', .3), GOLD);
     head('Там никто не живёт', A('empty', 'birds', .25), BLUE, H * .15, 84); head('Празднуют только птицы', A('birds', 'cta', .25), GOLD, H * .15, 80);
     const ab = A('birds', 'cta', .4); for (let i = 0; i < 9; i++) { const r = rng(5113 + i * 7919); r(); const sp = 60 + 50 * r(); const x = ((r() * W + (t - V('birds')) * sp) % (W + 200)) - 100, y = H * (.35 + .35 * r()); bird(x, y, .9 + .6 * r(), t * 9 + i * 1.7, ab); }
     for (let i = 0; i < 3; i++) show(-176.55, 0.62, V('birds') + .6 + i * .5, t, [GOLD, BLUE, RED][i], 80 + i, 110); }
@@ -163,7 +163,7 @@ window.ready = (async () => {
   await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
   SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
   END = V('vend') + 3.2; buildCam();
-  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('pacw', 'tex/pacw.jpg'), loadImg('pace', 'tex/pace.jpg'), loadImg('samoa', 'tex/samoa.jpg'), loadImg('kiri', 'tex/kiri.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('pacw', 'tex/pacw.jpg'), loadImg('pace', 'tex/pace.jpg'), loadImg('samoa', 'tex/samoa.jpg'), loadImg('kiri', 'tex/kiri.png'), loadImg('logo', 'brand/logo_white_transparent.png')]);
   window.END = END; render(0); return true;
 })();
 </script></body></html>
