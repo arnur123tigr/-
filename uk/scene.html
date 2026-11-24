@@ -1,0 +1,110 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Великобритания, Соединённое Королевство или Англия?» — RU remake, voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 70;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'uk', l0: -14, l1: 6, b0: 48, b1: 62, minppd: 14 });
+const C = { eng: '#FEB300', sct: '#4FD1C5', wls: '#9F8CF0', nir: '#F08A4B', irl: '#7fe08a', uk: '#4FD1C5', gb: '#FEB300' };
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .55, lw: 4, blur: 20 }, o || {}));
+function bubble(s, x, y, a, tail = 1, col = '#fff') {   // comic speech bubble, tail points down-left (1) or down-right (-1)
+  if (a <= 0) return; const p = back(clamp(a * 1.3)); const size = 46, w = tw(s, size, 'MB') + 70, h = 104;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; rr(-w / 2, -h / 2, w, h, 40); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-40 * tail, h / 2 - 4); ctx.lineTo(-70 * tail, h / 2 + 46); ctx.lineTo(-4 * tail, h / 2 - 4); ctx.fill();
+  ctx.shadowBlur = 0; txt(s, 0, 3, size, BR.navy, 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+function scribble(cx, cy, rx, ry, p, a) {   // red hand-drawn double loop
+  if (p <= 0 || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = BR.red; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8;
+  ctx.beginPath(); const N = 120, tot = Math.PI * 2 * 1.85 * p;
+  for (let i = 0; i <= N; i++) { const th = -1.9 + tot * i / N, r = 1 + .06 * Math.sin(th * 3) + .05 * (th / 6); const x = cx + Math.cos(th) * rx * r, y = cy + Math.sin(th) * ry * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.stroke(); ctx.restore();
+}
+let CAMK = [];
+function buildCam() {
+  const BASE = [-4.2, 54.6, 112];
+  CAMK = [
+    [0, -3.2, 54.8, 100], [V('think') - .1, -3.4, 54.7, 106, 'l'],
+    [V('think') + 1.0, 2, 52, 26], [V('look') - .1, 2, 52, 24, 'l'],
+    [V('look') + 1.0, ...BASE], [V('small') - .1, -4.2, 54.6, 116, 'l'],
+    [V('small') + .7, -6.5, 54.0, 150], [V('big') - .1, -6.6, 54, 156, 'l'],
+    [V('big') + .7, -3, 54.3, 118], [V('int') - .1, -3, 54.3, 122, 'l'],
+    [V('int') + .8, ...BASE], [V('what') - .1, -4.2, 54.6, 118, 'l'],
+    [V('what') + .8, -1.8, 52.8, 150], [V('rem') - .1, -1.6, 52.8, 158, 'l'],
+    [V('rem') + .8, ...BASE], [V('isl') - .1, -4.2, 54.6, 118, 'l'],
+    [V('isl') + .8, -4.6, 54.4, 92], [V('vend') + 4, -4.6, 54.4, 86, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.45);
+  ctx.save(); ctx.globalAlpha = .35; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .82 + .18 * Math.sin(t * 5);
+  // 1. the argument
+  { fill(SH.UK, C.uk, A('0', 'brit', .2) * pulse); fill(SH.GB, C.gb, A('brit', 'eng', .2) * pulse, { fill: .5 }); fill(SH.ENG, C.eng, A('eng', 'think', .2) * pulse);
+    bubble('Это Соединённое Королевство…', W / 2, H * .17, A('0', 'think', .2), 1);
+    bubble('Нет! Это Британия!', W * .62, H * .29, A('brit', 'think', .2), -1, '#ffe7a8');
+    bubble('Нет! Это Англия!', W * .4, H * .7, A('eng', 'think', .2), 1, '#c9f3ee'); }
+  // 2. wait, let me explain
+  { head('Одно и то же?', A('think', 'wait', .2), BR.acc, H * .17, 96);
+    const [cx, cy] = P(-4.3, 54.4); scribble(cx, cy, 6.5 * CAM.ppd * KX(), 6.8 * CAM.ppd, ap(t, V('wait') - .1, .9), A('think', 'look', .2));
+    head('Сейчас объясню', A('wait', 'look', .2), '#ffffff', H * .17, 90); }
+  // 3. two islands
+  { const a = A('two', 'small', .25); fill(SH.GB, '#ffffff', a * pulse, { fill: .18, lw: 4, blur: 22 }); fill(SH.IRISL, '#ffffff', a * pulse, { fill: .18, lw: 4, blur: 22 });
+    head('Два больших острова', a, '#ffffff', H * .14, 84); numDisc(1, ...P(-2.2, 53.5), a * ap(t, V('two') + .3, .3), BR.acc); numDisc(2, ...P(-8, 53.2), a * ap(t, V('two') + .7, .3), BR.acc); }
+  // 4. the smaller island: Republic of Ireland + Northern Ireland
+  { const a = A('small', 'big', .25); fill(SH.IRISL, '#ffffff', a * .5, { fill: .08, lw: 3, blur: 12 });
+    fill(SH.IRL, C.irl, A('irl', 'big', .25) * pulse); fill(SH.NIR, C.nir, A('nir', 'big', .25) * pulse);
+    head('Остров Ирландия', A('small', 'big', .25), C.irl, H * .14, 84);
+    cp(t, 'Республика Ирландия', -8.2, 53.0, 'irl', 'big', C.irl, 40); cp(t, 'Северная Ирландия', -6.7, 54.75, 'nir', 'big', C.nir, 36); }
+  // 5. the bigger island: England, Scotland, Wales
+  { const a = A('big', 'int', .25); fill(SH.GB, '#ffffff', a * .5, { fill: .08, lw: 3, blur: 12 });
+    fill(SH.ENG, C.eng, A('e1', 'int', .25) * pulse); fill(SH.SCT, C.sct, A('s1', 'int', .25) * pulse); fill(SH.WLS, C.wls, A('w1', 'int', .25) * pulse);
+    head('Остров Великобритания', a, C.gb, H * .12, 80); pill('3 страны', W / 2, H * .12 + 95, 46, A('big', 'int', .25), { line: C.gb });
+    cp(t, 'Англия', -1.6, 52.6, 'e1', 'int', C.eng, 46); cp(t, 'Шотландия', -4.2, 56.9, 's1', 'int', C.sct, 46); cp(t, 'Уэльс', -3.7, 52.3, 'w1', 'int', C.wls, 40);
+    head('А вот тут интересно…', A('int', 'gbsay', .2), BR.acc, H * .14, 84); }
+  // 6. Great Britain = 3 countries
+  { const a = A('gbsay', 'uksay', .3); fill(SH.ENG, C.gb, a * pulse, { fill: .5 }); fill(SH.SCT, C.gb, a * pulse, { fill: .5 }); fill(SH.WLS, C.gb, a * pulse, { fill: .5 });
+    head('Великобритания', a, C.gb, H * .12, 100); pill('Англия + Шотландия + Уэльс', W / 2, H * .12 + 105, 42, a * ap(t, V('three') - .2, .3), { line: C.gb });
+    numDisc(1, ...P(-1.4, 52.5), a * ap(t, V('e2'), .3), C.gb); numDisc(2, ...P(-4.2, 57), a * ap(t, V('e2') + .8, .3), C.gb); numDisc(3, ...P(-3.7, 52.3), a * ap(t, V('e2') + 1.4, .3), C.gb); }
+  // 7. United Kingdom = GB + Northern Ireland
+  { const a = A('uksay', 'what', .3); fill(SH.GB, C.uk, a * ap(t, V('gbp') - .1, .3) * pulse, { fill: .5 }); fill(SH.NIR, C.nir, a * ap(t, V('nir2') - .1, .3) * pulse);
+    head('Соединённое Королевство', a, C.uk, H * .12, 84); pill('Великобритания + Северная Ирландия', W / 2, H * .12 + 100, 38, a * ap(t, V('plus') - .2, .3), { line: C.uk });
+    cp(t, 'Северная Ирландия', -6.7, 54.75, 'nir2', 'what', C.nir, 34); }
+  // 8. and England?
+  { const a = A('what', 'rem', .3); fill(SH.UK, '#ffffff', A('part', 'rem', .3) * .6, { fill: .1, lw: 3, blur: 12 }); fill(SH.ENG, C.eng, a * pulse);
+    head('А что же Англия?', A('what', 'part', .2), C.eng, H * .12, 92); head('Одна часть королевства', A('part', 'rem', .25), C.eng, H * .12, 80);
+    pin(t, 'Лондон', -0.12, 51.5, 130, -150, 'lon', 'rem', C.eng, 46);
+    const pp = A('pop', 'rem', .3); for (let i = 0; i < 12; i++) { const r = rng(91237 + i * 7919); r(); const lon = -2.9 + 2.9 * r(), lat = 51.3 + 2.6 * r(); const [x, y] = P(lon, lat); person(x, y + 20, .9, pp * ap(t, V('pop') + i * .05, .2)); }
+    bigNum('≈ 57 млн', H * .68, 120, pp, BR.acc, 'жителей: больше всех в королевстве'); }
+  // 9. remember
+  { head('Запомни!', A('rem', 'r1', .2), BR.acc, H * .14, 120);
+    const a1 = A('r1', 'r2', .25), a2 = A('r2', 'r3', .25), a3 = A('r3', 'isl', .25);
+    fill(SH.ENG, C.eng, a1 * pulse); pill('Англия — страна', W / 2, H * .14, 56, a1, { line: C.eng });
+    fill(SH.GB, '#ffffff', a2 * pulse, { fill: .3 }); pill('Великобритания — остров', W / 2, H * .14, 52, a2, { line: '#ffffff' });
+    fill(SH.ENG, C.eng, a3 * pulse); fill(SH.SCT, C.sct, a3 * pulse); fill(SH.WLS, C.wls, a3 * pulse); fill(SH.NIR, C.nir, a3 * pulse);
+    pill('Соединённое Королевство —', W / 2, H * .12, 48, a3, { line: C.uk }); pill('4 страны', W / 2, H * .12 + 100, 56, a3 * ap(t, V('four') - .1, .3), { col: BR.acc, line: C.uk });
+    [[1, -1.4, 52.5], [2, -3.7, 52.3], [3, -4.2, 57], [4, -6.7, 54.65]].forEach(([n, lon, lat], i) => numDisc(n, ...P(lon, lat), a3 * ap(t, V('r3') + .5 + i * .25, .3), C.uk)); }
+  // 10. British Isles
+  { const a = A('isl', 'cta', .3); fill(SH.ISLES, '#ffffff', a * pulse, { fill: .25, lw: 4, blur: 24 }); fill(SH.IRL, C.irl, a * .8, { fill: .35 });
+    head('Британские острова', A('isl', 'cta', .25) * ap(t, V('bi') - .2, .3), BR.acc, H * .14, 96); }
+  captions(t);
+  ctaEnt(t);
+  logo(.9);
+  endCardEnt(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('uk', 'tex/uk.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
