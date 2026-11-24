@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds the Kulja reel (KZ only):  ./build.sh  ->  kulja_kk.mp4 (1080x1920, 30 fps, with music).
-# Voice: python3 prep_vo.py && python3 words.py vo_kk_raw.wav w_kk.json kk medium && python3 timing.py  (already done, results in the folder)
+# Builds the Kulja reel:  ./build.sh kk|ru  ->  kulja_<lang>.mp4 (1080x1920, 30 fps, with music).
+# Voice: python3 prep_vo.py <lang> (ru: + ffmpeg atempo=1.06) && python3 words.py vo_<lang>_raw.wav w_<lang>.json <lang> medium && python3 timing.py  (already done, results in the folder)
 # SKIP_RECORD=1 reuses video_silent_kk.mp4.
 set -euo pipefail
 cd "$(dirname "$0")"
-L=kk
+L=${1:-kk}
 [ -s "vo_${L}.wav" ] || python3 timing.py
 python3 sfx.py "$L"
 [ "${SKIP_RECORD:-0}" = 1 ] || LANG_Q=$L node record.js "video_silent_$L.mp4" 30
