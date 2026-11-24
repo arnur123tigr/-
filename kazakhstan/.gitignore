@@ -1,0 +1,6 @@
+*.log
+*.mp4
+*.wav
+out/
+sheet.jpg
+snaps/

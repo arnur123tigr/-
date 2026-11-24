@@ -1,0 +1,96 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Казахстан больше, чем кажется» — RU remake, voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 70;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'kzeu', l0: -15, l1: 95, b0: 25, b1: 64, minppd: 12 });
+const KZC = '#4FB3FF', EU = '#7fe08a';
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .6, lw: 4, blur: 20 }, o || {}));
+function shifted(rings, k, dl) { return rings.map(r => r.map(([x, y]) => [x + dl[0] * k, y + dl[1] * k])); }
+let CAMK = [];
+function buildCam() {
+  CAMK = [
+    [0, 66.5, 47.5, 30], [V('map') - .1, 66.5, 47, 27, 'l'],
+    [V('map') + 1.2, 62, 35, 10.5], [V('ninth') - .2, 62, 35, 11, 'l'],
+    [V('ninth') + .9, 66.5, 47.5, 29], [V('put') - .1, 66.5, 47.5, 30, 'l'],
+    [V('put') + 1.6, 11.5, 47.5, 27], [V('sum') - .1, 11.5, 47.5, 28, 'l'],
+    [V('sum') + .8, 9, 51, 25.5], [V('fact') - .1, 9, 51, 26.5, 'l'],
+    [V('fact') + 1.1, 48, 49, 14.5], [V('but') - .1, 48, 49, 15, 'l'],
+    [V('but') + 1.0, 66.5, 47.5, 30], [V('rou') - .4, 66.5, 47.5, 31, 'l'],
+    [V('rou') + .5, 54, 46.5, 19.5], [V('why') - .1, 54, 46.5, 20, 'l'],
+    [V('why') + .9, 66.5, 47.5, 31], [V('fin') - .1, 66.5, 47.5, 32, 'l'],
+    [V('fin') + 1.0, 66.5, 47.0, 27], [V('vend') + 4, 66.5, 47.0, 25, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.45);
+  if (CAM.ppd > 7) { ctx.save(); ctx.globalAlpha = .3; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore(); }
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .85 + .15 * Math.sin(t * 5);
+  // KZ shape: home, sliding to Europe and back
+  const go = ease(ap(t, V('put') - .1, 1.6)), back_ = ease(ap(t, V('fact') - .2, 1.0)), k = go * (1 - back_);
+  const kzA = A('0', 'cta', .3) * (1 - .55 * A('sum', 'fact', .3));
+  fill(k > .001 ? shifted(SH.KAZ, 0, [0, 0]) : SH.KAZ, KZC, kzA * (k > .02 ? .25 : 1) * pulse, k > .02 ? { fill: .1, lw: 2, blur: 8 } : {});
+  if (k > .02) fill(k > .999 ? SH.KAZ_EU : shifted(SH.KAZ, k, SH.DLON), KZC, kzA * pulse, { fill: .55 });
+  // 1. intro
+  { label2(['Казахстан'], 67, 48, A('0', 'ninth', .3), KZC, 76); head('Больше, чем кажется', A('0', 'map', .25), BR.acc, H * .15, 84);
+    head('Глаза тебя обманывают', A('eyes', 'ninth', .25), '#ffffff', H * .15, 80); }
+  // 2. 9th largest, 2.7 mln km²
+  { pill('9-я по площади страна мира', W / 2, H * .62, 46, A('ninth', 'put', .3), { bg: 'rgba(232,80,47,.92)', line: '#fff' });
+    bigNum('2,7 млн км²', H * .2, 130, A('mln', 'put', .3) * ap(t, V('area'), .3), BR.acc); }
+  // 3. over Europe: Ireland to Turkey
+  { pin(t, 'Ирландия', -8, 53.2, -40, -170, 'irl', 'sum', '#ffffff'); pin(t, 'Турция', 33, 39.2, -60, 150, 'tur', 'sum', '#ffffff');
+    head('Положи на Европу', A('put', 'sum', .25), KZC, H * .14, 92); }
+  // 4. bigger than six countries combined
+  { const cs = [['DEU', 'deu', 'Германия', 10.4, 51.1], ['FRA', 'fra', 'Франция', 2.5, 46.8], ['GBR', 'gbr', 'Великобритания', -1.8, 52.8], ['ESP', 'esp', 'Испания', -3.7, 40.2], ['SWE', 'swe', 'Швеция', 15.5, 62.5], ['NOR', 'nor', 'Норвегия', 9, 61]];
+    cs.forEach(([c, b, n, lon, lat]) => { const a = A(b, 'fact', .25); fill(SH[c], EU, a * pulse, { fill: .6 }); cp(t, n, lon, lat, b, 'fact', EU, 32); });
+    const bar = A('tog', 'fact', .3); if (bar > 0) {
+      ctx.save(); ctx.globalAlpha = bar; rr(70, H * .14 - 30, W - 140, 270, 30); ctx.fillStyle = 'rgba(19,11,84,.88)'; ctx.fill(); ctx.strokeStyle = 'rgba(254,179,0,.45)'; ctx.lineWidth = 2.5; ctx.stroke();
+      const g = eout(ap(t, V('tog'), .9)), L = W - 300;
+      txt('Казахстан', 110, H * .14 + 25, 40, '#fff', 'MX', { align: 'left' }); rr(110, H * .14 + 55, L * g, 34, 12); ctx.fillStyle = KZC; ctx.fill(); txt('2,72 млн км²', 120 + L * g + 10, H * .14 + 72, 34, '#fff', 'MX', { align: 'left' });
+      txt('6 стран вместе', 110, H * .14 + 130, 40, '#fff', 'MX', { align: 'left' }); rr(110, H * .14 + 160, L * .89 * g, 34, 12); ctx.fillStyle = EU; ctx.fill(); txt('≈ 2,4 млн км²', 120 + L * .89 * g + 10, H * .14 + 177, 34, '#fff', 'MX', { align: 'left' });
+      ctx.restore(); } }
+  // 5. west edge is closer to France than to its own east edge
+  { const a = A('fact', 'but', .3); head('Ещё удивительнее…', A('fact', 'west', .25), BR.acc, H * .14, 88);
+    fill(SH.FRA, EU, A('fra2', 'but', .3) * pulse, { fill: .55 });
+    const W0 = [46.48, 48.41], E0 = [87.32, 49.09], F0 = [8.2, 48.96];
+    dot(...W0, A('west', 'but', .25), BR.acc); dot(...E0, A('east', 'but', .25), BR.acc); dot(...F0, A('fra2', 'but', .25), EU);
+    const p1 = ap(t, V('fra2') - .2, .8), p2 = ap(t, V('east') - .3, .8);
+    polyPartial([W0, [27, 51.5], F0], p1, { col: EU, lw: 6, a: A('fra2', 'but', .2), glow: EU });
+    polyPartial([W0, [67, 50.6], E0], p2, { col: BR.acc, lw: 6, a: A('east', 'but', .2), glow: BR.acc });
+    cp(t, '≈ 2 780 км', 27, 53.6, 'fra2', 'but', EU, 44); cp(t, '≈ 2 960 км', 67, 52.8, 'east', 'but', BR.acc, 44);
+    pin(t, 'Западная граница', ...W0, 0, 190, 'west', 'but', BR.acc, 34); }
+  // 6. only ~20 mln people, like Romania
+  { const pp = A('but', 'why', .3);
+    for (let i = 0; i < 9; i++) { const r = rng(4711 + i * 7919); r(); const lon = 54 + 28 * r(), lat = 43.5 + 8 * r(); const [x, y] = P(lon, lat); person(x, y + 30, 1.1, pp * ap(t, V('n20') - .3 + i * .06, .2)); }
+    bigNum('≈ 20 млн человек', H * .17, 110, A('n20', 'why', .3), BR.acc);
+    fill(SH.ROU, EU, A('rou', 'why', .3) * pulse); cp(t, 'Румыния ≈ 19 млн', 25, 45.8, 'rou', 'why', EU, 40); }
+  // 7. why? steppe, semi-desert, desert
+  { head('Почему так мало?', A('why', 'because', .25), BR.acc, H * .15, 96);
+    fill(SH.steppe, '#c9d86a', A('steppe', 'fin', .3) * pulse, { fill: .5 }); fill(SH.semi, '#e8b25a', A('semi', 'fin', .3) * pulse, { fill: .5 }); fill(SH.desert, '#f08a4b', A('desert', 'fin', .3) * pulse, { fill: .55 });
+    cp(t, 'Степи', 72, 50.5, 'steppe', 'fin', '#c9d86a', 46); cp(t, 'Полупустыни', 52.5, 47.5, 'semi', 'fin', '#e8b25a', 40); cp(t, 'Пустыни', 70.5, 45.2, 'desert', 'fin', '#f08a4b', 42);
+    pill('мало воды · суровый климат', W / 2, H * .15, 44, A('clim', 'fin', .25), { line: BR.acc }); }
+  // 8. finale
+  { pill('9-е место по площади', W / 2, H * .14, 50, A('fin', 'cta', .3), { col: BR.acc });
+    pill('≈ 7 человек на 1 км²', W / 2, H * .14 + 110, 50, A('dens', 'cta', .3), { bg: 'rgba(232,80,47,.92)', line: '#fff' }); }
+  captions(t);
+  ctaEnt(t);
+  logo(.9);
+  endCardEnt(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('kzeu', 'tex/kzeu.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

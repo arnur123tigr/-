@@ -1,0 +1,169 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Кто первым встречает Новый год» — RU remake, voice «Арнур». Pacific-centred shapes (lon < 0 shifted +360); Samoa/Baker part in raw lon.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 70;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'world', l0: 180, l1: 540, b0: -90, b1: 90 });
+TEX.push({ k: 'pacw', l0: 140, l1: 180, b0: -30, b1: 20, minppd: 14 });
+TEX.push({ k: 'pace', l0: 180, l1: 220, b0: -30, b1: 20, minppd: 14 });
+TEX.push({ k: 'pace', l0: -180, l1: -140, b0: -30, b1: 20, minppd: 14 });
+TEX.push({ k: 'samoa', l0: -173, l1: -168, b0: -15, b1: -13, minppd: 90 });
+TEX.push({ k: 'kiri', l0: 202.38, l1: 202.92, b0: 1.62, b1: 2.1, minppd: 250 });
+const GOLD = '#FEB300', BLUE = '#4FB3FF', GREEN = '#7fe08a', RED = '#ff6b5a';
+</script>
+<script src="helpers.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .55, lw: 4, blur: 18 }, o || {}));
+const offR = (rings, dx) => dx ? rings.map(r => r.map(([x, y]) => [x + dx, y])) : rings;
+const fill2 = (rings, col, a, o) => { if (a <= 0) return; for (const dx of [0, -360]) fill(offR(rings, dx), col, a, o); };
+function burst(x, y, t0, t, col, seed = 1, R = 170) {        // firework: radial sparks with gravity, fading
+  const k = (t - t0) / 1.6; if (k <= 0 || k >= 1) return; const r = rng(seed * 7919 + 13); r();
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (k < .12) { ctx.globalAlpha = 1 - k / .12; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 30 * (1 - k / .12) + 6, 0, 7); ctx.fill(); }
+  const n = 36, e = eout(clamp(k * 1.6));
+  for (let i = 0; i < n; i++) {
+    const an = i / n * 6.283 + r() * .2, sp = R * (.7 + .5 * r()), px = x + Math.cos(an) * sp * e, py = y + Math.sin(an) * sp * e + 120 * k * k;
+    ctx.globalAlpha = (1 - k) * (1 - k); ctx.fillStyle = i % 3 ? col : '#fff'; ctx.shadowColor = col; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(px, py, 4.5 * (1 - k * .6), 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+function show(lon, lat, t0, t, col, seed, R) { const [x, y] = P(lon, lat); burst(x, y, t0, t, col, seed, R); }
+function bird(x, y, s, ph, a) {
+  if (a <= 0) return; const f = Math.sin(ph) * .6;
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 5 * s; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.moveTo(x - 26 * s, y - 14 * s * f); ctx.quadraticCurveTo(x - 12 * s, y - 16 * s * (f + .4), x, y); ctx.quadraticCurveTo(x + 12 * s, y - 16 * s * (f + .4), x + 26 * s, y - 14 * s * f); ctx.stroke(); ctx.restore();
+}
+function plane(x, y, an, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(an); ctx.scale(s, s); ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(34, 0); ctx.lineTo(24, -4); ctx.lineTo(4, -4); ctx.lineTo(-8, -28); ctx.lineTo(-16, -28); ctx.lineTo(-8, -4); ctx.lineTo(-24, -4); ctx.lineTo(-30, -14); ctx.lineTo(-36, -14); ctx.lineTo(-32, 0);
+  ctx.lineTo(-36, 14); ctx.lineTo(-30, 14); ctx.lineTo(-24, 4); ctx.lineTo(-8, 4); ctx.lineTo(-16, 28); ctx.lineTo(-8, 28); ctx.lineTo(4, 4); ctx.lineTo(24, 4); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function boat(x, y, s, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(s, s); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(34, 0); ctx.lineTo(24, 14); ctx.lineTo(-24, 14); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = GOLD; ctx.beginPath(); ctx.moveTo(-2, -4); ctx.lineTo(-2, -46); ctx.lineTo(26, -6); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function clockCard(x, y, place, date, time, col, a) {
+  if (a <= 0) return; const w = 430, h = 230, p = back(clamp(a * 1.4));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  rr(-w / 2, -h / 2, w, h, 34); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 24; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.stroke();
+  txt(place, 0, -h / 2 + 46, 38, col, 'MX'); txt(date, 0, 8, 56, '#fff', 'MB'); txt(time, 0, 74, 44, 'rgba(255,255,255,.8)', 'MX'); ctx.restore();
+}
+let CAMK = [];
+function buildCam() {
+  CAMK = [
+    [0, 178, 0, 9], [V('earth') - .2, 178, 0, 9.5, 'l'],
+    [V('earth') + 1.2, 115, 15, 6.8], [V('bend') - .1, 110, 15, 7, 'l'],
+    [V('bend') + 1.0, 130, 12, 8.5], [V('line') - .2, 130, 12, 9, 'l'],
+    [V('line') + 1.0, 186, 4, 11], [V('need') - .1, 186, 4, 11.5, 'l'],
+    [V('hide') - .3, 190, -1, 22], [V('heard') - .2, 190, -1, 23, 'l'],
+    [V('heard') + .7, 202.6, 1.88, 60], [V('vil') - .2, 202.6, 1.88, 120],
+    [V('vil') + .9, 202.62, 1.87, 1900], [V('why') - .3, 202.62, 1.87, 2000, 'l'],
+    [V('why') + .9, 190, -1, 22], [V('after') - .2, 190, -1, 23, 'l'],
+    [V('after') + .8, 165, -15, 7.5], [V('aus') + .2, 150, -10, 7, 'l'],
+    [V('asia') + .3, 100, 12, 6.5, 'l'], [V('eur') + .2, 25, 20, 6.5, 'l'], [V('afr') + .4, 5, 10, 6.5, 'l'], [V('amer') + .4, -85, 12, 6.5, 'l'],
+    [V('world') + .3, -100, 5, 6.5], [V('lastp') - .2, -150, -10, 9, 'l'],
+    [V('asm') + .4, -171.0, -13.9, 300], [V('k70') - .2, -171.0, -13.95, 310, 'l'],
+    [V('k70') + .6, -171.1, -14.0, 330], [V('bh') - .2, -171.1, -14.0, 340, 'l'],
+    [V('bh') + .7, -174, -3, 20], [V('baker') - .1, -175.5, 0.3, 40],
+    [V('baker') + .9, -176.55, 0.5, 520], [V('vend') + 4, -176.55, 0.5, 560, 'l'],
+  ];
+}
+// midnight front: zones >= Z(t) are already in the new year
+function frontZ(t) {
+  const K = [['after', 13.5], ['nz', 12.2], ['aus', 10], ['asia', 7], ['eur', 1.5], ['afr', 0], ['amer', -5], ['world', -8], ['asm', -11.2]];
+  if (t < V(K[0][0])) return 15; for (let i = 0; i < K.length - 1; i++) { const a = V(K[i][0]), b = V(K[i + 1][0]); if (t < b) return lerp(K[i][1], K[i + 1][1], (t - a) / (b - a)); }
+  return K[K.length - 1][1];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.45);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .85 + .15 * Math.sin(t * 5);
+  // 1. intro: who is first, who is last
+  { head('Кто встречает Новый год', A('0', 'earth', .25), GOLD, H * .15, 84); head('первым?', A('first', 'earth', .25), GOLD, H * .15 + 100, 96); head('…а кто последним?', A('last', 'earth', .25), BLUE, H * .15 + 200, 76);
+    for (let i = 0; i < 6; i++) burst(W * (.2 + .6 * ((i * 37) % 10) / 10), H * (.4 + .25 * ((i * 53) % 10) / 10), .3 + i * .6, t, [GOLD, BLUE, RED, GREEN][i % 4], i + 3, 150); }
+  // 2. time zones
+  { const a = A('earth', 'line', .4);
+    if (a > 0) for (const [z, rs] of SH.tz) { const odd = Math.round(Math.floor(z)) % 2 !== 0; const col = odd ? BLUE : GOLD; const al = a * (z % 1 ? .9 : .55);
+      for (const dx of [0, 360]) { ctx.save(); ctx.globalAlpha = al * .32; pathRings(offR(rs, dx)); ctx.fillStyle = col; ctx.fill('evenodd'); ctx.globalAlpha = al * .8; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore(); } }
+    bigNum('24 часовых пояса', H * .17, 110, A('n24', 'bend', .3), GOLD); head('Границы совсем не прямые', A('bend', 'line', .25), BLUE, H * .15, 80); }
+  // 3. date line (drawn twice: Pacific-centred and raw lon)
+  const mk = ap(t, V('before') - .2, .8) * (1 - ease(ap(t, V('moved'), 1.6)));
+  const DL = SH.dl.map((p, i) => [lerp(p[0], SH.dl_old[i][0], mk), lerp(p[1], SH.dl_old[i][1], mk)]);
+  { const a = A('idl', 'vend', .3), p = ap(t, V('idl') - .2, 1.4);
+    for (const dx of [0, -360]) polyPartial(offR([DL], dx)[0], p, { col: GOLD, lw: 7, a, glow: GOLD });
+    pill('Международная линия перемены дат', W / 2, H * .15, 42, A('idl', 'need', .3), { line: GOLD });
+    const ad = A('day', 'need', .3); if (ad > 0) { const [x, y] = P(180, 22); arrow(x + 230, y, x - 230, y, x, y - 60, ap(t, V('dir') - .2, .9), ad, 11);
+      pill('новый день', x - 250, y + 110, 40, ad, { line: GOLD }); pill('с востока на запад', W / 2, H * .15 + 100, 40, A('dir', 'need', .3), { line: BLUE }); } }
+  // 4. Kiribati
+  { const a = A('kir', 'after', .3); if (a > 0) { const split = A('before', 'moved', .3);
+      for (const r of SH.KIR) { const c = r.reduce((s, q) => s + q[0], 0) / r.length; const col = split > 0 ? (c < 180 ? GOLD : BLUE) : GOLD, fk = clamp((200 - CAM.ppd) / 100); fill([r], col, a * pulse * fk, { fill: .7, lw: 6, blur: 22 });
+        if (CAM.ppd < 80) { const cy = r.reduce((s, q) => s + q[1], 0) / r.length, [x, y] = P(c, cy); ctx.save(); ctx.globalAlpha = a * .9; ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(x, y, 16, 0, 7); ctx.stroke(); ctx.restore(); } } }
+    label2(['Кирибати'], 192, 9, A('kir', 'heard', .3), GOLD, 84);
+    bigNum('≈ 130 000 человек', H * .7, 86, A('n130', 'heard', .3), GOLD, 'живёт в Кирибати');
+    head('Ты о ней слышал?', A('heard', 'vil', .25), BLUE, H * .15, 84);
+    // villages on Kiritimati
+    fill(SH.KIRI, GOLD, A('vil', 'why', .3) * .25, { fill: 0, lw: 3, blur: 10 });
+    const vs = [['Банана', -157.34 + 360, 1.975, 'banana', 120, -150], ['Лондон', -157.475 + 360, 1.985, 'london', -150, -170], ['Париж', -157.545 + 360, 1.935, 'paris', 40, 190], ['Польша', -157.49 + 360, 1.87, 'poland', 150, 120]];
+    for (const [n, lo, la, b, dx, dy] of vs) pin(t, n, lo, la, dx, dy, b, 'why', GOLD, 46);
+    head('Первыми на Земле!', A('first2', 'why', .25), GOLD, H * .15, 92);
+    for (let i = 0; i < 5; i++) burst(W * (.18 + .16 * i), H * (.3 + .06 * (i % 2)), V('first2') + .2 + i * .35, t, [GOLD, BLUE, RED, GREEN, '#fff'][i], 20 + i, 140);
+    // line used to cut Kiribati in half
+    head('Линия выглядит странно', A('why', 'before', .25), GOLD, H * .15, 80);
+    pill('раньше: страна разрезана', W / 2, H * .15, 44, A('before', 'moved', .3), { line: GOLD });
+    cp(t, '1 января', 177, 9, 'half', 'moved', GOLD, 42); cp(t, '31 декабря', 204, 9, 'half', 'moved', BLUE, 42);
+    pin(t, 'Столица Тарава', 172.98, 1.42, 110, 190, 'cap', 'after', '#fff', 40); pin(t, 'Банана', 202.66, 1.97, 0, 170, 'ban2', 'after', '#fff', 40);
+    bigNum('разница — сутки', H * .74, 96, A('sut', 'moved', .3), RED);
+    pill('линию сдвинули', W / 2, H * .15, 46, A('moved', 'after', .3), { line: GOLD });
+    { const a2 = A('km', 'after', .3); if (a2 > 0) { const [x0, y0] = P(180, -6), [x1] = P(210, -6); ctx.save(); ctx.globalAlpha = a2; ctx.setLineDash([16, 12]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * ap(t, V('km'), .8), y0); ctx.stroke(); ctx.restore();
+      pill('≈ 3 300 км', (x0 + x1) / 2, y0 + 80, 46, a2, { line: '#fff' }); } } }
+  // 5. the New Year wave rolls west
+  { const a = A('after', 'lastp', .4); if (a > 0) { const Z = frontZ(t);
+      for (const [z, rs] of SH.tz) { const d = z - Z; if (d < -.6) continue; const al = d < .6 ? 1 - Math.abs(d) / .6 : 0;
+        for (const dx of [0, 360, -360]) { ctx.save(); ctx.globalAlpha = a * (.22 + .5 * al); pathRings(offR(rs, dx)); ctx.fillStyle = al > 0 ? GOLD : '#ffcf5a'; ctx.fill('evenodd'); ctx.restore(); } }
+      pill('С Новым годом!', W / 2, H * .15, 50, a, { col: GOLD }); }
+    const L = [['Новая Зеландия', 158, -47, 'nz'], ['Австралия', 134, -25, 'aus'], ['Азия', 100, 38, 'asia'], ['Европа', 15, 50, 'eur'], ['Африка', 20, 5, 'afr'], ['Америка', -100, 40, 'amer']];
+    L.forEach(([n, lo, la, b], i) => { cp(t, n, lo, la, b, 'world', GOLD, 46); show(lo, la + 6, V(b) - .1, t, [GOLD, BLUE, RED, GREEN][i % 4], 40 + i, 120); }); }
+  // 6. American Samoa vs Samoa
+  { head('Последнее обитаемое место', A('lastp', 'asm', .25), BLUE, H * .15, 76);
+    fill(offR(SH.ASM, -360), BLUE, A('asm', 'bh', .3) * pulse, { fill: .45 });
+    cp(t, 'Американское Самоа', -170.3, -14.55, 'asm', 'bh', BLUE, 42); pill('территория США', W / 2, H * .15, 46, A('usa', 'funny', .3), { line: BLUE });
+    fill(offR(SH.WSM, -360), GREEN, A('wsm', 'bh', .3) * pulse, { fill: .45 }); cp(t, 'Самоа', -172.2, -13.25, 'wsm', 'bh', GREEN, 46);
+    const a7 = A('k70', 'some', .3); if (a7 > 0) { const p0 = P(-171.41, -14.03), p1 = P(-170.84, -14.3), k = ap(t, V('k70'), .7);
+      ctx.save(); ctx.globalAlpha = a7; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.setLineDash([14, 10]); ctx.beginPath(); ctx.moveTo(...p0); ctx.lineTo(lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k)); ctx.stroke(); ctx.restore();
+      pill('≈ 70 км', (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 - 90, 48, a7, { line: '#fff' }); }
+    head('А разница — целые сутки!', A('diff', 'some', .25), RED, H * .15, 80);
+    clockCard(W * .27, H * .3, 'Самоа', '1 января', '00:00', GREEN, A('diff', 'some', .3)); clockCard(W * .73, H * .3, 'Ам. Самоа', '31 декабря', '00:00', BLUE, A('sut2', 'some', .3));
+    // celebrate twice
+    head('Новый год — дважды!', A('some', 'bh', .25), GOLD, H * .15, 88);
+    for (let i = 0; i < 3; i++) { show(-171.75, -13.5, V('cel1') + i * .4, t, [GOLD, GREEN, RED][i], 60 + i, 150); show(-170.7, -13.9, V('cel2') + .3 + i * .4, t, [GOLD, BLUE, '#fff'][i], 70 + i, 150); }
+    { const k = ease(ap(t, V('boat') - .3, 1.8)), a = A('boat', 'bh', .3); const p0 = P(-171.4, -13.95), p1 = P(-170.9, -14.22); boat(lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k) + 40, 1.1, a);
+      const kp = ease(ap(t, V('plane') - .2, 1.6)); plane(lerp(p0[0], p1[0], kp), lerp(p0[1], p1[1], kp) - 150 - 60 * Math.sin(kp * 3.14), Math.atan2(p1[1] - p0[1], p1[0] - p0[0]), 1.6, A('plane', 'bh', .3)); } }
+  // 7. Baker and Howland: an hour later, only seabirds
+  { const a = A('baker', 'vend', .3); fill(offR(SH.FQI, -360), BLUE, a, { fill: .8, lw: 5 }); fill(offR(SH.HQI, -360), BLUE, a, { fill: .8, lw: 5 });
+    pin(t, 'остров Бейкер', -176.475, 0.21, 120, 170, 'baker', 'vend', BLUE, 42); pin(t, 'остров Хауленд', -176.635, 0.805, -110, -170, 'how', 'vend', BLUE, 42);
+    pill('тоже территория США', W / 2, H * .15, 44, A('usa2', 'hour', .3), { line: BLUE });
+    bigNum('ещё на 1 час позже', H * .17, 84, A('hour', 'empty', .3), GOLD);
+    head('Там никто не живёт', A('empty', 'birds', .25), BLUE, H * .15, 84); head('Празднуют только птицы', A('birds', 'cta', .25), GOLD, H * .15, 80);
+    const ab = A('birds', 'cta', .4); for (let i = 0; i < 9; i++) { const r = rng(5113 + i * 7919); r(); const sp = 60 + 50 * r(); const x = ((r() * W + (t - V('birds')) * sp) % (W + 200)) - 100, y = H * (.35 + .35 * r()); bird(x, y, .9 + .6 * r(), t * 9 + i * 1.7, ab); }
+    for (let i = 0; i < 3; i++) show(-176.55, 0.62, V('birds') + .6 + i * .5, t, [GOLD, BLUE, RED][i], 80 + i, 110); }
+  cutFade(t, []);
+  captions(t);
+  ctaEnt(t);
+  logo(.9);
+  endCardEnt(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('pacw', 'tex/pacw.jpg'), loadImg('pace', 'tex/pace.jpg'), loadImg('samoa', 'tex/samoa.jpg'), loadImg('kiri', 'tex/kiri.png'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
