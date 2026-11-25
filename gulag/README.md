@@ -6,7 +6,7 @@ ALZhIR 35 km from Astana, Gulbahram Seifullina, the kurt thrown over the fence. 
 - Map: `tex/world.jpg`, `tex/main.jpg`, `dem.bin` as in kulja/; `tex/detail.jpg` = central Kazakhstan lon 66..76, lat 46..53, 240 px/deg (`fetch_data.sh` + `prep_map.py`).
   Camp zones (Karlag, Steplag) and the aul are approximate.
 - Film shots (frames 8 and 10): Higgsfield, Nano Banana Pro stills `hf/s8.png`, `hf/s10.png` (s10 made with s8 as reference), animated with Kling 3.0 Pro 5 s;
-  `prep_clips.sh` turns `hf/video/s<n>.mp4` into 60 fps frames in `clips/` (committed).
+  `prep_clips.sh` turns `hf/video/s<n>.mp4` into 60 fps frames in `clips/` (not committed; Kling clips are Higgsfield jobs 6864248d…, 84801421…).
 - Voice: Arunur's ElevenLabs voice «Arnur» (eleven_v4, one take per language, `vo_<lang>_take.mp3`). `prep_vo.py` shortens long pauses; KZ: the approved
   «ҰБТ-да» clip from `animation/common/ubt_kk_parts/` replaces 72.27–72.82 s. RU says «Е Эн Тэ». `words.py` -> `w_<lang>.json`; `timing.py` -> `vo_<lang>.wav`, `beats.json`.
 - Sound: `sfx.py` (synth effects + music bed), `mix.py`. Build: `./build.sh kk|ru` -> `gulag_<lang>.mp4`.
