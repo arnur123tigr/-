@@ -1,0 +1,9 @@
+data/
+clips/s1/
+clips/s9/
+*.wav
+video_silent_*.mp4
+aktaban_*.mp4
+*.log
+w_*_take.json
+__pycache__/
