@@ -7,7 +7,7 @@ L=${1:-ru}
 
 if [ ! -s "vo_${L}_raw.wav" ]; then
   ffmpeg -loglevel error -y -i "vo_${L}_take.mp3" -ar 48000 -ac 1 "vo_${L}_raw.wav"
-  [ "$L" = kk ] && python3 ubt_splice.py                                      # the approved ҰБТ-да clip
+  if [ "$L" = kk ]; then python3 ubt_splice.py; fi                          # the approved ҰБТ-да clip
 fi
 [ -s "vo_${L}.wav" ] || python3 timing.py
 python3 sfx.py "$L"                                                        # effects + music, timed from beats.json
