@@ -1,0 +1,10 @@
+*.wav
+*.mp4
+*.log
+old_voice/
+clips/
+wh_*.txt
+data/
+__pycache__/
+hf/video/
+w_*_take.json
