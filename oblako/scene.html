@@ -1,0 +1,885 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Ядролық бұлт ауылға қарай жүрді</title>
+<style>
+@font-face{font-family:IN;src:url(fonts/Inter.ttf);font-weight:100 900}
+@font-face{font-family:IN;src:url(fonts/Inter-Italic.ttf);font-weight:100 900;font-style:italic}
+@font-face{font-family:IT;src:url(fonts/InterTight.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «Ядролық бұлт ауылға қарай жүрді / Ядерное облако пошло на село». RU / KZ: scene.html?lang=ru|kk.
+// Scenes 1 and 6 are Higgsfield stills moved in code (hf/), all the others are the dark satellite globe; 12 = ENT, 13 = link card + end card.
+// render(T) is deterministic, T = video seconds. All cues come from beats.json (voiceover word times, see timing.py).
+import * as THREE from 'three';
+
+const W = 1080, H = 1920;
+const Q = new URLSearchParams(location.search), LANG = Q.get('lang') === 'kk' ? 'kk' : 'ru', KK = LANG === 'kk';
+const STEP = +(Q.get('step') || 2);                      // terrain mesh step in DEM cells (1 = finest)
+const [BEATS, SH, demBuf] = await Promise.all([
+  fetch('beats.json').then(r => r.json()), fetch('shapes.json').then(r => r.json()), fetch('dem.bin').then(r => r.arrayBuffer())]);
+const B = BEATS[LANG], M = B.m, END = B.end;
+for (const f of ['400 40px IN', '500 40px IN', '600 40px IN', '700 40px IN', '800 40px IN', '600 40px IT', '700 40px IT', '800 40px IT', '900 40px IT'])
+  await document.fonts.load(f, 'АБВабв123ӘҒҚҢӨҰҮІәғқңөұүі→⟷«»');
+
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const LA = mk(), la = LA.getContext('2d'), LR = mk(), lr = LR.getContext('2d'), HB = mk(W / 2, H / 2), hb = HB.getContext('2d');
+
+// ---------------------------------------------------------------- helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeOut5 = t => 1 - Math.pow(1 - clamp(t), 5);
+const easeIn = t => Math.pow(clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const easeBack = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const ap = (T, t0, d = .3) => easeOut(seg(T, t0, t0 + d));       // appear 0..1
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+const RAD = Math.PI / 180, RE = 6371;                  // Earth radius, km (globe radius = 1)
+// smooth curve through keys (monotone cubic), at rest at both ends
+function hermite(ts, vs, T) {
+  const n = ts.length; if (T <= ts[0]) return vs[0]; if (T >= ts[n - 1]) return vs[n - 1];
+  let i = 0; while (T > ts[i + 1]) i++;
+  const sl = k => { if (k <= 0 || k >= n - 1) return 0; const a = (vs[k] - vs[k - 1]) / (ts[k] - ts[k - 1]), b = (vs[k + 1] - vs[k]) / (ts[k + 1] - ts[k]); return a * b <= 0 ? 0 : 2 * a * b / (a + b); };
+  const h = ts[i + 1] - ts[i], u = (T - ts[i]) / h, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * h * sl(i) + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * h * sl(i + 1);
+}
+// ---------------------------------------------------------------- palette
+// Brand (JAS EDUCATION, references/STYLE_GUIDE.md): navy panels, amber for key words, numbers and the rebels, white text,
+// red-orange only for the enemy (the tsarist side). The map is the dark Blue Marble satellite picture.
+const BR = { navy: '#130B54', amber: '#FEB300', enemy: '#E8502F' };
+const C = { acc: BR.amber, accHi: '#ffe7a6', warn: BR.enemy, warnHi: '#ffb39f', persia: '#d2452a', water: '#7cc8ff',
+            pill: 'rgba(19,11,84,.84)', card: 'rgba(19,11,84,.95)', line: 'rgba(254,179,0,.32)', sand: '#c99a5b' };
+const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgba = (h, a) => { const c = hex(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const mixHex = (a, b, t) => { const p = hex(a), q = hex(b); return `rgb(${Math.round(lerp(p[0], q[0], t))},${Math.round(lerp(p[1], q[1], t))},${Math.round(lerp(p[2], q[2], t))})`; };
+
+// ---------------------------------------------------------------- texts
+const L = KK ? {
+  hook: [['БҰЛТ ', 0], ['АУЫЛҒА', 1]], hook2: 'ЖҮРДІ', hookTag: '29.08.1949 · СЕМЕЙ',
+  poly: 'Семей полигоны', semey: 'Семей', kurch: 'Курчатов', km2: 'КМ²', kuwait: 'Кувейт', kuwA: '17 800 км²', bigger: 'ПОЛИГОН ҮЛКЕН',
+  empty: 'БОС ЖЕР?', vill: ['Долон', 'Саржал', 'Қайнар'], path: 'БҰЛТТЫҢ ЖОЛЫ',
+  date: '29.08.1949', ussr: 'КСРО-ның алғашқы атом бомбасы', field: 'Тәжірибе алаңы',
+  wind: 'ЖЕЛ', nowarn: 'ЕСКЕРТІЛМЕДІ',
+  nomap: 'КАРТАДА ЖОҚ', m400: '«Мәскеу-400»', secret: 'ҚҰПИЯ', irtysh: 'Ертіс',
+  tests: 'СЫНАҚ', y4089: '1949 — 1989', air: 'ашық аспан астында',
+  mil: '1,5 МЛН', milSub: 'АДАМҒА ӘСЕР ЕТТІ', pav: 'Павлодар', kar: 'Қарағанды', almA: 'Алматы халқы ≈ 2,3 млн', almB: 'радиация: 1,5 млн', half: 'жартысынан көп',
+  y89: '1989', nevada: 'Невада', olzhas: 'Олжас Сүлейменов', olzhasSub: 'ақын', placard: 'НЕВАДА — СЕМЕЙ',
+  closed: '29.08.1991', shut: 'ЖАБЫЛДЫ', un: 'БҰҰ', unText: ['29 тамыз —', 'ядролық сынақтарға қарсы', 'халықаралық күн'],
+  quiz: 'ҰБТ СҰРАҒЫ', q: ['Семей полигоны', 'қай жылы жабылды?'], ans: '1991', chip: '29 тамыз 1991',
+  go: [['Сілтемеге', 1], [' өтіңіз', 0]], linkword: 'сілтеме', where: 'профиль шапкасында',
+  endA: 'Сілтемеге өтіңіз', endB: 'профиль шапкасында',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · шекаралар мен орындар шамамен · кадрлар: ЖИ',
+} : {
+  hook: [['ОБЛАКО ', 0], ['НА СЕЛО', 1]], hook2: '', hookTag: '29.08.1949 · СЕМЕЙ',
+  poly: 'Семипалатинский полигон', semey: 'Семей', kurch: 'Курчатов', km2: 'КМ²', kuwait: 'Кувейт', kuwA: '17 800 км²', bigger: 'ПОЛИГОН БОЛЬШЕ',
+  empty: 'ПУСТО?', vill: ['Долонь', 'Саржал', 'Кайнар'], path: 'ПУТЬ ОБЛАКА',
+  date: '29.08.1949', ussr: 'первая атомная бомба СССР', field: 'Опытное поле',
+  wind: 'ВЕТЕР', nowarn: 'НЕ ПРЕДУПРЕДИЛИ',
+  nomap: 'НЕТ НА КАРТАХ', m400: '«Москва-400»', secret: 'СЕКРЕТНО', irtysh: 'Иртыш',
+  tests: 'ИСПЫТАНИЙ', y4089: '1949 — 1989', air: 'под открытым небом',
+  mil: '1,5 МЛН', milSub: 'ЧЕЛОВЕК ЗАТРОНУТО', pav: 'Павлодар', kar: 'Караганда', almA: 'население Алматы ≈ 2,3 млн', almB: 'радиация: 1,5 млн', half: 'больше половины',
+  y89: '1989', nevada: 'Невада', olzhas: 'Олжас Сулейменов', olzhasSub: 'поэт', placard: 'НЕВАДА — СЕМЕЙ',
+  closed: '29.08.1991', shut: 'ЗАКРЫТ', un: 'ООН', unText: ['29 августа —', 'Международный день', 'против ядерных испытаний'],
+  quiz: 'ВОПРОС ЕНТ', q: ['В каком году закрыли', 'Семипалатинский полигон?'], ans: '1991', chip: '29 августа 1991',
+  go: [['Перейди ', 0], ['по ссылке', 1]], linkword: 'ссылка', where: 'в шапке профиля',
+  endA: 'Перейди по ссылке', endB: 'в шапке профиля',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · границы и места примерные · кадры: ИИ',
+};
+const PAL = ['#fff', C.acc, 'rgba(255,255,255,.55)', C.warn];     // colour codes used in the [text, code] title lines above
+// the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
+const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
+function scaled(img, w) {
+  let c = img, cw = img.width, ch = img.height; const h = Math.round(w * ch / cw);
+  const draw = (nw, nh) => { const n = document.createElement('canvas'); n.width = nw; n.height = nh; const x = n.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh); c = n; cw = nw; ch = nh; };
+  while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
+  if (cw !== w) draw(w, h); return c;
+}
+const LOGO = scaled(LOGO0, 128), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
+// ---------------------------------------------------------------- globe
+const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
+const dem = new Int16Array(demBuf), EXAG = 9 / 6371000;
+function demAt(lon, lat) {                                // exaggerated height above the sphere (globe units)
+  const e = Math.min(lon - MLON0, MLON1 - lon, lat - MLAT0, MLAT1 - lat);
+  if (e <= 0) return 0;
+  const fx = clamp((lon - MLON0) / CELL - .5, 0, DEMW - 1), fy = clamp((MLAT1 - lat) / CELL - .5, 0, DEMH - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, DEMW - 1), y1 = Math.min(y0 + 1, DEMH - 1), ax = fx - x0, ay = fy - y0;
+  const h = (dem[y0 * DEMW + x0] * (1 - ax) + dem[y0 * DEMW + x1] * ax) * (1 - ay) + (dem[y1 * DEMW + x0] * (1 - ax) + dem[y1 * DEMW + x1] * ax) * ay;
+  return h * EXAG * clamp(e / 1.5);
+}
+const dirv = (lon, lat, r = 1) => { const a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r; return new THREE.Vector3(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a)); };
+
+function axis(a0, a1, w0, w1, coarse, fine) {
+  const v = [];
+  for (let x = a0; x < w0 - 1e-6; x += coarse) v.push(x);
+  const n = Math.round((w1 - w0) / fine); for (let i = 0; i <= n; i++) v.push(w0 + (w1 - w0) * i / n);
+  for (let x = Math.ceil((w1 + 1e-6) / coarse) * coarse; x < a1 - 1e-6; x += coarse) v.push(x);
+  v.push(a1); return v;
+}
+function globeGeometry() {
+  const LONS = axis(-180, 180, MLON0, MLON1, 2, CELL * STEP), LATS = axis(-90, 90, MLAT0, MLAT1, 2, CELL * STEP);
+  const nx = LONS.length, ny = LATS.length, pos = new Float32Array(nx * ny * 3), ll = new Float32Array(nx * ny * 2);
+  for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++, k++) {
+    const lon = LONS[i], lat = LATS[j], r = 1 + demAt(lon, lat), a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r;
+    pos[k * 3] = c * Math.sin(a); pos[k * 3 + 1] = Math.sin(b) * r; pos[k * 3 + 2] = c * Math.cos(a); ll[k * 2] = lon; ll[k * 2 + 1] = lat;
+  }
+  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  for (let j = 0, q = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = a; idx[q++] = c; idx[q++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ll', new THREE.BufferAttribute(ll, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const loadTex = url => new Promise(res => new THREE.TextureLoader().load(url, t => {
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; res(t); }));
+const [tW, tM, tA] = await Promise.all(['tex/world.jpg', 'tex/main.jpg', 'tex/detail.jpg'].map(loadTex));
+const win = (a, b, c, d) => new THREE.Vector4(a, 1 / (b - a), c, 1 / (d - c));
+const globeMat = new THREE.ShaderMaterial({
+  uniforms: { tW: { value: tW }, tM: { value: tM }, tA: { value: tA }, wM: { value: win(10, 146.5, 12, 78) }, wA: { value: win(58, 82, 41, 53) },
+              camPos: { value: new THREE.Vector3() }, expo: { value: 1 }, sat: { value: 1 }, haze: { value: 1 } },
+  vertexShader: `attribute vec2 ll; varying vec2 vLL; varying vec3 vP;
+    void main(){ vLL = ll; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float;
+    uniform sampler2D tW, tM, tA; uniform vec4 wM, wA; uniform vec3 camPos; uniform float expo, sat, haze;
+    varying vec2 vLL; varying vec3 vP;
+    void main(){
+      vec3 col = texture2D(tW, vec2((vLL.x + 180.) / 360., (vLL.y + 90.) / 180.)).rgb;
+      vec2 uM = vec2((vLL.x - wM.x) * wM.y, (vLL.y - wM.z) * wM.w), eM = min(uM, 1. - uM);
+      vec2 uA = vec2((vLL.x - wA.x) * wA.y, (vLL.y - wA.z) * wA.w), eA = min(uA, 1. - uA);
+      vec2 mx = dFdx(uM), my = dFdy(uM), ax = dFdx(uA), ay = dFdy(uA);
+      float mM = smoothstep(0., .012, eM.x) * smoothstep(0., .024, eM.y);
+      if (mM > 0.) col = mix(col, textureGrad(tM, uM, mx, my).rgb, mM);
+      float mA = smoothstep(0., .10, eA.x) * smoothstep(0., .14, eA.y);
+      if (mA > 0.) col = mix(col, textureGrad(tA, uA, ax, ay).rgb, mA);
+      float l = dot(col, vec3(.30, .59, .11));
+      col = mix(vec3(l), col, sat) * expo;
+      vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = clamp(dot(N, V), 0., 1.);
+      col *= mix(.14, 1., smoothstep(0., .42, mu));                       // the limb falls into shadow
+      col += vec3(.13, .36, .9) * pow(1. - mu, 5.) * haze * .5;            // thin blue air at the horizon
+      gl_FragColor = vec4(col, 1.);
+    }` });
+const scene = new THREE.Scene();
+const globe = new THREE.Mesh(globeGeometry(), globeMat); globe.frustumCulled = false; scene.add(globe);
+// atmosphere: back side of a shell 5 % above the ground, brightest right at the limb, gone at its own edge
+const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 96), new THREE.ShaderMaterial({
+  uniforms: { camPos: globeMat.uniforms.camPos, k: { value: 1 } }, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float; uniform vec3 camPos; uniform float k; varying vec3 vP;
+    void main(){ vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = dot(N, V);
+      float a = pow(clamp(-mu / .305, 0., 1.), 3.4); gl_FragColor = vec4(vec3(.2, .46, 1.) * k, a * k * .8); }` }));
+scene.add(atmo);
+const FOV = 30, camera = new THREE.PerspectiveCamera(FOV, W / H, 0.02, 30);
+
+// camera rig like Google Earth: look at (lon, lat) from `range` globe radii, heading clockwise from north, tilt 0 = straight down.
+// ox / oy shift the picture on screen (fractions of the frame, + = right / lower).
+let CAM = null;
+function setCam(c) {
+  CAM = c;
+  const U = dirv(c.lon, c.lat), a = c.lon * RAD, b = c.lat * RAD;
+  const E = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), N = new THREE.Vector3(-Math.sin(b) * Math.sin(a), Math.cos(b), -Math.sin(b) * Math.cos(a));
+  const h = (c.head || 0) * RAD, t = (c.tilt || 0) * RAD;
+  const F = N.clone().multiplyScalar(Math.cos(h)).addScaledVector(E, Math.sin(h));
+  const T = U.clone().multiplyScalar(1 + demAt(c.lon, c.lat));
+  camera.position.copy(T).addScaledVector(U, c.range * Math.cos(t)).addScaledVector(F, -c.range * Math.sin(t));
+  camera.up.copy(F).multiplyScalar(Math.cos(t)).addScaledVector(U, Math.sin(t));
+  camera.lookAt(T);
+  if (c.roll) camera.rotateZ(c.roll * RAD);
+  camera.fov = FOV; camera.near = Math.max(.004, c.range * .05); camera.far = c.range + 3;
+  camera.setViewOffset(W, H, -(c.ox || 0) * W, -(c.oy || 0) * H, W, H);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+  globeMat.uniforms.camPos.value.copy(camera.position);
+}
+const _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// lon/lat -> screen px. Returns [x, y, visible]. With limb = true a point hidden behind the globe slides to the limb,
+// so that an outline that goes round the globe stays one closed shape (for fills and clips).
+function P(lon, lat, limb = false) {
+  const a = lon * RAD, b = lat * RAD, r = 1 + demAt(lon, lat), c = Math.cos(b) * r;
+  _v.set(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a));
+  let vis = _v.dot(camera.position) > r * r * .995;
+  if (!vis && limb) {
+    const D = camera.position.length(); _c.copy(camera.position).multiplyScalar(1 / D);
+    _v.addScaledVector(_c, -_v.dot(_c)); _v.multiplyScalar(Math.sqrt(1 - 1 / (D * D)) / (_v.length() || 1)).addScaledVector(_c, 1 / D); vis = true;
+  }
+  _v.project(camera);
+  return [(_v.x * .5 + .5) * W, (1 - (_v.y * .5 + .5)) * H, vis && _v.z < 1];
+}
+// screen pixels per km near the look-at point (for sizing things in km)
+function pxPerKm() { const p = P(CAM.lon, CAM.lat), q = P(CAM.lon + 1 / Math.cos(CAM.lat * RAD), CAM.lat); return Math.hypot(q[0] - p[0], q[1] - p[1]) / 111.2; }
+// point at distance d km and bearing brg (deg) from (lon, lat)
+function dest(lon, lat, brg, d) {
+  const δ = d / RE, θ = brg * RAD, φ1 = lat * RAD, λ1 = lon * RAD;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return [λ2 / RAD, φ2 / RAD];
+}
+function distKm(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dφ = φ2 - φ1, dλ = (b[0] - a[0]) * RAD;
+  const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+  return 2 * RE * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dλ = (b[0] - a[0]) * RAD;
+  return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / RAD;
+}
+
+// stars behind the globe (fixed directions, so they turn with the camera)
+const STARS = Array.from({ length: 7000 }, (_, i) => { const z = hash(i * 3.17 + .3) * 2 - 1, a = hash(i * 7.31 + 1.1) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return { d: new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a)), m: hash(i * 1.93 + 5.5) }; });
+function stars(a) {
+  if (a <= .01) return;
+  const f = 1 / Math.tan(camera.fov * RAD / 2), asp = W / H;
+  ctx.save(); ctx.fillStyle = '#dfe8ff';
+  for (const s of STARS) {
+    _v.copy(s.d).transformDirection(camera.matrixWorldInverse);
+    if (_v.z > -.5) continue;
+    const x = (_v.x / -_v.z * f / asp * .5 + .5) * W + (CAM.ox || 0) * W, y = (.5 - _v.y / -_v.z * f * .5) * H + (CAM.oy || 0) * H;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = a * (.18 + .82 * s.m * s.m * s.m); const r = 1 + s.m * 1.7; ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.restore();
+}
+// ---------------------------------------------------------------- shapes
+function dens(r, step = .8) {                              // densify so that long edges follow the globe
+  const o = [];
+  for (let i = 0; i < r.length - 1; i++) {
+    const a = r[i], b = r[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < n; k++) o.push([lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+  }
+  o.push(r[r.length - 1]); return o;
+}
+function chaikin(pts, n = 2) {
+  for (let k = 0; k < n; k++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1];
+    o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } o.push(pts[pts.length - 1]); pts = o; }
+  return pts;
+}
+const cum = pts => { const d = [0]; for (let i = 1; i < pts.length; i++) d.push(d[i - 1] + distKm(pts[i - 1], pts[i])); return d; };
+function along(pts, d, s) {                                // point at s km along a polyline with cumulative distances d
+  const n = pts.length; if (s <= 0) return pts[0]; if (s >= d[n - 1]) return pts[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m] <= s) lo = m; else hi = m; }
+  const u = (s - d[lo]) / (d[hi] - d[lo]); return [lerp(pts[lo][0], pts[hi][0], u), lerp(pts[lo][1], pts[hi][1], u)];
+}
+// rings -> canvas path. For a fill, hidden points slide to the limb (the shape stays closed); for a line (line = true) the hidden stretch is left out.
+function pathRings(c, rings, close = true, sh = null, line = false) {
+  c.beginPath();
+  for (const r of rings) {
+    let pen = false, whole = true;
+    for (const q of r) { const p = sh ? P(q[0] + sh[0], q[1] + sh[1], !line) : P(q[0], q[1], !line); if (!p[2]) { pen = false; whole = false; continue; } if (pen) c.lineTo(p[0], p[1]); else { c.moveTo(p[0], p[1]); pen = true; } }
+    if (close && whole) c.closePath();
+  }
+}
+function pathPts(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => { const p = P(q[0], q[1], true); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); if (close) c.closePath(); }
+function pathCircle(c, cen, km) { c.beginPath(); for (let i = 0; i <= 72; i++) { const q = dest(cen[0], cen[1], i * 5, km), p = P(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.closePath(); }
+function halfBlur(src, px) { hb.setTransform(1, 0, 0, 1, 0, 0); hb.clearRect(0, 0, W / 2, H / 2); hb.filter = `blur(${px / 2}px)`; hb.drawImage(src, 0, 0, W / 2, H / 2); hb.filter = 'none'; }
+function wipe(...cs) { for (const c of cs) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; c.clearRect(0, 0, W, H); c.lineJoin = c.lineCap = 'round'; } }
+function territory(parts, a, o = {}) {
+  if (a <= .004) return;
+  wipe(la, lr);
+  for (const p of parts) {
+    const pa = p.a ?? 1; if (pa <= .004) continue;
+    la.save(); lr.save();
+    for (const cl of p.clips || []) { pathPts(la, cl); la.clip(); pathPts(lr, cl); lr.clip(); }
+    pathRings(la, p.rings, true, p.shift); la.globalAlpha = pa; la.fillStyle = p.col; la.fill('evenodd');
+    if (p.rim !== 0) { pathRings(lr, p.rings, true, p.shift, true); lr.globalAlpha = pa * (p.rim ?? 1); lr.strokeStyle = p.hi || '#fff'; lr.lineWidth = p.rimW || 2.2; lr.stroke(); }
+    la.restore(); lr.restore();
+  }
+  for (const f of o.fronts || []) {
+    lr.save(); pathRings(lr, f.rings); lr.clip('evenodd'); for (const cl of f.clips || []) { pathPts(lr, cl); lr.clip(); }
+    pathPts(lr, f.pts, !f.open); lr.strokeStyle = f.col || '#fff'; lr.lineWidth = f.w || 5; lr.globalAlpha = f.a ?? 1; lr.stroke(); lr.restore();
+  }
+  lay(a, o);
+}
+// Scene 4, the khaganate growing: its lands show where a mask is. The mask = the core of 552 swelling evenly on all sides (rKm)
+// + the march to the west (wpts, a blob). The edge of the mask inside the lands glows as the moving frontier.
+function lay(a, o = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = a * (o.color ?? .82); ctx.drawImage(LA, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = a * (o.add ?? .14); ctx.drawImage(LA, 0, 0);
+  if (o.dark) { ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = a * o.dark; ctx.drawImage(LA, 0, 0); }
+  const glow = o.glow ?? .26, rim = o.rim ?? .7;
+  if (glow > 0) { halfBlur(LA, o.blur || 30); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * glow; ctx.drawImage(HB, 0, 0, W, H); }
+  if (rim > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * rim; ctx.drawImage(LR, 0, 0); halfBlur(LR, 12); ctx.globalAlpha = a * rim; ctx.drawImage(HB, 0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- drawing kit
+function font(c, size, weight = 700, fam = 'IN') { c.font = `${weight} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save(); font(ctx, o.size || 40, o.weight || 700, o.fam || 'IN'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.base || 'alphabetic';
+  ctx.letterSpacing = (o.ls || 0) + 'px'; ctx.globalAlpha *= o.alpha ?? 1;
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 20; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x + (o.ls || 0) / 2, y); ctx.restore();
+}
+// one centred line made of differently coloured parts: [[text, colour, alpha], ...]; the text '•' is drawn as a round dot (a legend mark)
+function line(parts, x, y, o = {}) {
+  const size = o.size || 60;
+  ctx.save(); font(ctx, size, o.weight || 800, o.fam || 'IT'); ctx.letterSpacing = (o.ls || 0) + 'px';
+  const ws = parts.map(p => p[0] === '•' ? size * 1.0 : ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0), ga = ctx.globalAlpha;
+  let cx = x - tot / 2; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 22; ctx.shadowOffsetY = 3; }
+  parts.forEach((p, i) => { ctx.globalAlpha = ga * (p[2] ?? 1); ctx.fillStyle = p[1] || '#fff';
+    if (ctx.globalAlpha > .004) { if (p[0] === '•') { ctx.beginPath(); ctx.arc(cx + size * .34, y - size * .36, size * .27, 0, 7); ctx.fill(); } else ctx.fillText(p[0], cx, y); }
+    cx += ws[i]; });
+  ctx.restore(); return tot;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function glowDot(x, y, r, col, a = 1) {
+  if (a <= .004 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, a)); g.addColorStop(.35, rgba(col, a * .42)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// a place on the map: soft glow + solid dot with a white ring
+function place(p, col, k, r = 7, glow = 46) {
+  if (k <= 0 || !p[2]) return;
+  glowDot(p[0], p[1], glow * k, col, .55 * k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.beginPath(); ctx.arc(p[0], p[1], r * easeBack(k), 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+// the label of the style guide: navy pill with a thin amber edge, amber dot, white name. (x, y) = centre, k = appear 0..1
+function pill(text, x, y, k, o = {}) {
+  if (k <= 0) return;
+  const size = o.size || 34, padX = size * .6, dot = o.dot === false ? 0 : size * .3, gap = size * .34;
+  ctx.save(); font(ctx, size, 600);
+  const w = ctx.measureText(text).width + padX * 2 + (dot ? dot + gap : 0), h = size * 1.74, s = lerp(.72, 1, easeBack(k));
+  x = clamp(x, w / 2 + 22, W - w / 2 - 22);
+  ctx.translate(x, y); ctx.scale(s, s); ctx.globalAlpha *= clamp(k * 1.7);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+  rr(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = o.fill || C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (!o.fill) { ctx.strokeStyle = C.line; ctx.lineWidth = 1.6; ctx.stroke(); }
+  let tx = -w / 2 + padX;
+  if (dot) { ctx.fillStyle = o.color || C.acc; ctx.beginPath(); ctx.arc(tx + dot / 2, 0, dot / 2, 0, 7); ctx.fill(); tx += dot + gap; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, tx, size * .05);
+  ctx.restore();
+}
+function mapPill(q, text, k, o = {}) {                      // a pill pinned to a place; it fades out when the place leaves the frame
+  const p = P(q[0], q[1]); if (!p[2] || k <= 0) return;
+  const off = Math.max(-p[0], p[0] - W, -p[1], p[1] - H, 0); if (off >= 60) return;
+  ctx.save(); ctx.globalAlpha *= 1 - off / 60; pill(text, p[0] + (o.dx || 0), p[1] + (o.dy ?? -56), k, o); ctx.restore();
+}
+// a line on the map between km distances s0..s1 along a polyline (pts with cumulative distances d)
+function pathAlong(pts, d, s0, s1) {
+  ctx.beginPath(); let pen = false;
+  const a = along(pts, d, s0), pa = P(a[0], a[1]); if (pa[2]) { ctx.moveTo(pa[0], pa[1]); pen = true; }
+  for (let i = 0; i < pts.length; i++) { if (d[i] <= s0) continue; if (d[i] >= s1) break; const p = P(pts[i][0], pts[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  const b = along(pts, d, s1), pb = P(b[0], b[1]); if (pb[2]) { if (pen) ctx.lineTo(pb[0], pb[1]); else ctx.moveTo(pb[0], pb[1]); }
+}
+function borders(a) { if (a <= .01) return; ctx.save(); ctx.lineWidth = 1.3; ctx.strokeStyle = `rgba(255,255,255,${a})`; pathRings(ctx, SH.borders, false); ctx.stroke(); ctx.restore(); }
+function ring(cen, km, col, a, w = 3) { if (a <= .004) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathCircle(ctx, cen, km); ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.stroke(); ctx.restore(); }
+
+// ---------------------------------------------------------------- camera
+const mixCam = (a, b, u) => ({ lon: lerp(a.lon, b.lon, u), lat: lerp(a.lat, b.lat, u), range: Math.exp(lerp(Math.log(a.range), Math.log(b.range), u)),
+  head: lerp(a.head || 0, b.head || 0, u), tilt: lerp(a.tilt || 0, b.tilt || 0, u), ox: lerp(a.ox || 0, b.ox || 0, u), oy: lerp(a.oy || 0, b.oy || 0, u) });
+const kn = (keys, T, f, log) => { const v = hermite(keys.map(k => k[0]), keys.map(k => { const x = f(k[1]) ?? 0; return log ? Math.log(x) : x; }), T); return log ? Math.exp(v) : v; };
+const camTrack = (keys, T) => ({ lon: kn(keys, T, c => c.lon), lat: kn(keys, T, c => c.lat), range: kn(keys, T, c => c.range, true), head: kn(keys, T, c => c.head),
+  tilt: kn(keys, T, c => c.tilt), ox: kn(keys, T, c => c.ox), oy: kn(keys, T, c => c.oy) });
+function shake(c, T, t0, amp) { const u = T - t0; if (u < 0 || u > .8) return; const e = amp * Math.exp(-u * 6.5); c.ox = (c.ox || 0) + e * noise1(T * 47); c.oy = (c.oy || 0) + e * .7 * noise1(T * 53 + 9); c.roll = e * 55 * noise1(T * 31 + 3); }
+
+
+// ---------------------------------------------------------------- places (lon, lat); the test site outline and the villages are approximate
+const PL = { semey: [80.23, 50.41], kurch: [78.55, 50.75], field: [77.83, 50.43], degelen: [78.05, 49.80], balapan: [78.97, 49.95],
+             sarzhal: [78.78, 49.45], kainar: [77.41, 49.20], dolon: [79.62, 50.72], cen: [78.45, 50.27],
+             pavlodar: [76.95, 52.29], karaganda: [73.10, 49.80], nevada: [-116.05, 37.12], almaty: [76.89, 43.24] };
+// the Semipalatinsk test site, scaled to 18 500 km²
+const POLY0 = [[77.613, 50.809], [78.357, 50.949], [79.055, 50.902], [79.474, 50.53], [79.52, 50.065], [79.241, 49.739], [78.59, 49.6], [77.845, 49.646], [77.426, 49.972], [77.38, 50.437]];
+const POLY = [dens(chaikin([...POLY0, POLY0[0]], 3), .05)];
+const KZR = [SH.kz.reduce((a, r) => r.length > a.length ? r : a, [])].map(r => dens(r, .3));
+const BALK = SH.balkhash.map(r => dens(r, .3)), ARAL = SH.aral.map(r => dens(r, .3));
+function kzLand(a, glow = 1) { territory([{ rings: KZR, col: C.acc, hi: C.accHi, rimW: 2.8 }], a, { color: .22, add: .08 * glow, glow: .26 * glow, rim: 1 }); }
+function lakes(a) {
+  if (a <= .01) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathRings(ctx, [...ARAL, ...BALK], true, null, true);
+  ctx.strokeStyle = rgba(C.water, .35 * a); ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+}
+// the test site: a red glowing area with a dashed rim; col changes to amber when it is closed
+function site(a, col = C.warn, o = {}) {
+  if (a <= .004) return;
+  territory([{ rings: POLY, col, hi: o.hi || C.warnHi, rimW: 3 }], a, { color: o.color ?? .45, add: o.add ?? .12, glow: o.glow ?? .35, rim: o.rim ?? .9, blur: 24 });
+}
+const fmt = v => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+function counter(T, to, t0, t1, x, y, size, col, a = 1, o = {}) {
+  if (a <= .004) return;
+  const u = (o.lin ? clamp(seg(T, t0, t1)) : easeOut5(seg(T, t0, t1))), st = o.step || (to >= 1000 ? 100 : 1), v = u < 1 ? Math.round(to * u / st) * st : to, pop = 1 + .06 * Math.sin(Math.PI * seg(T, t1 - .05, t1 + .3));
+  ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); txt(fmt(v) + (o.suf || ''), 0, 0, { size, weight: 800, fam: 'IT', color: col, alpha: a, sb: 30, ls: 2 }); ctx.restore();
+}
+function town(q, text, k, col = C.acc, o = {}) { place(P(q[0], q[1]), col, k, 7, 40); mapPill(q, text, k, { color: col, ...o }); }
+
+// ---------------------------------------------------------------- the 456 tests (deterministic, spread inside the real test areas, approximately):
+// 116 in the air / on the ground (Experimental field), 340 underground (Degelen tunnels, Balapan wells)
+function inPoly(q) { let c = false; for (let i = 0, j = POLY0.length - 1; i < POLY0.length; j = i++) { const a = POLY0[i], b = POLY0[j];
+  if ((a[1] > q[1]) !== (b[1] > q[1]) && q[0] < (b[0] - a[0]) * (q[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+const EX = [];
+for (let i = 0; i < 456; i++) {
+  const air = i < 116, h1 = hash(i * 1.37 + .2), h2 = hash(i * 2.91 + .7);
+  const cen = air ? PL.field : (hash(i * 5.3) < .62 ? PL.degelen : PL.balapan), sp = air ? 22 : (cen === PL.degelen ? 14 : 18);
+  let q = dest(cen[0], cen[1], h1 * 360, sp * Math.sqrt(h2)); if (!inPoly(q)) q = cen;
+  EX.push({ q, air, u: air ? i / 116 : (i - 116) / 340, s: .7 + .6 * hash(i * 7.7) });
+}
+// all of them go off in scene 8, from its start to just before the «116» word: the air ones first, then the underground ones
+const EX0 = M.S8 + .25, EX1 = M.k116 - .3, EXM = lerp(EX0, EX1, .38);
+EX.forEach(e => e.t = e.air ? lerp(EX0, EXM, Math.pow(e.u, .9)) : lerp(EXM, EX1, Math.pow(e.u, .85)));
+function explosions(T, keep = 1, burst = 1, airHi = 0) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const e of EX) {
+    if (T < e.t) continue; const p = P(e.q[0], e.q[1]); if (!p[2]) continue;
+    const u = (T - e.t) / (e.air ? .9 : .6);
+    if (u < 1 && burst > 0) {
+      const r = (e.air ? 70 : 50) * e.s * easeOut(u);
+      glowDot(p[0], p[1], r * 1.4, e.air ? '#ffb347' : '#ff6a2a', burst * (1 - u) * (e.air ? .2 : .45));
+      ctx.strokeStyle = rgba(e.air ? '#ffd28a' : '#ff7a3c', burst * .7 * (1 - u)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, 7); ctx.stroke();
+    }
+    const k = e.air ? keep * (1 + airHi * 1.5) : keep * (1 - .65 * airHi);
+    if (k > 0) { ctx.fillStyle = rgba(e.air ? '#ffae5a' : '#ff5a2a', Math.min(1, k * (e.air ? .85 : .7))); ctx.beginPath(); ctx.arc(p[0], p[1], (e.air ? 3.4 : 2.6) * (e.air ? 1 + airHi * .6 : 1), 0, 7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+const nEx = T => EX.reduce((n, e) => n + (T >= e.t ? 1 : 0), 0);
+function yearOf(T) { const n = nEx(T); if (n === 0) return 1949; const e = EX[n - 1]; return Math.round(e.air ? lerp(1949, 1962, e.u) : lerp(1962, 1989, e.u)); }
+
+// ---------------------------------------------------------------- the two film stills (Higgsfield images), moved by the camera in code
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const [HF1, HF6] = await Promise.all([loadImg('hf/s1.jpg'), loadImg('hf/s6.jpg')]);
+const DUST = Array.from({ length: 260 }, (_, i) => ({ x: hash(i * 3.3), y: hash(i * 7.1), s: .5 + hash(i * 1.9), v: .5 + hash(i * 5.7) }));
+function still(img, T, t0, t1, z0, z1, fx, fy, py = 0) {
+  if (!img) return; const u = easeIO(seg(T, t0, t1)), z = lerp(z0, z1, u), sc = Math.max(W / img.width, H / img.height) * z, dw = img.width * sc, dh = img.height * sc;
+  // zoom towards the focus point (fx, fy as fractions of the picture)
+  const x = W / 2 - fx * dw + (fx - .5) * W * (z0 / z), y = H / 2 - fy * dh + (fy - .5) * H * (z0 / z) + py * u;
+  ctx.drawImage(img, clamp(x, W - dw, 0), clamp(y, H - dh, 0), dw, dh);
+}
+function film1(T) {                                          // the boy and the mushroom cloud: slow push over his shoulder towards the horizon
+  still(HF1, T, 0, M.S2, 1.04, 1.2, .68, .38);
+  const fl = .5 + .5 * noise1(T * 3.1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .08 + .06 * fl; ctx.fillStyle = '#ff7a2a'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  const k = Math.exp(-Math.max(0, T) * 2.2); if (k > .01) { ctx.fillStyle = `rgba(255,236,200,${.85 * k})`; ctx.fillRect(0, 0, W, H); }   // the first frame starts in the flash
+}
+function film6(T) {                                          // the same boy in the village yard: dolly in to the palm, grey dust falls
+  still(HF6, T, M.S6, M.S7, 1.03, 1.28, .43, .55);
+  ctx.save(); ctx.fillStyle = 'rgba(70,60,45,.14)'; ctx.fillRect(0, 0, W, H);
+  for (const d of DUST) {
+    const y = ((d.y + (T - M.S6) * .07 * d.v) % 1) * H, x = (d.x * W + Math.sin(T * .7 + d.y * 9) * 18) % W, r = 1.2 + 2.6 * d.s;
+    ctx.globalAlpha = .35 + .35 * d.s; ctx.fillStyle = '#cfc8bb'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- camera keys per scene
+const SEM = { lon: 78.6, lat: 50.2 };
+const CAMS = {
+  2: [[M.S2, { lon: 72, lat: 47, range: 3.2, tilt: 0 }], [M.area - .2, { lon: 77.9, lat: 50.0, range: .55, tilt: 20, oy: .06 }],
+      [M.kuw + .4, { lon: 77.3, lat: 50.1, range: .42, tilt: 28, oy: .08 }], [M.S3, { lon: 78.3, lat: 50.1, range: .36, tilt: 30, oy: .08 }]],
+  3: [[M.S3, { lon: 78.3, lat: 50.1, range: .36, tilt: 30, oy: .08 }], [M.vill + .6, { lon: 78.5, lat: 50.05, range: .4, tilt: 32, oy: .08 }],
+      [M.S4, { lon: 78.2, lat: 50.3, range: .26, tilt: 38, oy: .1 }]],
+  4: [[M.S4, { lon: 78.0, lat: 50.4, range: .2, tilt: 42, oy: .1 }], [M.S5, { lon: 77.95, lat: 50.42, range: .17, tilt: 46, oy: .1 }]],
+  5: [[M.S5, { lon: 78.1, lat: 50.45, range: .2, tilt: 44, oy: .1, head: 20 }], [M.dolon + .4, { lon: 78.8, lat: 50.6, range: .27, tilt: 42, oy: .1, head: 30 }],
+      [M.S6, { lon: 79.2, lat: 50.65, range: .22, tilt: 46, oy: .1, head: 34 }]],
+  7: [[M.S7, { lon: 78.9, lat: 50.95, range: .32, tilt: 30, oy: .08 }], [M.m400, { lon: 78.6, lat: 50.8, range: .16, tilt: 45, oy: .1 }],
+      [M.S8, { lon: 78.55, lat: 50.75, range: .14, tilt: 48, oy: .1 }]],
+  8: [[M.S8, { lon: 78.5, lat: 50.2, range: .26, tilt: 36, oy: .1 }], [M.k116, { lon: 78.35, lat: 50.15, range: .2, tilt: 40, oy: .11 }],
+      [M.S9, { lon: 78.1, lat: 50.3, range: .26, tilt: 36, oy: .1 }]],
+  9: [[M.S9, { lon: 78.1, lat: 50.3, range: .3, tilt: 34, oy: .08 }], [M.alm - .2, { lon: 76.9, lat: 50.6, range: .85, tilt: 22, oy: .1 }],
+      [M.S10, { lon: 77.5, lat: 50.6, range: .9, tilt: 20, oy: .1 }]],
+  10: [[M.S10, { lon: 78.6, lat: 50.3, range: .5, tilt: 22, oy: .05 }], [M.rise + .1, { lon: 79.5, lat: 50.3, range: .8, tilt: 12, oy: .03 }],
+       [M.nev - .3, { lon: 175, lat: 52, range: 3.6, tilt: 0 }], [M.nev + 1.2, { lon: 243.0, lat: 38.5, range: 1.55, tilt: 10, oy: .03 }],
+       [M.S11, { lon: 232, lat: 45, range: 2.6, tilt: 0 }]],
+  11: [[M.S11, { lon: 232, lat: 45, range: 2.6, tilt: 0 }], [M.shut - .4, { lon: 75, lat: 45, range: 3.0, tilt: 0 }],
+       [M.world, { lon: 72, lat: 40, range: 3.4, tilt: 0 }], [M.S12, { lon: 70, lat: 38, range: 3.6, tilt: 0 }]],
+  12: [[M.S12, { lon: 78.5, lat: 50.1, range: .4, tilt: 30, oy: .08 }], [M.S13, { lon: 78.4, lat: 50.15, range: .3, tilt: 36, oy: .09 }]],
+  13: [[M.S13, { lon: 78.4, lat: 50.15, range: .3, tilt: 36, oy: .09 }], [END, { lon: 78.4, lat: 50.2, range: .24, tilt: 40, oy: .1 }]],
+};
+const camAt = (sc, T) => { const c = camTrack(CAMS[sc], T); if (sc === 4) shake(c, T, M.boom, .006); return c; };
+
+// ---------------------------------------------------------------- map pieces
+// Kuwait, moved by kilometres (shape and size kept) to the centre c
+const KUW0 = SH.kuwait, KUWC = [47.6, 29.3];
+function kuwaitAt(c) { return KUW0.map(r => dens(r.map(([lo, la]) => { const dx = (lo - KUWC[0]) * 111.32 * Math.cos(la * RAD), dy = (la - KUWC[1]) * 110.57;
+  return [c[0] + dx / (111.32 * Math.cos(c[1] * RAD)), c[1] + dy / 110.57]; }), .05)); }
+const IRT = (SH.irtysh || []).map(r => dens(r, .1));
+function river(a) { if (a <= .01) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathRings(ctx, IRT, false, null, true); ctx.strokeStyle = rgba(C.water, .55 * a); ctx.lineWidth = 3; ctx.shadowColor = C.water; ctx.shadowBlur = 12; ctx.stroke(); ctx.restore(); }
+// villages around the test site: 3 named + a ring of small unnamed ones (outside the site)
+const VQ = [PL.dolon, PL.sarzhal, PL.kainar];
+const VSMALL = []; for (let i = 0; VSMALL.length < 14 && i < 200; i++) { const q = dest(PL.cen[0], PL.cen[1], hash(i * 4.1) * 360, 95 + 70 * hash(i * 2.3)); if (!inPoly(q) && VSMALL.every(v => distKm(v, q) > 35) && VQ.every(v => distKm(v, q) > 35)) VSMALL.push(q); }
+function villages(T, t0, a, named = 1, quest = 0) {
+  VSMALL.forEach((q, i) => { const k = ap(T, t0 + .2 + i * .06, .3) * a; if (k > 0) place(P(q[0], q[1]), C.acc, k, 5, 26); });
+  VQ.forEach((q, i) => {
+    const k = ap(T, t0 + i * .2, .35) * a; if (k <= 0) return;
+    town(q, L.vill[i], k * named, C.acc, { dy: 54, size: 28 }); if (named <= 0) place(P(q[0], q[1]), C.acc, k, 6, 30);
+    if (quest > 0) { const p = P(q[0], q[1]); if (p[2]) { const b = Math.sin(T * 4 + i) * 5; txt('?', p[0], p[1] - 58 + b, { size: 64, weight: 900, fam: 'IT', color: '#fff', alpha: quest * ap(T, t0 + .3 + i * .25, .3), sb: 18 }); } }
+  });
+}
+// a cloud of fallout: soft grey-brown puffs along a track from (lon, lat) a towards b; u = how far it has gone (0..1), wide = width in km
+function plume(a, b, u, wide, alpha, seed = 0, len = 1) {
+  if (alpha <= .004 || u <= 0) return;
+  const d = distKm(a, b), brg = bearing(a, b), ppk = pxPerKm();
+  ctx.save();
+  for (let i = 0; i < 60; i++) {
+    const f = i / 59; if (f > u) break;
+    const back = (u - f) / Math.max(u, .001), s = d * f * len, jit = (hash(i * 3.7 + seed) - .5) * wide * .6 * f;
+    const q = dest(...dest(a[0], a[1], brg, s), brg + 90, jit), p = P(q[0], q[1]); if (!p[2]) continue;
+    const r = (14 + wide * (.45 + .75 * f)) * ppk * (.8 + .4 * hash(i * 1.3 + seed));
+    const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r), al = Math.min(.8, alpha * (.34 + .26 * (1 - back)));
+    g.addColorStop(0, `rgba(196,186,166,${al})`); g.addColorStop(.55, `rgba(150,140,122,${al * .55})`); g.addColorStop(1, 'rgba(120,112,100,0)');
+    ctx.fillStyle = g; ctx.fillRect(p[0] - r, p[1] - r, r * 2, r * 2);
+  }
+  ctx.restore();
+}
+function windArrows(T, a, b, k) {
+  if (k <= 0) return; const brg = bearing(a, b), d = distKm(a, b);
+  for (let i = 0; i < 4; i++) {
+    const f = ((T * .25 + i / 4) % 1), q = dest(...dest(a[0], a[1], brg, d * f), brg - 90, 30 + 22 * (i % 2)), q2 = dest(q[0], q[1], brg, 22);
+    const p = P(q[0], q[1]), p2 = P(q2[0], q2[1]); if (!p[2] || !p2[2]) continue; const al = k * Math.sin(Math.PI * f) * .8;
+    const ang = Math.atan2(p2[1] - p[1], p2[0] - p[0]);
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(ang); ctx.strokeStyle = `rgba(255,255,255,${al})`; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(28, 0); ctx.moveTo(14, -12); ctx.lineTo(28, 0); ctx.lineTo(14, 12); ctx.stroke(); ctx.restore();
+  }
+}
+function flash(T, t0, q) {                                   // the bomb: a white-orange flash and shock rings from one point
+  const p = P(q[0], q[1]); if (!p[2] || T < t0) return; const u = T - t0;
+  glowDot(p[0], p[1], 520 * easeOut(clamp(u / .5)), '#fff3d6', Math.max(0, 1 - u / 1.6));
+  glowDot(p[0], p[1], 240, '#ff9a3c', .9 * Math.exp(-u * .8));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const dl of [0, .35, .7]) { const v = (u - dl) / 2.2; if (v <= 0 || v >= 1) continue; ctx.strokeStyle = rgba('#ffd28a', .8 * (1 - v)); ctx.lineWidth = 6 - 4 * v; ctx.beginPath(); ctx.arc(p[0], p[1], 30 + 520 * easeOut(v), 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+// fixed world points for the «whole world» moment (approximate city positions)
+const WORLD = [[-74, 40.7], [-118.2, 34], [-87.6, 41.9], [-99.1, 19.4], [-43.2, -22.9], [-58.4, -34.6], [-77, -12], [-74.1, 4.7], [-0.1, 51.5], [2.35, 48.85], [13.4, 52.5], [12.5, 41.9],
+  [-3.7, 40.4], [37.6, 55.75], [28.97, 41], [31.2, 30], [3.4, 6.5], [36.8, -1.3], [18.4, -33.9], [55.3, 25.2], [51.4, 35.7], [67, 24.9], [77.2, 28.6], [72.9, 19.1], [90.4, 23.8],
+  [100.5, 13.75], [106.8, -6.2], [103.8, 1.35], [116.4, 39.9], [121.5, 31.2], [127, 37.5], [139.7, 35.7], [151.2, -33.9], [144.96, -37.8], [174.8, -36.8], [-123.1, 49.3], [-79.4, 43.7],
+  [69.3, 41.3], [74.6, 42.9], [68.8, 38.6], [58.4, 37.9], [44.5, 40.2], [49.9, 40.4], [71.4, 51.2], [76.9, 43.2], [30.5, 50.45], [21, 52.2], [24.9, 60.2], [10.75, 59.9], [18.07, 59.33],
+  [-9.1, 38.7], [-6.26, 53.35], [35.2, 31.8], [46.7, 24.7], [38.7, 9], [32.6, 0.3], [-17.4, 14.7], [-7.6, 33.6], [10.2, 36.8], [-47.9, -15.8], [-70.6, -33.4]];
+function worldDots(T, t0, k) {
+  if (k <= 0) return;
+  WORLD.forEach((q, i) => { const p = P(q[0], q[1]); if (!p[2]) return; const a = ap(T, t0 + hash(i * 2.2) * 1.4, .3) * k; if (a <= 0) return;
+    glowDot(p[0], p[1], 34, C.acc, .7 * a); ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#fff3cf'; ctx.beginPath(); ctx.arc(p[0], p[1], 3.2, 0, 7); ctx.fill(); ctx.restore(); });
+}
+// great circle between two points, drawn up to fraction u
+function gc(a, b, n = 160) { const o = [], A = dirv(a[0], a[1]), B = dirv(b[0], b[1]), om = A.angleTo(B);
+  for (let i = 0; i <= n; i++) { const t = i / n, s = Math.sin(om), v = A.clone().multiplyScalar(Math.sin((1 - t) * om) / s).addScaledVector(B, Math.sin(t * om) / s);
+    o.push([Math.atan2(v.x, v.z) / RAD, Math.asin(clamp(v.y / v.length(), -1, 1)) / RAD]); } return o; }
+const ARC = gc(PL.semey, PL.nevada);
+function arcLine(u, a) {
+  if (u <= 0 || a <= 0) return; const n = Math.round(ARC.length * u);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .9 * a); ctx.lineWidth = 5; ctx.shadowColor = C.acc; ctx.shadowBlur = 16; ctx.setLineDash([18, 12]);
+  ctx.beginPath(); let pen = false; for (let i = 0; i < n; i++) { const p = P(ARC[i][0], ARC[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  ctx.stroke(); ctx.restore();
+}
+
+// ---------------------------------------------------------------- map scenes
+function mapS2(T) {                                          // from space down to the test site; its area; Kuwait next to it, then on top of it
+  lakes(.6); kzLand(.35 * (1 - ap(T, M.area - .4, .8)) + .2);
+  const draw = easeIO(seg(T, M.S2 + 1.2, M.area + .2));
+  if (draw > 0) { const pts = POLY[0], n = Math.max(2, Math.round(pts.length * draw));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warnHi, .95); ctx.lineWidth = 3.5; ctx.shadowColor = C.warn; ctx.shadowBlur = 16; ctx.setLineDash([14, 9]);
+    pathPts(ctx, pts.slice(0, n), false); ctx.stroke(); ctx.restore(); }
+  site(.9 * ap(T, M.area + .1, .5), C.warn, { rim: 0 });
+  town(PL.semey, L.semey, ap(T, M.S2 + 1.4, .35), '#ffffff', { dy: -52, size: 30 });
+  const kk = ap(T, M.kuw - .1, .4); if (kk > 0) {
+    const mv = easeIO(seg(T, M.kuw + .5, M.kuw + 1.3)), c = [lerp(75.4, PL.cen[0], mv), lerp(50.25, PL.cen[1], mv)];
+    territory([{ rings: kuwaitAt(c), col: '#ffffff', hi: '#ffffff', rimW: 3 }], kk, { color: .1, add: .22, glow: .25, rim: 1 });
+    mapPill(c, L.kuwait, kk * (1 - mv), { color: '#fff', dy: -110, size: 28 });
+  }
+}
+function mapS3(T) {                                          // it looks empty, but villages stood all around
+  lakes(.6); kzLand(.2); site(.5, C.warn, { rim: .6, glow: .2 });
+  const p = P(...PL.cen), ek = ap(T, M.empty - .1, .35) * (1 - seg(T, M.vill - .3, M.vill));
+  if (p[2] && ek > 0) pill(L.empty, p[0], p[1], ek, { color: C.warn, size: 34 });
+  villages(T, M.vill - .15, 1, 1, 1 - seg(T, M.path, M.path + .5));
+  const pk = ap(T, M.path - .05, .35); if (pk > 0) { const a = P(...PL.field), b = P(...PL.dolon); if (a[2] && b[2]) {
+    ctx.save(); ctx.globalAlpha = pk; ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 4; ctx.setLineDash([10, 12]); ctx.lineDashOffset = -T * 40;
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.quadraticCurveTo((a[0] + b[0]) / 2, Math.min(a[1], b[1]) - 120, b[0], b[1]); ctx.stroke(); ctx.restore(); } }
+}
+function mapS4(T) {                                          // 29.08.1949: the flash at the Experimental field
+  lakes(.6); kzLand(.2); site(.45, C.warn, { rim: .5, glow: .2 }); villages(T, -9, .8, 0);
+  mapPill(PL.field, L.field, ap(T, M.S4 + .4, .35) * (1 - seg(T, M.boom - .3, M.boom)), { color: C.warn, dy: -52, size: 28 });
+  const p = P(...PL.field); if (p[2] && T < M.boom) { const u = ((T * 1.6) % 1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.warn, .8 * (1 - u)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], 10 + 50 * u, 0, 7); ctx.stroke(); ctx.restore(); place(p, C.warn, ap(T, M.S4 + .2, .3), 8, 40); }
+  flash(T, M.boom, PL.field);
+  plume(PL.field, PL.dolon, .12 * ease(seg(T, M.boom + .4, M.S5 + .2)), 22, ap(T, M.boom + .3, .6));
+}
+function mapS5(T) {                                          // the wind drives the cloud to Dolon
+  lakes(.6); kzLand(.2); site(.4, C.warn, { rim: .5, glow: .2 }); villages(T, -9, .8, 0);
+  const u = lerp(.12, 1, easeIO(seg(T, M.S5, M.dolon + .5)));
+  windArrows(T, PL.field, PL.dolon, ap(T, M.wind, .4) * (1 - seg(T, M.S6 - .6, M.S6)));
+  plume(PL.field, PL.dolon, u, 46, 1); plume(PL.field, PL.dolon, u * .97, 30, .7, 5, 1.03);
+  const dk = ap(T, M.dolon - .1, .35); town(PL.dolon, L.vill[0], dk, C.acc, { dy: 56, size: 32 });
+  const p = P(...PL.dolon); if (p[2] && T > M.dolon) { for (const d of [0, .5]) { const v = ((T - M.dolon + d) % 1.2) / 1.2; ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .7 * (1 - v)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], 12 + 70 * v, 0, 7); ctx.stroke(); ctx.restore(); } }
+}
+function mapS7(T) {                                          // the secret town on the Irtysh: missing from maps, then «Moscow-400»
+  lakes(.6); kzLand(.2); site(.35, C.warn, { rim: .5, glow: .2 }); river(1);
+  const ik = ap(T, M.S7 + .3, .4); const iq = [79.3, 51.25]; mapPill(iq, L.irtysh, ik * (1 - seg(T, M.m400 - .5, M.m400)), { color: C.water, dy: 0, size: 26 });
+  const p = P(...PL.kurch); if (!p[2]) return;
+  const qk = ap(T, M.kurch - .1, .35) * (1 - seg(T, M.m400 - .2, M.m400 + .2));
+  if (qk > 0) { ctx.save(); ctx.globalAlpha = qk; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3; ctx.setLineDash([10, 9]); ctx.lineDashOffset = -T * 30; ctx.beginPath(); ctx.arc(p[0], p[1], 64, 0, 7); ctx.stroke(); ctx.restore();
+    txt('?', p[0], p[1] + 22, { size: 70, weight: 900, fam: 'IT', alpha: qk, sb: 16 }); }
+  const nk = ap(T, M.nomap - .1, .35) * (1 - seg(T, M.m400 - .3, M.m400)); if (nk > 0) plate(L.nomap, p[0], p[1] - 130, 34, nk, { fill: C.card, color: '#fff', ls: 3 });
+  const ck = ap(T, M.m400 - .15, .5);
+  if (ck > 0) {                                              // the town lights up: a cluster of warm dots
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 70; i++) { const a = hash(i * 9.1) * 6.28, r = 46 * Math.sqrt(hash(i * 3.3)), k = ap(T, M.m400 - .15 + hash(i * 1.7) * .5, .2);
+      ctx.fillStyle = rgba('#ffd27a', .9 * k); ctx.beginPath(); ctx.arc(p[0] + Math.cos(a) * r * 1.3, p[1] + Math.sin(a) * r * .7, 2.6, 0, 7); ctx.fill(); }
+    ctx.restore(); glowDot(p[0], p[1], 130, '#ffb347', .5 * ck);
+    pill(L.m400, p[0], p[1] - 96, ck, { color: C.warn, size: 36 });
+    rubber(L.secret, p[0], p[1] + 150, 60, T, M.m400 + .4, '#e8502f', -8);
+  }
+}
+function mapS8(T) {                                          // forty years: 456 tests, 116 of them in the open air
+  lakes(.6); kzLand(.2); site(.5, C.warn, { rim: .6, glow: .22 });
+  explosions(T, 1, 1, ease(seg(T, M.k116 - .1, M.k116 + .5)));
+}
+function mapS9(T) {                                          // the fallout over three regions
+  lakes(.6); kzLand(.3); site(.45, C.warn, { rim: .5, glow: .2 });
+  const g = easeIO(seg(T, M.S9, M.alm + .4)), a = ap(T, M.S9 + .1, .6);
+  [[PL.dolon, 0, 1], [[83.5, 51.3], 1, 1.1], [[80.9, 49.0], 2, 1], [PL.pavlodar, 3, .85], [[74.5, 49.4], 4, .9], [[75.2, 51.4], 5, .9], [[82.4, 49.9], 6, 1]]
+    .forEach(([to, s, len]) => plume(PL.field, to, g, 85, a * .8, s * 11, len));
+  town(PL.semey, L.semey, ap(T, M.S9 + .3, .35), '#ffffff', { dy: -52, size: 28 });
+  town(PL.pavlodar, L.pav, ap(T, M.S9 + .6, .35), '#ffffff', { dy: -52, size: 28 });
+  town(PL.karaganda, L.kar, ap(T, M.S9 + .9, .35), '#ffffff', { dy: -52, size: 28 });
+}
+function mapS10(T) {                                         // 1989: Semey — Nevada
+  lakes(.5); kzLand(.25 * (1 - seg(T, M.rise, M.nev))); site(.5, C.warn, { rim: .5, glow: .2 });
+  const nv = (SH.nevada || []).map(r => dens(r, .2));
+  territory([{ rings: nv, col: C.warn, hi: C.warnHi, rimW: 3 }], ap(T, M.nev, .5), { color: .35, add: .12, glow: .3, rim: 1 });
+  arcLine(easeIO(seg(T, M.nev - .9, M.nev + .9)), ap(T, M.nev - 1, .3));
+  town(PL.semey, L.semey, ap(T, M.S10 + .2, .35), C.acc, { dy: -52, size: 30 });
+  town(PL.nevada, L.nevada, ap(T, M.nev + .6, .35), C.warn, { dy: -54, size: 32 });
+}
+function mapS11(T) {                                         // closed, and the whole world marks the day
+  const off = ease(seg(T, M.shut - .1, M.shut + .7));
+  kzLand(.5 + .4 * ap(T, M.world, .6), 1.4);
+  site(.8 * (1 - off), C.warn, { rim: .8, glow: .4 });
+  const p = P(...PL.cen); if (p[2] && off > 0 && off < 1) glowDot(p[0], p[1], 90, C.warn, .6 * (1 - off));
+  worldDots(T, M.world - .2, ap(T, M.world - .2, .4));
+}
+function mapS12(T) { lakes(.6); kzLand(.25); site(.5 * (1 - ap(T, M.ans, .5)) , C.warn, { rim: .5, glow: .2 }); site(.5 * ap(T, M.ans, .5), C.acc, { hi: C.accHi, rim: .8, glow: .25 }); }
+function mapS13(T) { lakes(.6); kzLand(.25); site(.45, C.acc, { hi: C.accHi, rim: .6, glow: .2 }); }
+
+// ---------------------------------------------------------------- titles and panels
+function vignette(top = 1) {
+  let g = ctx.createLinearGradient(0, 0, 0, 640); g.addColorStop(0, `rgba(0,0,0,${.9 * top})`); g.addColorStop(.5, `rgba(0,0,0,${.46 * top})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 640);
+  g = ctx.createLinearGradient(0, 1080, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.42, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,.92)');
+  ctx.fillStyle = g; ctx.fillRect(0, 1080, W, H - 1080);
+  g = ctx.createRadialGradient(W / 2, H / 2, 620, W / 2, H / 2, 1180); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+const tag = (s, y, a, col = C.acc) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; rr(ctx, W / 2 - 30, y - 52, 60, 6, 3); ctx.fill(); ctx.restore();
+  txt(s, W / 2, y + (1 - a) * 8, { size: 28, weight: 700, ls: 7, color: col, alpha: a, sb: 10 }); };
+function plate(s, x, y, size, a, o = {}) {
+  if (a <= 0) return;
+  ctx.save(); font(ctx, size, 800, 'IT'); ctx.letterSpacing = (o.ls ?? 4) + 'px'; const w = ctx.measureText(s).width + size * 1.1, h = size * 1.55, sc = o.pop ? lerp(1.25, 1, easeBack(a)) : 1;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.rotate((o.rot || 0) * RAD); ctx.globalAlpha *= clamp(a * 1.5);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6; rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = o.fill || C.acc; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = 3; ctx.stroke(); }
+  ctx.fillStyle = o.color || BR.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, (o.ls ?? 4) / 2, size * .06); ctx.restore();
+}
+function datePlate(s, a, y = 330, col = C.acc) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; font(ctx, 84, 800, 'IT'); const w = ctx.measureText(s).width + 90, h = 124, sc = lerp(.9, 1, easeBack(a));
+  ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = rgba(col, .7); ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  txt(s, W / 2, y + 30, { size: 84, weight: 800, fam: 'IT', color: col, alpha: a, shadow: 0, ls: 2 });
+}
+function rubber(s, x, y, size, T, t0, col, rot = -8) {
+  const u = seg(T, t0 - .06, t0 + .22); if (T < t0 - .06) return;
+  const sc = lerp(2.1, 1, easeOut(u));
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot * RAD); ctx.scale(sc, sc); ctx.globalAlpha *= clamp(u * 4) * .95;
+  font(ctx, size, 900, 'IT'); ctx.letterSpacing = '6px'; const w = ctx.measureText(s).width + size * .9, h = size * 1.45;
+  ctx.strokeStyle = col; ctx.lineWidth = 8; rr(ctx, -w / 2, -h / 2, w, h, 12); ctx.stroke(); ctx.lineWidth = 3; rr(ctx, -w / 2 + 12, -h / 2 + 12, w - 24, h - 24, 8); ctx.stroke();
+  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 14; ctx.fillText(s, 3, size * .06); ctx.restore();
+}
+// a drawn portrait badge (no free photo could be fetched): navy disc, amber ring, head-and-shoulders silhouette
+function portrait(x, y, r, k) {
+  if (k <= 0) return; const s = lerp(.7, 1, easeBack(k));
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = '#1d1466'; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r - 6, 0, 7); ctx.clip();
+  const g = ctx.createRadialGradient(0, -r * .3, 10, 0, 0, r); g.addColorStop(0, '#3b3f8f'); g.addColorStop(1, '#130B54'); ctx.fillStyle = g; ctx.fillRect(-r, -r, 2 * r, 2 * r);
+  ctx.fillStyle = '#0a0730'; ctx.beginPath(); ctx.arc(0, -r * .18, r * .34, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-r * .85, r); ctx.quadraticCurveTo(-r * .8, r * .2, 0, r * .16); ctx.quadraticCurveTo(r * .8, r * .2, r * .85, r); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e9e9f2'; ctx.beginPath(); ctx.moveTo(-r * .12, r * .2); ctx.lineTo(0, r * .5); ctx.lineTo(r * .12, r * .2); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 7; ctx.stroke(); ctx.restore();
+}
+function hud(T, sc) {
+  if (sc === 1) {
+    const out = 1 - seg(T, M.S2 - .4, M.S2);
+    datePlate('1949', ap(T, .5, .4) * out, 300);
+    const hk = ap(T, M.vil - .1, .35) * out;
+    if (hk > 0) { ctx.save(); ctx.globalAlpha = hk; line(L.hook.map(p => [p[0], PAL[p[1]]]), W / 2, 500 + (1 - hk) * 14, { size: 92, weight: 900 }); ctx.restore();
+      if (L.hook2) txt(L.hook2, W / 2, 600, { size: 92, weight: 900, fam: 'IT', alpha: hk, sb: 24 }); }
+  } else if (sc === 2) {
+    const ak = ap(T, M.area - .1, .35);
+    if (ak > 0) { counter(T, 18500, M.area - .05, M.area + .9, W / 2 - 60, 450, 150, C.warnHi, ak); txt(L.km2, W / 2 + 330, 450, { size: 64, weight: 800, fam: 'IT', color: C.warnHi, alpha: ak, sb: 20 }); }
+    const kk = ap(T, M.kuw, .35); if (kk > 0) { txt(L.kuwait + ' — ' + L.kuwA, W / 2, 530, { size: 38, weight: 700, alpha: kk, sb: 12 }); }
+    const bk = ap(T, M.kuw + 1.25, .3); if (bk > 0) plate(L.bigger, W / 2, 620, 40, bk, { fill: C.warn, color: '#fff', pop: 1 });
+  } else if (sc === 3) {
+    const pk = ap(T, M.path - .05, .35); if (pk > 0) plate(L.path, W / 2, 330, 42, pk, { fill: C.card, color: '#fff', stroke: rgba(C.acc, .6), ls: 4 });
+  } else if (sc === 4) {
+    datePlate(L.date, ap(T, M.date - .05, .4), 300);
+    const uk = ap(T, M.ussr - .1, .35); if (uk > 0) plate(L.ussr, W / 2, 420, 34, uk, { fill: C.card, color: '#fff', ls: 1 });
+  } else if (sc === 5) {
+    const wk = ap(T, M.wind - .05, .35) * (1 - seg(T, M.warn - .3, M.warn)); if (wk > 0) plate(L.wind + ' →', W / 2, 330, 40, wk, { fill: C.card, color: '#fff', stroke: 'rgba(255,255,255,.5)' });
+    if (T >= M.warn + .2) rubber(L.nowarn, W / 2, 360, 64, T, M.warn + .3, '#e8502f', -6);
+  } else if (sc === 8) {
+    const k = ap(T, M.S8 + .2, .35), n = nEx(T);
+    if (k > 0) { txt(String(yearOf(T)), W / 2, 285, { size: 56, weight: 800, fam: 'IT', color: 'rgba(255,255,255,.85)', alpha: k, ls: 4, sb: 14 });
+      txt(String(n), W / 2, 470, { size: 190, weight: 900, fam: 'IT', color: '#fff', alpha: k, ls: 3, sb: 30 }); txt(L.tests, W / 2, 545, { size: 40, weight: 800, ls: 8, alpha: k, sb: 12 }); }
+    const ak = ap(T, M.k116 - .1, .35);
+    if (ak > 0) { ctx.save(); ctx.globalAlpha = ak; txt('116', W / 2 - 150, 650, { size: 84, weight: 900, fam: 'IT', color: '#ffb347', shadow: .6, align: 'right' });
+      txt('— ' + L.air, W / 2 - 130, 642, { size: 38, weight: 700, align: 'left', shadow: .6 }); ctx.restore(); }
+  } else if (sc === 9) {
+    const k = ap(T, M.mil - .2, .35);
+    counter(T, 1500000, M.mil - .15, M.mil + 1.0, W / 2, 450, 140, '#ffffff', k, { step: 10000 });
+    if (k > 0) txt(L.milSub, W / 2, 530, { size: 36, weight: 800, ls: 4, alpha: k, sb: 14 });
+    const bk = ap(T, M.alm - .1, .4);
+    if (bk > 0) {                                            // Almaty 2.3 M vs 1.5 M: more than half
+      const x0 = 140, w = W - 280, y1 = 620, y2 = 720, g = easeIO(seg(T, M.alm, M.alm + 1));
+      ctx.save(); ctx.globalAlpha = bk;
+      rr(ctx, x0, y1, w, 40, 20); ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fill(); rr(ctx, x0, y1, w * g, 40, 20); ctx.fillStyle = '#ffffff'; ctx.fill();
+      rr(ctx, x0, y2, w, 40, 20); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill(); rr(ctx, x0, y2, w * 1.5 / 2.3 * g, 40, 20); ctx.fillStyle = C.warn; ctx.fill();
+      ctx.strokeStyle = C.acc; ctx.lineWidth = 4; ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(x0 + w / 2, y1 - 20); ctx.lineTo(x0 + w / 2, y2 + 60); ctx.stroke(); ctx.restore();
+      txt(L.almA, x0, y1 - 14, { size: 30, weight: 700, align: 'left', alpha: bk, sb: 10 }); txt(L.almB, x0, y2 - 14, { size: 30, weight: 700, align: 'left', color: C.warnHi, alpha: bk, sb: 10 });
+      txt('½', x0 + w / 2, y2 + 100, { size: 40, weight: 800, color: C.acc, alpha: bk * g, sb: 10 }); txt(L.half, x0 + w / 2, y2 + 140, { size: 30, weight: 700, color: C.acc, alpha: bk * ap(T, M.alm + 1, .3), sb: 10 });
+    }
+  } else if (sc === 10) {
+    datePlate(L.y89, ap(T, M.y89 - .05, .4) * (1 - seg(T, M.nev - .5, M.nev - .1)), 300);
+    const ok = ap(T, M.olzhas - .1, .4) * (1 - seg(T, M.S11 - .4, M.S11));
+    portrait(W / 2, 520, 120, ok * (1 - seg(T, M.nev - .4, M.nev)));
+    if (ok > 0) { const yy = lerp(700, 330, ease(seg(T, M.nev - .4, M.nev)));
+      plate(L.olzhas, W / 2, yy, 44, ok, { fill: C.card, color: '#fff', ls: 1, stroke: rgba(C.acc, .6) });
+      txt(L.olzhasSub, W / 2, yy + 66, { size: 30, weight: 600, alpha: ok * (1 - seg(T, M.nev - .4, M.nev)), color: 'rgba(255,255,255,.8)', sb: 10 }); }
+    const pk = ap(T, M.nev + .2, .35) * (1 - seg(T, M.S11 - .4, M.S11)); if (pk > 0) plate(L.placard, W / 2, 440, 54, pk, { fill: '#f3ecdd', color: '#b5281e', pop: 1, rot: -2 });
+  } else if (sc === 11) {
+    const ck = ap(T, M.closed - .1, .35) * (1 - seg(T, M.world - .5, M.world - .1)); datePlate(L.closed, ck, 300);
+    if (T >= M.shut - .06 && T < M.world) { ctx.save(); ctx.globalAlpha = 1 - seg(T, M.world - .5, M.world - .1); rubber(L.shut, W / 2, 470, 100, T, M.shut, C.acc, -7); ctx.restore(); }
+    const uk = ap(T, M.un - .1, .4);
+    if (uk > 0) {                                             // the United Nations day: blue globe badge + three lines
+      const cy = 400; ctx.save(); ctx.globalAlpha = uk; const s = lerp(.85, 1, easeBack(uk)); ctx.translate(W / 2, cy); ctx.scale(s, s);
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30; rr(ctx, -440, -150, 880, 300, 26); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.strokeStyle = rgba('#5b92e5', .6); ctx.lineWidth = 3; ctx.stroke();
+      ctx.translate(-310, -10); ctx.fillStyle = '#5b92e5'; ctx.beginPath(); ctx.arc(0, 0, 92, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(0, 0, 62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.ellipse(0, 0, 26, 62, 0, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-62, 0); ctx.lineTo(62, 0); ctx.moveTo(-54, -30); ctx.lineTo(54, -30); ctx.moveTo(-54, 30); ctx.lineTo(54, 30); ctx.stroke();
+      ctx.restore();
+      txt(L.un, W / 2 - 310, cy + 125, { size: 30, weight: 800, ls: 4, color: '#9cc0ff', alpha: uk, sb: 10 });
+      L.unText.forEach((s2, i) => txt(s2, W / 2 - 180, cy - 50 + i * 56, { size: i ? 38 : 46, weight: i ? 700 : 900, fam: 'IT', align: 'left', color: i ? '#fff' : C.acc, alpha: uk, shadow: 0 }));
+    }
+  } else if (sc === 12) {                                    // the ENT question and its answer at once: no options, no countdown
+    ctx.fillStyle = rgba('#0c0738', .45 * ap(T, M.S12, .4)); ctx.fillRect(0, 0, W, H);
+    tag(L.quiz, 262, ap(T, M.ent - .2, .35));
+    const qa = ap(T, M.q - .1, .4);
+    L.q.forEach((s, i) => txt(s, W / 2, 380 + i * 74 + (1 - qa) * 12, { size: 58, weight: 800, fam: 'IT', alpha: qa, sb: 18 }));
+    const an = ap(T, M.ans + .2, .4);
+    if (an > 0) { plate(L.ans, W / 2, 650, 120, an, { fill: GREEN, color: '#fff', pop: 1 }); glowDot(W / 2, 650, 420, GREEN, .25 * an);
+      plate(L.chip, W / 2, 820, 38, ap(T, M.ans + .7, .35), { ls: 1, fill: C.card, color: '#fff', stroke: rgba(GREEN, .7) }); }
+  }
+}
+
+// ---------------------------------------------------------------- scene 13: the profile card with the link
+const GREEN = '#2fcf74';
+function cta(T) {
+  const dim = ease(seg(T, M.link - .5, M.link + .1)); if (dim > 0) { ctx.fillStyle = rgba('#0c0738', .9 * dim); ctx.fillRect(0, 0, W, H); }
+  const X = W / 2, m = ap(T, M.link - .1, .5);
+  if (m > 0) {
+    const ay = 1080 + 14 * Math.sin(T * 6.5) * seg(T, M.link + .4, M.link + .8), hh = 150;
+    ctx.save(); ctx.globalAlpha = m; ctx.strokeStyle = C.acc; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.moveTo(X, ay + hh * .7); ctx.lineTo(X, ay - hh * .55); ctx.moveTo(X - 62, ay - hh * .05); ctx.lineTo(X, ay - hh * .6); ctx.lineTo(X + 62, ay - hh * .05); ctx.stroke(); ctx.restore();
+  }
+  const l = ap(T, M.link - .12, .4), hi = ap(T, M.bio - .25, .3);
+  if (l > 0) {
+    const cw = 840, ch = 206, cx = X - cw / 2, cyc = 740 + (1 - l) * 40;
+    ctx.save(); ctx.globalAlpha = l;
+    line(L.go.map(p => [p[0], p[1] ? C.acc : '#fff']), X, cyc - ch / 2 - 46, { size: 56, sb: 14 });
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12; rr(ctx, cx, cyc - ch / 2, cw, ch, 24); ctx.fillStyle = C.card; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 62, 0, 7); ctx.strokeStyle = C.acc; ctx.lineWidth = 6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 106, cyc, 51, 0, 7); ctx.fillStyle = '#0b0636'; ctx.fill();
+    ctx.drawImage(LOGO_AV, cx + 106 - LOGO_AV.width / 2, cyc - LOGO_AV.height / 2);
+    txt('JAS EDUCATION', cx + 206, cyc - 43, { size: 36, weight: 800, fam: 'IT', align: 'left', ls: 1, shadow: 0 });
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; rr(ctx, cx + 206, cyc - 24, 504, 17, 8.5); ctx.fill();
+    const lx = cx + 199, ly = cyc + 14, lw = 360, lh = 60, my = ly + lh / 2;
+    rr(ctx, lx, ly, lw, lh, 30); ctx.fillStyle = rgba(C.acc, .1 + .16 * hi); ctx.fill(); ctx.strokeStyle = rgba(C.acc, .45 + .55 * hi); ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = C.acc; ctx.lineWidth = 5.4; ctx.lineCap = 'round';
+    ctx.save(); ctx.translate(lx + 43, my); ctx.rotate(-.7); rr(ctx, -23, -8.5, 26.5, 17, 8.5); ctx.stroke(); rr(ctx, -3.5, -8.5, 26.5, 17, 8.5); ctx.stroke(); ctx.restore();
+    txt(L.linkword, lx + 82, my + 12, { size: 35, weight: 700, align: 'left', color: C.acc, shadow: 0 });
+    ctx.restore();
+    for (const dl of [0, .16]) { const u = (T - M.go - dl) / .6; if (u <= 0 || u >= 1) continue;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(C.acc, .75 * (1 - u) ** 2); ctx.lineWidth = 5 - 3 * u;
+      const g = 6 + 74 * easeOut(u); rr(ctx, lx - g, ly - g, lw + 2 * g, lh + 2 * g, 30 + g); ctx.stroke(); ctx.restore(); }
+    if (hi > 0) { glowDot(lx + lw / 2, my, 230, C.acc, .2 * hi * (.7 + .3 * Math.sin(T * 6))); txt(L.where.toUpperCase(), X, 1330 + (1 - hi) * 10, { size: 40, weight: 700, ls: 5, alpha: hi, sb: 12 }); }
+  }
+}
+
+// ---------------------------------------------------------------- the brand in the frame
+const END0 = M.last - .1;
+function logo() { ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(LOGO, W - 48 - LOGO.width, 48); ctx.restore(); }
+function credit(T, sc) { if (sc !== 13) txt(sc === 1 || sc === 6 ? (KK ? 'кадр: ЖИ' : 'кадр: ИИ') : L.credit, W / 2, 1880, { size: 19, weight: 500, color: 'rgba(255,255,255,.42)', shadow: 0 }); }
+function endCard(T) {
+  const k = ease(seg(T, END0, END0 + .5)); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
+  const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
+}
+// ---------------------------------------------------------------- captions: the chunk being spoken, word by word
+const CAPCOL = { w: '#ffffff', t: C.acc, n: C.acc, r: C.warn, g: GREEN, b: C.acc };
+const CHUNKS = []; B.words.forEach(w => { if (!/[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(w.w)) return; (CHUNKS[w.k] ||= { ws: [], t0: w.t }).ws.push(w); CHUNKS[w.k].t1 = w.e; });
+const CH = CHUNKS.filter(Boolean);
+function captions(T, y) {
+  let i = -1; for (let k = 0; k < CH.length; k++) if (T >= CH[k].t0 - .07) i = k;
+  if (i < 0) return; const c = CH[i], tEnd = Math.min(i + 1 < CH.length ? CH[i + 1].t0 - .07 : 1e9, c.t1 + .5);
+  if (T > tEnd) return;
+  const its = c.ws.map(w => { const key = w.c !== 'w', size = key ? 60 : 54, weight = key ? 800 : 700, s = w.w.replace(/[.,:;!?]+$/, ''); font(ctx, size, weight); return { w, s, size, weight, wd: ctx.measureText(s).width }; });
+  let tot = 0; its.forEach((it, k) => { tot += it.wd + (k < its.length - 1 && !it.w.g ? 17 : 0); });
+  const sc = Math.min(1, 960 / tot), a = seg(T, c.t0 - .07, c.t0 + .03) * (1 - seg(T, tEnd - .06, tEnd));
+  ctx.save(); ctx.translate(W / 2, y + (1 - seg(T, c.t0 - .07, c.t0 + .05)) * 10); ctx.scale(sc, sc); let x = -tot / 2;
+  for (const it of its) {
+    const on = seg(T, it.w.t - .04, it.w.t + .05), pop = 1 + .07 * Math.sin(Math.PI * seg(T, it.w.t - .02, it.w.t + .2));
+    ctx.save(); ctx.translate(x + it.wd / 2, 0); ctx.scale(pop, pop); font(ctx, it.size, it.weight); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3; ctx.globalAlpha = a * lerp(.4, 1, on); ctx.fillStyle = CAPCOL[it.w.c] || '#fff';
+    ctx.fillText(it.s, 0, 0); ctx.shadowBlur = 5; ctx.fillText(it.s, 0, 0); ctx.restore();
+    x += it.wd + (it.w.g ? 0 : 17);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- frame
+// scenes: 1 film still (boy + cloud), 2-5 map, 6 film still (dust), 7-13 map. Dips into and out of the stills, short white flashes between map scenes.
+const SC = [0, M.S2, M.S3, M.S4, M.S5, M.S6, M.S7, M.S8, M.S9, M.S10, M.S11, M.S12, M.S13, END];
+const DIPS = [[M.S2, '#000000', .4], [M.S6, '#000000', .45], [M.S7, '#000000', .4]];
+const FLASH = [M.S3, M.S4, M.S5, M.S8, M.S9, M.S10, M.S12];
+const MAPS = { 2: mapS2, 3: mapS3, 4: mapS4, 5: mapS5, 7: mapS7, 8: mapS8, 9: mapS9, 10: mapS10, 11: mapS11, 12: mapS12, 13: mapS13 };
+async function render(T) {
+  T = clamp(T, 0, END);
+  let sc = 1; while (sc < 13 && T >= SC[sc]) sc++;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (sc === 1) { film1(T); vignette(.8); }
+  else if (sc === 6) { film6(T); vignette(.7); }
+  else {
+    const cam = window.CAMQ || camAt(sc, T); setCam(cam);
+    globeMat.uniforms.expo.value = sc === 5 ? lerp(.62, .5, seg(T, M.S5, M.S6)) : sc === 11 ? .7 : .62;
+    globeMat.uniforms.sat.value = sc === 5 || sc === 9 ? .6 : .85; globeMat.uniforms.haze.value = sc === 11 || sc === 2 || sc === 10 ? 1 : .7; atmo.material.uniforms.k.value = sc === 11 || sc === 2 || sc === 10 ? .9 : .5;
+    stars(sc === 2 || sc === 10 || sc === 11 ? .8 : .3);
+    renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+    borders(.16);
+    MAPS[sc](T);
+    vignette(1);
+  }
+  if (sc === 13) cta(T); else hud(T, sc);
+  captions(T, 1450);
+  credit(T, sc); logo(); if (sc === 13) endCard(T);
+  for (const [t0, col, d] of DIPS) { const u = Math.abs(T - t0) / d; if (u < 1) { ctx.fillStyle = rgba(col, (1 - u) ** 1.6); ctx.fillRect(0, 0, W, H); } }
+  for (const tc of FLASH) if (T >= tc && T < tc + .16) { ctx.fillStyle = `rgba(255,255,255,${.2 * (1 - (T - tc) / .16) ** 2})`; ctx.fillRect(0, 0, W, H); }
+}
+window.render = render; window.setCamQ = c => { window.CAMQ = c; }; window.END = END; window.M = M;
+window.ready = true;
+</script>
+</body></html>
