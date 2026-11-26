@@ -1,0 +1,739 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Қарақия</title>
+<style>
+@font-face{font-family:IN;src:url(fonts/Inter.ttf);font-weight:100 900}
+@font-face{font-family:IN;src:url(fonts/Inter-Italic.ttf);font-weight:100 900;font-style:italic}
+@font-face{font-family:IT;src:url(fonts/InterTight.ttf);font-weight:100 900}
+html,body{margin:0;background:#000}
+canvas{display:block;width:540px;height:960px}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+// «Қазақстан теңізден төмен» / «Казахстан ниже уровня моря» (Karagiye −132 m). scene.html?lang=kk|ru.
+// One continuous flight over the dark satellite globe, 12 frames of the script; code only (no Higgsfield).
+// render(T) is deterministic, T = video seconds. All cues come from beats.json (voiceover word times, see timing.py).
+import * as THREE from 'three';
+
+const W = 1080, H = 1920;
+const Q = new URLSearchParams(location.search), LANG = Q.get('lang') === 'ru' ? 'ru' : 'kk', KK = LANG === 'kk';
+const STEP = +(Q.get('step') || 2);                      // terrain mesh step in DEM cells (1 = finest)
+const [BEATS, SH, demBuf] = await Promise.all([
+  fetch('beats.json').then(r => r.json()), fetch('shapes.json').then(r => r.json()), fetch('dem.bin').then(r => r.arrayBuffer())]);
+const B = BEATS[LANG], M = B.m, END = B.end;
+for (const f of ['400 40px IN', '500 40px IN', '600 40px IN', '700 40px IN', '800 40px IN', '600 40px IT', '700 40px IT', '800 40px IT', '900 40px IT'])
+  await document.fonts.load(f, 'АБВабв123ӘҒҚҢӨҰҮІәғқңөұүі→⟷«»₽≈~');
+
+const out = document.getElementById('c'), ctx = out.getContext('2d');
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H;
+const mk = (w = W, h = H) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const LA = mk(), la = LA.getContext('2d'), LR = mk(), lr = LR.getContext('2d'), HB = mk(W / 2, H / 2), hb = HB.getContext('2d');
+
+// ---------------------------------------------------------------- helpers
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeOut5 = t => 1 - Math.pow(1 - clamp(t), 5);
+const easeIn = t => Math.pow(clamp(t), 3);
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const easeBack = t => { t = clamp(t); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const ap = (T, t0, d = .3) => easeOut(seg(T, t0, t0 + d));       // appear 0..1
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+const RAD = Math.PI / 180, RE = 6371;                  // Earth radius, km (globe radius = 1)
+// smooth curve through keys (monotone cubic), at rest at both ends
+function hermite(ts, vs, T) {
+  const n = ts.length; if (T <= ts[0]) return vs[0]; if (T >= ts[n - 1]) return vs[n - 1];
+  let i = 0; while (T > ts[i + 1]) i++;
+  const sl = k => { if (k <= 0 || k >= n - 1) return 0; const a = (vs[k] - vs[k - 1]) / (ts[k] - ts[k - 1]), b = (vs[k + 1] - vs[k]) / (ts[k + 1] - ts[k]); return a * b <= 0 ? 0 : 2 * a * b / (a + b); };
+  const h = ts[i + 1] - ts[i], u = (T - ts[i]) / h, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * h * sl(i) + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * h * sl(i + 1);
+}
+// ---------------------------------------------------------------- palette
+// Brand (JAS EDUCATION, references/STYLE_GUIDE.md): navy panels, amber for key words, numbers and the rebels, white text,
+// red-orange only for the enemy (the tsarist side). The map is the dark Blue Marble satellite picture.
+const BR = { navy: '#130B54', amber: '#FEB300', enemy: '#E8502F' };
+const C = { acc: BR.amber, accHi: '#ffe7a6', warn: BR.enemy, warnHi: '#ffb39f', persia: '#d2452a', water: '#7cc8ff',
+            pill: 'rgba(19,11,84,.84)', card: 'rgba(19,11,84,.95)', line: 'rgba(254,179,0,.32)', sand: '#c99a5b' };
+const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgba = (h, a) => { const c = hex(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const mixHex = (a, b, t) => { const p = hex(a), q = hex(b); return `rgb(${Math.round(lerp(p[0], q[0], t))},${Math.round(lerp(p[1], q[1], t))},${Math.round(lerp(p[2], q[2], t))})`; };
+
+const PAL = ['#fff', C.acc, 'rgba(255,255,255,.55)', C.warn];     // colour codes used in the [text, code] title lines above
+// the logo (white cut-out), scaled down in halving steps so that it stays clean: top right in every frame, big on the end card, small as the avatar of the profile
+const LOGO0 = new Image(); LOGO0.src = 'brand/logo_white_transparent.png'; await LOGO0.decode();
+function scaled(img, w) {
+  let c = img, cw = img.width, ch = img.height; const h = Math.round(w * ch / cw);
+  const draw = (nw, nh) => { const n = document.createElement('canvas'); n.width = nw; n.height = nh; const x = n.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh); c = n; cw = nw; ch = nh; };
+  while (cw / 2 >= w) draw(Math.round(cw / 2), Math.round(ch / 2));
+  if (cw !== w) draw(w, h); return c;
+}
+const LOGO = scaled(LOGO0, 128), LOGO_BIG = scaled(LOGO0, 420), LOGO_AV = scaled(LOGO0, 60);
+// ---------------------------------------------------------------- globe
+const DEMW = 1170, DEMH = 565, CELL = 7 / 60, MLON0 = 10, MLON1 = 146.5, MLAT1 = 78, MLAT0 = MLAT1 - DEMH * CELL;
+const dem = new Int16Array(demBuf), EXAG = 9 / 6371000;
+function demAt(lon, lat) {                                // exaggerated height above the sphere (globe units)
+  const e = Math.min(lon - MLON0, MLON1 - lon, lat - MLAT0, MLAT1 - lat);
+  if (e <= 0) return 0;
+  const fx = clamp((lon - MLON0) / CELL - .5, 0, DEMW - 1), fy = clamp((MLAT1 - lat) / CELL - .5, 0, DEMH - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, DEMW - 1), y1 = Math.min(y0 + 1, DEMH - 1), ax = fx - x0, ay = fy - y0;
+  const h = (dem[y0 * DEMW + x0] * (1 - ax) + dem[y0 * DEMW + x1] * ax) * (1 - ay) + (dem[y1 * DEMW + x0] * (1 - ax) + dem[y1 * DEMW + x1] * ax) * ay;
+  return h * EXAG * clamp(e / 1.5);
+}
+const dirv = (lon, lat, r = 1) => { const a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r; return new THREE.Vector3(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a)); };
+
+function axis(a0, a1, w0, w1, coarse, fine) {
+  const v = [];
+  for (let x = a0; x < w0 - 1e-6; x += coarse) v.push(x);
+  const n = Math.round((w1 - w0) / fine); for (let i = 0; i <= n; i++) v.push(w0 + (w1 - w0) * i / n);
+  for (let x = Math.ceil((w1 + 1e-6) / coarse) * coarse; x < a1 - 1e-6; x += coarse) v.push(x);
+  v.push(a1); return v;
+}
+function globeGeometry() {
+  const LONS = axis(-180, 180, MLON0, MLON1, 2, CELL * STEP), LATS = axis(-90, 90, MLAT0, MLAT1, 2, CELL * STEP);
+  const nx = LONS.length, ny = LATS.length, pos = new Float32Array(nx * ny * 3), ll = new Float32Array(nx * ny * 2);
+  for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++, k++) {
+    const lon = LONS[i], lat = LATS[j], r = 1 + demAt(lon, lat), a = lon * RAD, b = lat * RAD, c = Math.cos(b) * r;
+    pos[k * 3] = c * Math.sin(a); pos[k * 3 + 1] = Math.sin(b) * r; pos[k * 3 + 2] = c * Math.cos(a); ll[k * 2] = lon; ll[k * 2 + 1] = lat;
+  }
+  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  for (let j = 0, q = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = a; idx[q++] = c; idx[q++] = d;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ll', new THREE.BufferAttribute(ll, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const loadTex = url => new Promise(res => new THREE.TextureLoader().load(url, t => {
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; res(t); }));
+const [tW, tM, tA, tB] = await Promise.all(['tex/world.jpg', 'tex/main.jpg', 'tex/detail.jpg', 'tex/peak.jpg'].map(loadTex));
+const win = (a, b, c, d) => new THREE.Vector4(a, 1 / (b - a), c, 1 / (d - c));
+const globeMat = new THREE.ShaderMaterial({
+  uniforms: { tW: { value: tW }, tM: { value: tM }, tA: { value: tA }, tB: { value: tB }, wM: { value: win(10, 146.5, 12, 78) }, wA: { value: win(48, 56, 41, 48.5) }, wB: { value: win(78.5, 81.5, 41.5, 43.3) },
+              camPos: { value: new THREE.Vector3() }, expo: { value: 1 }, sat: { value: 1 }, haze: { value: 1 } },
+  vertexShader: `attribute vec2 ll; varying vec2 vLL; varying vec3 vP;
+    void main(){ vLL = ll; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float;
+    uniform sampler2D tW, tM, tA, tB; uniform vec4 wM, wA, wB; uniform vec3 camPos; uniform float expo, sat, haze;
+    varying vec2 vLL; varying vec3 vP;
+    void main(){
+      vec3 col = texture2D(tW, vec2((vLL.x + 180.) / 360., (vLL.y + 90.) / 180.)).rgb;
+      vec2 uM = vec2((vLL.x - wM.x) * wM.y, (vLL.y - wM.z) * wM.w), eM = min(uM, 1. - uM);
+      vec2 uA = vec2((vLL.x - wA.x) * wA.y, (vLL.y - wA.z) * wA.w), eA = min(uA, 1. - uA);
+      vec2 mx = dFdx(uM), my = dFdy(uM), ax = dFdx(uA), ay = dFdy(uA);
+      float mM = smoothstep(0., .012, eM.x) * smoothstep(0., .024, eM.y);
+      if (mM > 0.) col = mix(col, textureGrad(tM, uM, mx, my).rgb, mM);
+      float mA = smoothstep(0., .10, eA.x) * smoothstep(0., .14, eA.y);
+      if (mA > 0.) col = mix(col, textureGrad(tA, uA, ax, ay).rgb, mA);
+      vec2 uB = vec2((vLL.x - wB.x) * wB.y, (vLL.y - wB.z) * wB.w), eB = min(uB, 1. - uB);
+      float mB = smoothstep(0., .12, eB.x) * smoothstep(0., .2, eB.y);
+      if (mB > 0.) col = mix(col, textureGrad(tB, uB, dFdx(uB), dFdy(uB)).rgb, mB);
+      float l = dot(col, vec3(.30, .59, .11));
+      col = mix(vec3(l), col, sat) * expo;
+      vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = clamp(dot(N, V), 0., 1.);
+      col *= mix(.14, 1., smoothstep(0., .42, mu));                       // the limb falls into shadow
+      col += vec3(.13, .36, .9) * pow(1. - mu, 5.) * haze * .5;            // thin blue air at the horizon
+      gl_FragColor = vec4(col, 1.);
+    }` });
+const scene = new THREE.Scene();
+const globe = new THREE.Mesh(globeGeometry(), globeMat); globe.frustumCulled = false; scene.add(globe);
+// atmosphere: back side of a shell 5 % above the ground, brightest right at the limb, gone at its own edge
+const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 96), new THREE.ShaderMaterial({
+  uniforms: { camPos: globeMat.uniforms.camPos, k: { value: 1 } }, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `precision highp float; uniform vec3 camPos; uniform float k; varying vec3 vP;
+    void main(){ vec3 N = normalize(vP), V = normalize(camPos - vP); float mu = dot(N, V);
+      float a = pow(clamp(-mu / .305, 0., 1.), 3.4); gl_FragColor = vec4(vec3(.2, .46, 1.) * k, a * k * .8); }` }));
+scene.add(atmo);
+const FOV = 30, camera = new THREE.PerspectiveCamera(FOV, W / H, 0.02, 30);
+
+// camera rig like Google Earth: look at (lon, lat) from `range` globe radii, heading clockwise from north, tilt 0 = straight down.
+// ox / oy shift the picture on screen (fractions of the frame, + = right / lower).
+let CAM = null;
+function setCam(c) {
+  CAM = c;
+  const U = dirv(c.lon, c.lat), a = c.lon * RAD, b = c.lat * RAD;
+  const E = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), N = new THREE.Vector3(-Math.sin(b) * Math.sin(a), Math.cos(b), -Math.sin(b) * Math.cos(a));
+  const h = (c.head || 0) * RAD, t = (c.tilt || 0) * RAD;
+  const F = N.clone().multiplyScalar(Math.cos(h)).addScaledVector(E, Math.sin(h));
+  const T = U.clone().multiplyScalar(1 + demAt(c.lon, c.lat));
+  camera.position.copy(T).addScaledVector(U, c.range * Math.cos(t)).addScaledVector(F, -c.range * Math.sin(t));
+  camera.up.copy(F).multiplyScalar(Math.cos(t)).addScaledVector(U, Math.sin(t));
+  camera.lookAt(T);
+  if (c.roll) camera.rotateZ(c.roll * RAD);
+  camera.fov = FOV; camera.near = Math.max(.004, c.range * .05); camera.far = c.range + 3;
+  camera.setViewOffset(W, H, -(c.ox || 0) * W, -(c.oy || 0) * H, W, H);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+  globeMat.uniforms.camPos.value.copy(camera.position);
+}
+const _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// lon/lat -> screen px. Returns [x, y, visible]. With limb = true a point hidden behind the globe slides to the limb,
+// so that an outline that goes round the globe stays one closed shape (for fills and clips).
+function P(lon, lat, limb = false) {
+  const a = lon * RAD, b = lat * RAD, r = 1 + demAt(lon, lat), c = Math.cos(b) * r;
+  _v.set(c * Math.sin(a), Math.sin(b) * r, c * Math.cos(a));
+  let vis = _v.dot(camera.position) > r * r * .995;
+  if (!vis && limb) {
+    const D = camera.position.length(); _c.copy(camera.position).multiplyScalar(1 / D);
+    _v.addScaledVector(_c, -_v.dot(_c)); _v.multiplyScalar(Math.sqrt(1 - 1 / (D * D)) / (_v.length() || 1)).addScaledVector(_c, 1 / D); vis = true;
+  }
+  _v.project(camera);
+  return [(_v.x * .5 + .5) * W, (1 - (_v.y * .5 + .5)) * H, vis && _v.z < 1];
+}
+// screen pixels per km near the look-at point (for sizing things in km)
+function pxPerKm() { const p = P(CAM.lon, CAM.lat), q = P(CAM.lon + 1 / Math.cos(CAM.lat * RAD), CAM.lat); return Math.hypot(q[0] - p[0], q[1] - p[1]) / 111.2; }
+// point at distance d km and bearing brg (deg) from (lon, lat)
+function dest(lon, lat, brg, d) {
+  const δ = d / RE, θ = brg * RAD, φ1 = lat * RAD, λ1 = lon * RAD;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return [λ2 / RAD, φ2 / RAD];
+}
+function distKm(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dφ = φ2 - φ1, dλ = (b[0] - a[0]) * RAD;
+  const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+  return 2 * RE * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const φ1 = a[1] * RAD, φ2 = b[1] * RAD, dλ = (b[0] - a[0]) * RAD;
+  return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / RAD;
+}
+
+// stars behind the globe (fixed directions, so they turn with the camera)
+const STARS = Array.from({ length: 7000 }, (_, i) => { const z = hash(i * 3.17 + .3) * 2 - 1, a = hash(i * 7.31 + 1.1) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return { d: new THREE.Vector3(r * Math.cos(a), z, r * Math.sin(a)), m: hash(i * 1.93 + 5.5) }; });
+function stars(a) {
+  if (a <= .01) return;
+  const f = 1 / Math.tan(camera.fov * RAD / 2), asp = W / H;
+  ctx.save(); ctx.fillStyle = '#dfe8ff';
+  for (const s of STARS) {
+    _v.copy(s.d).transformDirection(camera.matrixWorldInverse);
+    if (_v.z > -.5) continue;
+    const x = (_v.x / -_v.z * f / asp * .5 + .5) * W + (CAM.ox || 0) * W, y = (.5 - _v.y / -_v.z * f * .5) * H + (CAM.oy || 0) * H;
+    if (x < 0 || x > W || y < 0 || y > H) continue;
+    ctx.globalAlpha = a * (.18 + .82 * s.m * s.m * s.m); const r = 1 + s.m * 1.7; ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.restore();
+}
+// ---------------------------------------------------------------- shapes
+function dens(r, step = .8) {                              // densify so that long edges follow the globe
+  const o = [];
+  for (let i = 0; i < r.length - 1; i++) {
+    const a = r[i], b = r[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < n; k++) o.push([lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+  }
+  o.push(r[r.length - 1]); return o;
+}
+function chaikin(pts, n = 2) {
+  for (let k = 0; k < n; k++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1];
+    o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } o.push(pts[pts.length - 1]); pts = o; }
+  return pts;
+}
+const cum = pts => { const d = [0]; for (let i = 1; i < pts.length; i++) d.push(d[i - 1] + distKm(pts[i - 1], pts[i])); return d; };
+function along(pts, d, s) {                                // point at s km along a polyline with cumulative distances d
+  const n = pts.length; if (s <= 0) return pts[0]; if (s >= d[n - 1]) return pts[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m] <= s) lo = m; else hi = m; }
+  const u = (s - d[lo]) / (d[hi] - d[lo]); return [lerp(pts[lo][0], pts[hi][0], u), lerp(pts[lo][1], pts[hi][1], u)];
+}
+// rings -> canvas path. For a fill, hidden points slide to the limb (the shape stays closed); for a line (line = true) the hidden stretch is left out.
+function pathRings(c, rings, close = true, sh = null, line = false) {
+  c.beginPath();
+  for (const r of rings) {
+    let pen = false, whole = true;
+    for (const q of r) { const p = sh ? P(q[0] + sh[0], q[1] + sh[1], !line) : P(q[0], q[1], !line); if (!p[2]) { pen = false; whole = false; continue; } if (pen) c.lineTo(p[0], p[1]); else { c.moveTo(p[0], p[1]); pen = true; } }
+    if (close && whole) c.closePath();
+  }
+}
+function pathPts(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => { const p = P(q[0], q[1], true); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); if (close) c.closePath(); }
+function pathCircle(c, cen, km) { c.beginPath(); for (let i = 0; i <= 72; i++) { const q = dest(cen[0], cen[1], i * 5, km), p = P(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.closePath(); }
+function halfBlur(src, px) { hb.setTransform(1, 0, 0, 1, 0, 0); hb.clearRect(0, 0, W / 2, H / 2); hb.filter = `blur(${px / 2}px)`; hb.drawImage(src, 0, 0, W / 2, H / 2); hb.filter = 'none'; }
+function wipe(...cs) { for (const c of cs) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; c.clearRect(0, 0, W, H); c.lineJoin = c.lineCap = 'round'; } }
+function territory(parts, a, o = {}) {
+  if (a <= .004) return;
+  wipe(la, lr);
+  for (const p of parts) {
+    const pa = p.a ?? 1; if (pa <= .004) continue;
+    la.save(); lr.save();
+    for (const cl of p.clips || []) { pathPts(la, cl); la.clip(); pathPts(lr, cl); lr.clip(); }
+    pathRings(la, p.rings, true, p.shift); la.globalAlpha = pa; la.fillStyle = p.col; la.fill('evenodd');
+    if (p.rim !== 0) { pathRings(lr, p.rings, true, p.shift, true); lr.globalAlpha = pa * (p.rim ?? 1); lr.strokeStyle = p.hi || '#fff'; lr.lineWidth = p.rimW || 2.2; lr.stroke(); }
+    la.restore(); lr.restore();
+  }
+  for (const f of o.fronts || []) {
+    lr.save(); pathRings(lr, f.rings); lr.clip('evenodd'); for (const cl of f.clips || []) { pathPts(lr, cl); lr.clip(); }
+    pathPts(lr, f.pts, !f.open); lr.strokeStyle = f.col || '#fff'; lr.lineWidth = f.w || 5; lr.globalAlpha = f.a ?? 1; lr.stroke(); lr.restore();
+  }
+  lay(a, o);
+}
+// Scene 4, the khaganate growing: its lands show where a mask is. The mask = the core of 552 swelling evenly on all sides (rKm)
+// + the march to the west (wpts, a blob). The edge of the mask inside the lands glows as the moving frontier.
+function lay(a, o = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = a * (o.color ?? .82); ctx.drawImage(LA, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = a * (o.add ?? .14); ctx.drawImage(LA, 0, 0);
+  if (o.dark) { ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = a * o.dark; ctx.drawImage(LA, 0, 0); }
+  const glow = o.glow ?? .26, rim = o.rim ?? .7;
+  if (glow > 0) { halfBlur(LA, o.blur || 30); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * glow; ctx.drawImage(HB, 0, 0, W, H); }
+  if (rim > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * rim; ctx.drawImage(LR, 0, 0); halfBlur(LR, 12); ctx.globalAlpha = a * rim; ctx.drawImage(HB, 0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- drawing kit
+function font(c, size, weight = 700, fam = 'IN') { c.font = `${weight} ${size}px ${fam}`; }
+function txt(s, x, y, o = {}) {
+  ctx.save(); font(ctx, o.size || 40, o.weight || 700, o.fam || 'IN'); ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.base || 'alphabetic';
+  ctx.letterSpacing = (o.ls || 0) + 'px'; ctx.globalAlpha *= o.alpha ?? 1;
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 20; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x + (o.ls || 0) / 2, y); ctx.restore();
+}
+// one centred line made of differently coloured parts: [[text, colour, alpha], ...]; the text '•' is drawn as a round dot (a legend mark)
+function line(parts, x, y, o = {}) {
+  const size = o.size || 60;
+  ctx.save(); font(ctx, size, o.weight || 800, o.fam || 'IT'); ctx.letterSpacing = (o.ls || 0) + 'px';
+  const ws = parts.map(p => p[0] === '•' ? size * 1.0 : ctx.measureText(p[0]).width), tot = ws.reduce((a, b) => a + b, 0), ga = ctx.globalAlpha;
+  let cx = x - tot / 2; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== 0) { ctx.shadowColor = `rgba(0,0,0,${o.shadow ?? .6})`; ctx.shadowBlur = o.sb ?? 22; ctx.shadowOffsetY = 3; }
+  parts.forEach((p, i) => { ctx.globalAlpha = ga * (p[2] ?? 1); ctx.fillStyle = p[1] || '#fff';
+    if (ctx.globalAlpha > .004) { if (p[0] === '•') { ctx.beginPath(); ctx.arc(cx + size * .34, y - size * .36, size * .27, 0, 7); ctx.fill(); } else ctx.fillText(p[0], cx, y); }
+    cx += ws[i]; });
+  ctx.restore(); return tot;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function glowDot(x, y, r, col, a = 1) {
+  if (a <= .004 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, a)); g.addColorStop(.35, rgba(col, a * .42)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+// a place on the map: soft glow + solid dot with a white ring
+function place(p, col, k, r = 7, glow = 46) {
+  if (k <= 0 || !p[2]) return;
+  glowDot(p[0], p[1], glow * k, col, .55 * k);
+  ctx.save(); ctx.globalAlpha = clamp(k * 1.5); ctx.beginPath(); ctx.arc(p[0], p[1], r * easeBack(k), 0, 7); ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+// the label of the style guide: navy pill with a thin amber edge, amber dot, white name. (x, y) = centre, k = appear 0..1
+function pill(text, x, y, k, o = {}) {
+  if (k <= 0) return;
+  const size = o.size || 34, padX = size * .6, dot = o.dot === false ? 0 : size * .3, gap = size * .34;
+  ctx.save(); font(ctx, size, 600);
+  const w = ctx.measureText(text).width + padX * 2 + (dot ? dot + gap : 0), h = size * 1.74, s = lerp(.72, 1, easeBack(k));
+  x = clamp(x, w / 2 + 22, W - w / 2 - 22);
+  ctx.translate(x, y); ctx.scale(s, s); ctx.globalAlpha *= clamp(k * 1.7);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+  rr(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fillStyle = o.fill || C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  if (!o.fill) { ctx.strokeStyle = C.line; ctx.lineWidth = 1.6; ctx.stroke(); }
+  let tx = -w / 2 + padX;
+  if (dot) { ctx.fillStyle = o.color || C.acc; ctx.beginPath(); ctx.arc(tx + dot / 2, 0, dot / 2, 0, 7); ctx.fill(); tx += dot + gap; }
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, tx, size * .05);
+  ctx.restore();
+}
+function mapPill(q, text, k, o = {}) {                      // a pill pinned to a place; it fades out when the place leaves the frame
+  const p = P(q[0], q[1]); if (!p[2] || k <= 0) return;
+  const off = Math.max(-p[0], p[0] - W, -p[1], p[1] - H, 0); if (off >= 60) return;
+  ctx.save(); ctx.globalAlpha *= 1 - off / 60; pill(text, p[0] + (o.dx || 0), p[1] + (o.dy ?? -56), k, o); ctx.restore();
+}
+// a line on the map between km distances s0..s1 along a polyline (pts with cumulative distances d)
+function pathAlong(pts, d, s0, s1) {
+  ctx.beginPath(); let pen = false;
+  const a = along(pts, d, s0), pa = P(a[0], a[1]); if (pa[2]) { ctx.moveTo(pa[0], pa[1]); pen = true; }
+  for (let i = 0; i < pts.length; i++) { if (d[i] <= s0) continue; if (d[i] >= s1) break; const p = P(pts[i][0], pts[i][1]); if (!p[2]) { pen = false; continue; } if (pen) ctx.lineTo(p[0], p[1]); else { ctx.moveTo(p[0], p[1]); pen = true; } }
+  const b = along(pts, d, s1), pb = P(b[0], b[1]); if (pb[2]) { if (pen) ctx.lineTo(pb[0], pb[1]); else ctx.moveTo(pb[0], pb[1]); }
+}
+function borders(a) { if (a <= .01) return; ctx.save(); ctx.lineWidth = 1.3; ctx.strokeStyle = `rgba(255,255,255,${a})`; pathRings(ctx, SH.borders, false); ctx.stroke(); ctx.restore(); }
+function ring(cen, km, col, a, w = 3) { if (a <= .004) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; pathCircle(ctx, cen, km); ctx.strokeStyle = rgba(col, a); ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.stroke(); ctx.restore(); }
+
+// ---------------------------------------------------------------- camera
+const mixCam = (a, b, u) => ({ lon: lerp(a.lon, b.lon, u), lat: lerp(a.lat, b.lat, u), range: Math.exp(lerp(Math.log(a.range), Math.log(b.range), u)),
+  head: lerp(a.head || 0, b.head || 0, u), tilt: lerp(a.tilt || 0, b.tilt || 0, u), ox: lerp(a.ox || 0, b.ox || 0, u), oy: lerp(a.oy || 0, b.oy || 0, u) });
+const kn = (keys, T, f, log) => { const v = hermite(keys.map(k => k[0]), keys.map(k => { const x = f(k[1]) ?? 0; return log ? Math.log(x) : x; }), T); return log ? Math.exp(v) : v; };
+const camTrack = (keys, T) => ({ lon: kn(keys, T, c => c.lon), lat: kn(keys, T, c => c.lat), range: kn(keys, T, c => c.range, true), head: kn(keys, T, c => c.head),
+  tilt: kn(keys, T, c => c.tilt), ox: kn(keys, T, c => c.ox), oy: kn(keys, T, c => c.oy) });
+function shake(c, T, t0, amp) { const u = T - t0; if (u < 0 || u > .8) return; const e = amp * Math.exp(-u * 6.5); c.ox = (c.ox || 0) + e * noise1(T * 47); c.oy = (c.oy || 0) + e * .7 * noise1(T * 53 + 9); c.roll = e * 55 * noise1(T * 31 + 3); }
+
+
+// ---------------------------------------------------------------- places (lon, lat)
+const PL = { kar: [51.76, 43.38], akt: [51.17, 43.65], aty: [51.92, 47.11], kt: [80.17, 42.21], kz: [66.5, 47.8],
+             dead: [35.5, 31.5], assal: [42.42, 11.62], turpan: [89.25, 42.66], qat: [27.1, 29.9] };
+const SEA = '#3a8bff', SEAHI = '#a9ccff', SNOW = '#eaf3ff';
+const KZR = [SH.kz.reduce((a, r) => r.length > a.length ? r : a, [])].map(r => dens(r, .3));
+const LOW = SH.low.map(r => dens(r, .1)), BOWL = SH.bowl.map(r => chaikin(r, 2));
+const fmt = v => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const MINUS = '−';
+function town(q, text, k, col = C.acc, o = {}) { place(P(q[0], q[1]), col, k, 7, 40); mapPill(q, text, k, { color: col, ...o }); }
+const win2 = (T, t0, t1, d0 = .35, d1 = .35) => ap(T, t0, d0) * (1 - seg(T, t1 - d1, t1));     // appear at t0, gone by t1
+
+// ---------------------------------------------------------------- texts
+const L = KK ? {
+  sea: 'теңіз деңгейі · 0 м', kar: 'Қарақия ойысы', mang: 'Маңғыстау', bai: 'Бәйтерек · 97 м', aty: 'Атырау', kt: 'Хан Тәңірі', city: 'сіздің қалаңыз?',
+  rank: 'ҚҰРЛЫҚТАҒЫ ЕҢ ТЕРЕҢ ОЙЫСТАР', rows: ['Өлі теңіз', 'Ассаль көлі', 'Тұрпан ойысы', 'Каттара ойысы', 'Қарақия'], no5: '№5 әлемде',
+  dif: 'АЙЫРМА', b70: '≈ 70 Бәйтерек', w: 'Батыс', e: 'Шығыс', low: '0 м-ден төмен', lowSub: 'КАСПИЙ МАҢЫ ОЙПАТЫ', aty20: 'Атырау ≈ −20 м',
+  ppl: 'МЫҢДАҒАН АДАМ · ТЕҢІЗ ДЕҢГЕЙІНЕН ТӨМЕН',
+  ubt: 'ҰБТ', ubtLine: 'Қазақстанның жер бедері', qL: 'СҰРАҚ', q: ['Қазақстандағы ең төменгі', 'нүкте қай жерде?'], aL: 'ЖАУАБЫ', a: 'Қарақия ойысы · −132 м',
+  link: 'Сілтеме шапкада', endA: 'Сілтемеге өт', endB: 'профиль шапкасында',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · биіктік қимасы шамамен',
+} : {
+  sea: 'уровень моря · 0 м', kar: 'Впадина Карагие', mang: 'Мангистау', bai: 'Байтерек · 97 м', aty: 'Атырау', kt: 'Хан-Тенгри', city: 'ваш город?',
+  rank: 'САМЫЕ ГЛУБОКИЕ ВПАДИНЫ СУШИ', rows: ['Мёртвое море', 'Озеро Ассаль', 'Турфанская впадина', 'Впадина Каттара', 'Карагие'], no5: '№5 в мире',
+  dif: 'ПЕРЕПАД', b70: '≈ 70 Байтереков', w: 'Запад', e: 'Восток', low: 'ниже 0 м', lowSub: 'ПРИКАСПИЙСКАЯ НИЗМЕННОСТЬ', aty20: 'Атырау ≈ −20 м',
+  ppl: 'ТЫСЯЧИ ЛЮДЕЙ · НИЖЕ УРОВНЯ МОРЯ',
+  ubt: 'ЕНТ', ubtLine: 'Рельеф Казахстана', qL: 'ВОПРОС', q: ['Где самая низкая', 'точка Казахстана?'], aL: 'ОТВЕТ', a: 'Впадина Карагие · −132 м',
+  link: 'Ссылка в шапке', endA: 'Перейди по ссылке', endB: 'в шапке профиля',
+  credit: 'Карта: NASA Blue Marble, Natural Earth, Mapzen Terrain Tiles · профиль высот примерный',
+};
+const DEPTHS = [430, 155, 154, 133, 132], DPL = [PL.dead, PL.assal, PL.turpan, PL.qat, PL.kar];
+
+// ---------------------------------------------------------------- icons
+// Bayterek: a white column that opens into a crown of ribs holding the golden ball. (x, yb) = foot, h = height in px
+function baiterek(x, yb, h, a = 1, glow = 0) {
+  if (a <= .004 || h <= 2) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, yb); ctx.lineCap = 'round';
+  if (glow > 0) glowDot(0, -h * .88, h * .35, C.acc, .6 * glow);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = h * .04;
+  ctx.fillStyle = '#f2f4fa'; ctx.beginPath(); ctx.moveTo(-h * .05, 0); ctx.lineTo(-h * .022, -h * .7); ctx.lineTo(h * .022, -h * .7); ctx.lineTo(h * .05, 0); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#f2f4fa'; ctx.lineWidth = Math.max(1, h * .014);
+  for (let i = -3; i <= 3; i++) { const ex = i * h * .036; ctx.beginPath(); ctx.moveTo(0, -h * .66); ctx.quadraticCurveTo(ex * 2.4, -h * .8, ex * .9, -h * .97); ctx.stroke(); }
+  ctx.shadowBlur = 0; const g = ctx.createRadialGradient(-h * .02, -h * .9, 0, 0, -h * .88, h * .085); g.addColorStop(0, '#fff2c4'); g.addColorStop(.5, '#ffc63a'); g.addColorStop(1, '#b97a00');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -h * .88, h * .075, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function personMini(x, y, s, col, a = 1) {
+  if (a <= .004) return; ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = col; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 6;
+  ctx.beginPath(); ctx.arc(x, y - s * .62, s * .3, 0, 7); ctx.fill(); ctx.beginPath(); ctx.moveTo(x - s * .5, y + s * .5); ctx.quadraticCurveTo(x - s * .5, y - s * .2, x, y - s * .22); ctx.quadraticCurveTo(x + s * .5, y - s * .2, x + s * .5, y + s * .5); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function dashLine(x0, y0, x1, y1, col, a, w = 4, dash = [18, 12], T = 0) {
+  if (a <= .004) return; ctx.save(); ctx.globalAlpha *= a; ctx.setLineDash(dash); ctx.lineDashOffset = -T * 40; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.restore();
+}
+function vArrow(x, y0, y1, col, a, w = 6) {               // double arrow from y0 to y1
+  if (a <= .004) return; ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+  for (const [y, d] of [[y0, 1], [y1, -1]]) { ctx.beginPath(); ctx.moveTo(x, y - d * 4); ctx.lineTo(x - 16, y + d * 22); ctx.lineTo(x + 16, y + d * 22); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- panels
+// the cross-section of the bowl: sea level dashed line, the ground with white cliffs, the floor 132 m below; the Bayterek on the floor.
+// k = panel in, bai = Bayterek 0..1, cliff = cliffs highlighted 0..1, dig = how deep the floor has sunk 0..1
+function bowlPanel(T, k, o = {}) {
+  if (k <= .004) return;
+  const cx = W / 2, top = 330, h = 700, w = 940, x0 = cx - w / 2, x1 = cx + w / 2, ySea = top + 150, PXM = 3.5, dig = o.dig ?? 1, yFloor = ySea + 132 * PXM * easeIO(dig);
+  const yG = ySea + 34;                                    // the plateau round the bowl stands a little above the floor... about 10 m below the sea
+  card(cx, top + h / 2, w, h, k * .96);
+  ctx.save(); ctx.globalAlpha *= k; rr(ctx, x0, top, w, h, 26); ctx.clip();
+  // sky over the steppe and the ground
+  let g = ctx.createLinearGradient(0, top, 0, ySea); g.addColorStop(0, 'rgba(60,110,200,.0)'); g.addColorStop(1, 'rgba(90,150,255,.18)'); ctx.fillStyle = g; ctx.fillRect(x0, top, w, ySea - top);
+  const cl0 = cx - 230, cl1 = cx + 250;                    // the cliff tops
+  const ground = [[x0, yG + 6], [x0 + 120, yG - 4], [cl0 - 60, yG + 2], [cl0, yG], [cl0 + 26, lerp(yG, yFloor, .55)], [cl0 + 70, lerp(yG, yFloor, .78)], [cl0 + 120, yFloor - 6], [cx, yFloor],
+    [cl1 - 140, yFloor - 4], [cl1 - 70, lerp(yG, yFloor, .74)], [cl1 - 24, lerp(yG, yFloor, .5)], [cl1, yG - 2], [cl1 + 80, yG + 4], [x1, yG - 6]];
+  ctx.beginPath(); ground.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.lineTo(x1, top + h); ctx.lineTo(x0, top + h); ctx.closePath();
+  g = ctx.createLinearGradient(0, yG, 0, top + h); g.addColorStop(0, '#b98a55'); g.addColorStop(.35, '#7a5530'); g.addColorStop(1, '#2a1a0e'); ctx.fillStyle = g; ctx.fill();
+  // strata
+  ctx.save(); ctx.clip(); ctx.strokeStyle = 'rgba(255,240,210,.12)'; ctx.lineWidth = 3;
+  for (let i = 1; i < 9; i++) { const y = yG + i * 48; ctx.beginPath(); ctx.moveTo(x0, y + Math.sin(i) * 6); ctx.bezierCurveTo(cx - 200, y + 18, cx + 200, y - 14, x1, y + Math.cos(i) * 6); ctx.stroke(); }
+  ctx.restore();
+  // white cliffs (chalk walls of Mangystau)
+  const cw = (o.cliff ?? 0);
+  for (const s of [[[cl0 - 4, yG], [cl0 + 26, lerp(yG, yFloor, .55)], [cl0 + 70, lerp(yG, yFloor, .78)], [cl0 + 40, lerp(yG, yFloor, .78)], [cl0 + 6, lerp(yG, yFloor, .5)], [cl0 - 14, yG + 6]],
+                   [[cl1 + 4, yG - 2], [cl1 - 24, lerp(yG, yFloor, .5)], [cl1 - 70, lerp(yG, yFloor, .74)], [cl1 - 40, lerp(yG, yFloor, .76)], [cl1 - 6, lerp(yG, yFloor, .5)], [cl1 + 16, yG + 4]]]) {
+    ctx.beginPath(); s.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.fillStyle = mixHex('#e9e1cf', '#ffffff', cw); ctx.shadowColor = rgba('#ffffff', .8 * cw); ctx.shadowBlur = 30 * cw; ctx.fill(); ctx.shadowBlur = 0;
+  }
+  // the salt floor
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; rr(ctx, cl0 + 110, yFloor - 5, cl1 - cl0 - 240, 8, 4); ctx.fill();
+  // sea level
+  dashLine(x0, ySea, x1, ySea, SEAHI, 1, 4, [20, 12], T);
+  txt(L.sea, x1 - 30, ySea - 18, { size: 30, weight: 700, color: SEAHI, align: 'right', sb: 10 });
+  // depth ruler on the left
+  const rx = x0 + 70; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(rx, ySea); ctx.lineTo(rx, yFloor); ctx.stroke();
+  for (let m = 0; m <= 132 * dig; m += 10) { const y = ySea + m * PXM * easeIO(dig) / Math.max(dig, .001) * (dig > 0 ? 1 : 0); ctx.beginPath(); ctx.moveTo(rx - (m % 50 ? 8 : 16), y); ctx.lineTo(rx + (m % 50 ? 8 : 16), y); ctx.stroke(); }
+  // Bayterek on the floor
+  const bk = o.bai ?? 0;
+  if (bk > 0) { const bh = 97 * PXM * easeOut(bk), bx = cx + 40; baiterek(bx, yFloor - 2, bh, clamp(bk * 3), bk >= 1 ? 1 : 0);
+    if (bk > .6) { const la = seg(bk, .6, 1); dashLine(bx + 60, yFloor - bh, bx + 60, ySea, C.acc, la, 3, [8, 8]);
+      txt(L.bai, bx + 80, yFloor - bh * .55, { size: 34, weight: 800, color: C.acc, align: 'left', alpha: la, sb: 12 });
+      txt('+35 м', bx + 80, (yFloor - bh + ySea) / 2 + 12, { size: 30, weight: 700, color: '#fff', align: 'left', alpha: la * ap(T, o.t35 ?? 0, .3), sb: 10 }); } }
+  ctx.restore();
+  txt(MINUS + Math.round(132 * easeIO(dig)) + ' м', rx + 26, yFloor + 52, { size: 54, weight: 900, fam: 'IT', color: C.acc, align: 'left', alpha: k });
+}
+// the world ranking of the deepest land depressions (scene 5)
+function rankPanel(T, k, t0) {
+  if (k <= .004) return;
+  const cx = W / 2, y0 = 850, rowH = 74, w = 860; card(cx, y0 + rowH * 2.5 + 30, w, rowH * 5 + 130, k);
+  txt(L.rank, cx, y0 + 6, { size: 28, weight: 800, ls: 3, color: C.acc, alpha: k, shadow: 0 });
+  for (let i = 0; i < 5; i++) {
+    const a = k * ap(T, t0 + i * .22, .3), y = y0 + 70 + i * rowH, me = i === 4;
+    if (a <= 0) continue;
+    if (me) { ctx.save(); ctx.globalAlpha = a; rr(ctx, cx - w / 2 + 20, y - 46, w - 40, 64, 18); ctx.fillStyle = rgba(C.acc, .9); ctx.fill(); ctx.restore(); }
+    const col = me ? BR.navy : '#fff';
+    txt(String(i + 1), cx - w / 2 + 70, y, { size: 42, weight: 900, fam: 'IT', color: me ? BR.navy : C.acc, alpha: a, shadow: 0 });
+    txt(L.rows[i], cx - w / 2 + 120, y, { size: 38, weight: me ? 800 : 600, color: col, align: 'left', alpha: a, shadow: 0 });
+    txt(MINUS + DEPTHS[i] + ' м', cx + w / 2 - 50, y, { size: 38, weight: 800, fam: 'IT', color: col, align: 'right', alpha: a, shadow: 0 });
+  }
+}
+// the west-east height profile from Karagiye to Khan Tengri (scene 7)
+function profilePanel(T, k, o) {
+  if (k <= .004) return;
+  const cx = W / 2, top = 360, h = 720, w = 960, x0 = cx - w / 2 + 70, x1 = cx + w / 2 - 150, yB = top + h - 90, KY = (h - 190) / 7142, Y = v => yB - (v + 132) * KY, ySea = Y(0);
+  card(cx, top + h / 2, w, h, k * .96);
+  const pr = SH.prof, n = pr.length, draw = easeIO(o.draw);
+  ctx.save(); ctx.globalAlpha *= k;
+  dashLine(x0, ySea, x1 + 40, ySea, SEAHI, .9, 3, [14, 10], T); txt('0 м', x0 - 14, ySea + 10, { size: 26, weight: 700, color: SEAHI, align: 'right', shadow: 0 });
+  const m = Math.max(2, Math.round(n * draw));
+  ctx.beginPath(); ctx.moveTo(x0, yB + 40);
+  for (let i = 0; i < m; i++) ctx.lineTo(lerp(x0, x1, i / (n - 1)), Y(pr[i]));
+  ctx.lineTo(lerp(x0, x1, (m - 1) / (n - 1)), yB + 40); ctx.closePath();
+  let g = ctx.createLinearGradient(0, Y(7010), 0, yB); g.addColorStop(0, '#f4f7ff'); g.addColorStop(.25, '#a08a6a'); g.addColorStop(1, '#5b4128'); ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath(); for (let i = 0; i < m; i++) { const x = lerp(x0, x1, i / (n - 1)), y = Y(pr[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.strokeStyle = C.acc; ctx.lineWidth = 5; ctx.shadowColor = C.acc; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;
+  // the two ends
+  const ea = ap(T, o.t0, .3), eb = ap(T, o.t0 + 1.1, .3);
+  if (ea > 0) { ctx.fillStyle = SEA; ctx.beginPath(); ctx.arc(x0, Y(-132), 12 * easeBack(ea), 0, 7); ctx.fill(); txt(MINUS + '132 м', x0 + 6, Y(-132) + 54, { size: 36, weight: 900, fam: 'IT', color: SEAHI, align: 'left', alpha: ea, shadow: 0 }); }
+  if (eb > 0) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x1, Y(7010), 12 * easeBack(eb), 0, 7); ctx.fill(); txt('7 010 м', x1 - 16, Y(7010) - 26, { size: 36, weight: 900, fam: 'IT', color: '#fff', align: 'right', alpha: eb, shadow: 0 }); }
+  txt(L.w, x0 + 170, yB + 70, { size: 26, weight: 700, color: 'rgba(255,255,255,.6)', align: 'left', shadow: 0, ls: 2 }); txt(L.e, x1, yB + 70, { size: 26, weight: 700, color: 'rgba(255,255,255,.6)', align: 'right', shadow: 0, ls: 2 });
+  // the difference arrow + the stack of Bayterek towers next to it
+  const da = ap(T, o.tdif, .4), ax = x1 + 90;
+  if (da > 0) { vArrow(ax, Y(7010), lerp(Y(7010), Y(-132), easeOut(da)), C.acc, 1, 6); }
+  const sa = ap(T, o.tb70, .3);
+  if (sa > 0) { const nB = Math.round(70 * easeOut(seg(T, o.tb70, o.tb70 + 1.4))), bh = 97 * KY;
+    for (let i = 0; i < nB; i++) { const y = Y(-132) - i * bh; ctx.fillStyle = i % 2 ? '#ffd35a' : '#ffffff'; ctx.globalAlpha = k * sa; ctx.fillRect(ax + 26, y - bh + .6, 18, bh - .6); }
+    ctx.globalAlpha = k; }
+  ctx.restore();
+  if (da > 0) { plate('7 142 м', cx, top - 70, 64, da, { pop: 1, ls: 2 }); txt(L.dif, cx, top - 150, { size: 30, weight: 800, ls: 5, color: '#fff', alpha: da, sb: 10 }); }
+  if (sa > 0) txt(L.b70, cx + 40, top + 130, { size: 44, weight: 800, fam: 'IT', color: C.acc, alpha: sa * k });
+}
+// a vertical ruler on the right side: depth (down) or height (up)
+function ruler(T, k, x, y0, y1, label, col) {
+  if (k <= .004) return; const y = lerp(y0, y1, easeOut5(k));
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y); ctx.stroke();
+  const n = 10; for (let i = 0; i <= n; i++) { const yy = lerp(y0, y1, i / n); if ((yy - y) * (y1 - y0) > 0) continue; ctx.beginPath(); ctx.moveTo(x - (i % 5 ? 10 : 22), yy); ctx.lineTo(x, yy); ctx.stroke(); }
+  ctx.restore(); if (label) txt(label, x - 30, y + (y1 > y0 ? 60 : -24), { size: 52, weight: 900, fam: 'IT', color: col, align: 'right', alpha: clamp(k * 2) });
+}
+
+// ---------------------------------------------------------------- camera
+const KZV = { lon: 65.5, lat: 46.8, range: 2.05, tilt: 0, oy: .03 };
+const KARV = { lon: 51.7, lat: 43.42, range: .13, tilt: 38, oy: .06 };
+const CAMK = [
+  [0, { lon: 62, lat: 45.5, range: 3.1, tilt: 0, oy: .02 }],
+  [M.m132 + .3, { ...KARV, range: .16 }],
+  [M.S2 + .2, { ...KARV, range: .13, tilt: 44, oy: .13 }],
+  [M.S3 - .2, { ...KARV, lon: 51.8, range: .12, tilt: 46, oy: .13 }],
+  [M.S3 + 1.0, KZV],
+  [M.S4 - .2, { ...KZV, lon: 66, range: 2.1 }],
+  [M.kar + .5, { lon: 51.72, lat: 43.48, range: .075, tilt: 55, head: 15, oy: .02 }],
+  [M.cliff + .2, { lon: 51.76, lat: 43.48, range: .072, tilt: 56, head: 20, oy: .08 }],
+  [M.S5 - .2, { lon: 51.8, lat: 43.48, range: .07, tilt: 57, head: 25, oy: .08 }],
+  [M.S5 + 1.3, { lon: 50, lat: 33, range: 4.3, tilt: 0, oy: -.1 }],
+  [M.S6 - .2, { lon: 56, lat: 35, range: 4.3, tilt: 0, oy: -.1 }],
+  [M.kt - .3, { lon: 80.17, lat: 41.86, range: .16, tilt: 62, head: 0, oy: .1 }],
+  [M.S7 - .2, { lon: 80.2, lat: 41.9, range: .13, tilt: 64, head: 8, oy: .1 }],
+  [M.S7 + 1.0, { ...KZV, oy: .25 }],
+  [M.S8 - .2, { ...KZV, lon: 66.5, oy: .25 }],
+  [M.casp + .4, { lon: 51.5, lat: 46.0, range: .62, tilt: 22, oy: .06 }],
+  [M.S9 - .2, { lon: 51.6, lat: 46.4, range: .55, tilt: 25, oy: .06 }],
+  [M.aty + .2, { lon: 51.92, lat: 47.0, range: .045, tilt: 48, oy: .08 }],
+  [M.S10 - .2, { lon: 51.95, lat: 47.02, range: .042, tilt: 50, head: 6, oy: .08 }],
+  [M.S10 + 1.0, { lon: 52.4, lat: 45.0, range: .42, tilt: 12, oy: .1 }],
+  [M.S11 - .2, { lon: 52.4, lat: 45.1, range: .44, tilt: 12, oy: .1 }],
+  [M.S11 + 1.0, { lon: 51.75, lat: 43.2, range: .2, tilt: 30, oy: .25 }],
+  [M.S12 - .1, { lon: 51.75, lat: 43.25, range: .19, tilt: 32, oy: .25 }],
+  [END, { lon: 51.76, lat: 43.38, range: .32, tilt: 20, oy: .1 }],
+];
+function camAt(T) { const c = camTrack(CAMK, T); shake(c, T, M.m132 + .2, .006); shake(c, T, M.no5, .004); shake(c, T, M.dif + .3, .004); return c; }
+
+// ---------------------------------------------------------------- the map layer
+let T_NOW = 0;
+function mapLayer(T) {
+  // Kazakhstan outline: amber in scene 3, faint otherwise
+  const kzA = win2(T, M.S3 + .3, M.S4 + .3, .5, .5) * .9 + win2(T, M.S7 + .5, M.S8 + .6, .5, .5) * .5 + .12;
+  territory([{ rings: KZR, col: C.acc, hi: '#fff', rim: .55, rimW: 2 }], 1, { color: .22 * kzA, add: .05 * kzA, glow: .08 * kzA, rim: .5 * kzA + .1 });
+  // the Karagiye bowl: dark blue
+  const bw = win2(T, M.m132 - .2, M.S5 + .6, .6, .6) + win2(T, M.S10 + .2, END, .6, .3) * .9 + win2(T, M.S3 + .4, M.S4 + .2) * .6;
+  if (bw > 0) territory([{ rings: BOWL, col: '#1d3fb0', hi: SEAHI, rimW: 3 }], clamp(bw), { color: .7, add: .1, dark: .35, glow: .5, rim: 1, blur: 20 });
+  // scene 8: the land below sea level round the Caspian
+  const lw = win2(T, M.low - .4, M.S11 + .3, .9, .6);
+  if (lw > 0) territory([{ rings: LOW, col: SEA, hi: SEAHI, rimW: 2.4 }], lw * (1 - .55 * win2(T, M.aty - .3, M.S10 + .4, .5, .5)), { color: .62, add: .18, glow: .3, rim: .9 });
+  // scene 3: three points blink
+  const t3 = win2(T, M.three - .1, M.S4 + .2, .3, .4);
+  if (t3 > 0) { const bl = i => .7 + .3 * Math.sin(T * 9 + i * 2);
+    [[PL.kar, L.kar, SEAHI], [PL.aty, L.city, C.acc], [PL.kt, L.kt, '#fff']].forEach(([q, s, col], i) => { const k = t3 * ap(T, M.three + i * .35, .3) * bl(i);
+      place(P(q[0], q[1]), col, k, 9, 60); if (i === 1) { if (T > M.city) mapPill(q, s, t3 * ap(T, M.city + .2, .3), { color: col }); } else mapPill(q, s, k, { color: col, size: 30 }); }); }
+  // scene 1, 2, 4: labels on the bowl
+  const lk = win2(T, M.m132 + .2, M.S3 - .1) ;
+  if (lk > 0) mapPill([PL.kar[0], PL.kar[1] - .12], MINUS + '132 м', lk, { dy: 0, size: 40, color: SEAHI });
+  const l4 = win2(T, M.kar - .1, M.S5 + .2);
+  if (l4 > 0) { mapPill([PL.kar[0], PL.kar[1] - .05], L.kar, l4, { dy: 0, size: 40, color: SEAHI }); mapPill([PL.akt[0] - .3, PL.akt[1] + .55], L.mang, l4 * ap(T, M.cliff, .3), { dy: 0, size: 30, dot: false }); }
+  // scene 5: the five depressions of the world
+  const w5 = win2(T, M.S5 + .3, M.S6 + .1, .3, .5);
+  if (w5 > 0) DPL.forEach((q, i) => { const k = w5 * ap(T, M.S5 + .6 + i * .22, .3), me = i === 4; place(P(q[0], q[1]), me ? C.acc : SEAHI, k * (me ? 1 + .25 * Math.sin(T * 8) : 1), me ? 10 : 7, me ? 70 : 36);
+    const p = P(q[0], q[1]); if (p[2] && k > 0) txt(String(i + 1), p[0], p[1] - 22, { size: me ? 44 : 32, weight: 900, fam: 'IT', color: me ? C.acc : '#fff', alpha: k }); });
+  // scene 6: Khan Tengri
+  const k6 = win2(T, M.kt - .4, M.S7 + .3);
+  if (k6 > 0) { place(P(...PL.kt), '#fff', k6, 9, 60); mapPill(PL.kt, L.kt, k6, { size: 40, dy: -70 }); }
+  // scene 9-10: Atyrau
+  const a9 = win2(T, M.aty - .4, M.S11 + .3);
+  if (a9 > 0) { ring(PL.aty, 9 + 2 * Math.sin(T * 5), C.acc, a9 * ap(T, M.aty, .3), 5); place(P(...PL.aty), C.acc, a9, 9, 50);
+    const near = T < M.S10 + .4; mapPill(PL.aty, near ? L.aty20 : L.aty, a9, { size: near ? 44 : 34, dy: near ? -110 : -56 }); }
+  // scene 10: Atyrau and Karagiye joined, people in Atyrau
+  const j = win2(T, M.S10 + .4, M.S11 + .3);
+  if (j > 0) {
+    const pts = []; for (let i = 0; i <= 40; i++) { const u = i / 40; pts.push([lerp(PL.aty[0], PL.kar[0], u) + Math.sin(u * Math.PI) * .6, lerp(PL.aty[1], PL.kar[1], u)]); }
+    const pr = easeIO(seg(T, M.S10 + .4, M.S10 + 1.4)), sp = pts.slice(0, Math.max(2, Math.round(41 * pr))).map(q => P(q[0], q[1], true));
+    ctx.save(); ctx.globalAlpha = j; ctx.setLineDash([16, 12]); ctx.lineDashOffset = -T * 40; ctx.strokeStyle = C.acc; ctx.lineWidth = 5; ctx.shadowColor = C.acc; ctx.shadowBlur = 12;
+    ctx.beginPath(); sp.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.restore();
+    town(PL.kar, L.kar, j * ap(T, M.S10 + 1.2, .3), SEAHI, { size: 32 });
+    const pa = P(...PL.aty); for (let i = 0; i < 18; i++) { const an = hash(i * 3.3) * 6.28, rr0 = 50 + hash(i * 7.1) * 90; personMini(pa[0] + Math.cos(an) * rr0, pa[1] + Math.sin(an) * rr0 * .6, 20, '#fff', j * ap(T, M.ppl + i * .05, .25) * .9); } }
+}
+
+// ---------------------------------------------------------------- titles and panels
+function vignette(top = 1) {
+  let g = ctx.createLinearGradient(0, 0, 0, 640); g.addColorStop(0, `rgba(0,0,0,${.9 * top})`); g.addColorStop(.5, `rgba(0,0,0,${.46 * top})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 640);
+  g = ctx.createLinearGradient(0, 1080, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.42, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,.92)');
+  ctx.fillStyle = g; ctx.fillRect(0, 1080, W, H - 1080);
+  g = ctx.createRadialGradient(W / 2, H / 2, 620, W / 2, H / 2, 1180); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+const tag = (s, y, a, col = C.acc) => { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; rr(ctx, W / 2 - 30, y - 52, 60, 6, 3); ctx.fill(); ctx.restore();
+  txt(s, W / 2, y + (1 - a) * 8, { size: 31, weight: 800, ls: 4, color: col, alpha: a, sb: 10 }); };
+function plate(s, x, y, size, a, o = {}) {
+  if (a <= 0) return;
+  ctx.save(); font(ctx, size, 800, 'IT'); ctx.letterSpacing = (o.ls ?? 4) + 'px'; const w = ctx.measureText(s).width + size * 1.1, h = size * 1.55, sc = o.pop ? lerp(1.25, 1, easeBack(a)) : 1;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.globalAlpha *= clamp(a * 1.5);
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6; rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = o.fill || C.acc; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.fillStyle = o.color || BR.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, (o.ls ?? 4) / 2, size * .06); ctx.restore();
+}
+function datePlate(s, a, y = 300, col = C.acc, size = 84) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; font(ctx, size, 800, 'IT'); const w = ctx.measureText(s).width + 90, h = size * 1.48, sc = lerp(.9, 1, easeBack(a));
+  ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; rr(ctx, -w / 2, -h / 2, w, h, 22); ctx.fillStyle = C.pill; ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = rgba(col, .7); ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  txt(s, W / 2, y + size * .36, { size, weight: 800, fam: 'IT', color: col, alpha: a, shadow: 0, ls: 2 });
+}
+function card(x, y, w, h, a, edge = C.line) {
+  ctx.save(); ctx.globalAlpha *= a; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 34; ctx.shadowOffsetY = 10; rr(ctx, x - w / 2, y - h / 2, w, h, 26); ctx.fillStyle = C.card; ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.strokeStyle = edge; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+}
+function counter(T, to, t0, t1, x, y, size, col, a = 1, o = {}) {
+  if (a <= .004) return;
+  const u = easeOut5(seg(T, t0, t1)), v = to * u, pop = 1 + .06 * Math.sin(Math.PI * seg(T, t1 - .05, t1 + .3));
+  const str = (o.pre || '') + fmt(v) + (o.suf || '');
+  ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); txt(str, 0, 0, { size, weight: 800, fam: 'IT', color: col, alpha: a, sb: 30, ls: 2 }); ctx.restore();
+}
+// the «n / 3» fact counter at the top
+function factCount(T) {
+  const cuts = [[M.three - .1, 0], [M.f1 - .05, 1], [M.f2 - .05, 2], [M.f3 - .05, 3]], end = M.S11 - .1;
+  let n = -1, t0 = 0; for (const [t, v] of cuts) if (T >= t) { n = v; t0 = t; }
+  if (n < 0 || T > end) return;
+  const a = win2(T, M.three - .1, end, .3, .3), pop = 1 + .14 * Math.sin(Math.PI * seg(T, t0, t0 + .35));
+  const subs = { 1: L.no5, 3: L.low };
+  const hide = 1 - win2(T, M.S7 + .1, M.S8 - .1, .3, .3);
+  ctx.save(); ctx.translate(W / 2, 250); ctx.scale(pop, pop); ctx.translate(-W / 2, -250); datePlate(`${n} / 3`, a * hide, 250, C.acc, 70); ctx.restore();
+  if (subs[n] && (n !== 2 || T > M.h7010 - .1)) { const sa = a * ap(T, n === 2 ? M.h7010 - .1 : n === 1 ? M.no5 - .1 : M.low - .1, .35); if (sa * hide > 0) plate(subs[n], W / 2, 370, 46, sa * hide, { pop: 1, ls: 2, fill: n === 3 ? SEA : C.acc, color: n === 3 ? '#fff' : BR.navy }); }
+}
+function hud(T) {
+  // 1: the depth counter and the ruler going down
+  const h1 = win2(T, M.m132 - .3, M.S2 - .05, .3, .3);
+  if (h1 > 0) { ruler(T, seg(T, M.m132 - .3, M.m132 + 1.0), W - 90, 520, 1180, '', SEAHI);
+    counter(T, 132, M.m132 - .2, M.m132 + 1.1, W / 2, 330, 150, SEAHI, h1, { pre: MINUS, suf: ' м' }); }
+  // 2 and 4: the cross-section of the bowl
+  const b2 = win2(T, M.S2 + .05, M.S3 + .05, .35, .35), b4 = win2(T, M.cliff - .3, M.S5 + .05, .35, .35);
+  if (b2 > 0) bowlPanel(T, b2, { bai: seg(T, M.bai - .1, M.bai + .9), t35: M.fit + .1, dig: 1 });
+  if (b4 > 0) bowlPanel(T, b4, { cliff: ap(T, M.cliff, .5), dig: seg(T, M.cliff - .3, M.cliff + 1.0) });
+  // 5: the ranking
+  rankPanel(T, win2(T, M.S5 + .5, M.S6 - .05, .35, .35), M.S5 + .6);
+  // 6: the height ruler
+  const h6 = win2(T, M.kt - .2, M.S7 - .05, .3, .3);
+  if (h6 > 0) { ruler(T, seg(T, M.kt - .2, M.h7010 + 1.0), W - 90, 1240, 560, '', '#fff'); counter(T, 7010, M.h7010 - .2, M.h7010 + 1.0, W / 2, 500, 120, '#fff', h6 * ap(T, M.h7010 - .2, .3), { suf: ' м' }); }
+  // 7: the profile
+  profilePanel(T, win2(T, M.S7 + .2, M.S8 - .05, .4, .35), { draw: seg(T, M.S7 + .3, M.S7 + 1.6), t0: M.S7 + .4, tdif: M.dif, tb70: M.b70 });
+  // 8: the lowland
+  tag(L.lowSub, 470, win2(T, M.low + .2, M.S9 - .05), SEAHI);
+  // 10: thousands of people
+  tag(L.ppl, 470, win2(T, M.ppl - .1, M.S11 - .05), '#fff');
+  factCount(T);
+  // 11: ҰБТ / ЕНТ
+  const uk = win2(T, M.ubt - .15, M.S12 + .2);
+  if (uk > 0) {
+    plate(L.ubt, W / 2, 290, 66, uk, { pop: 1, ls: 6 }); txt(L.ubtLine, W / 2, 400, { size: 44, weight: 800, fam: 'IT', alpha: uk, sb: 14 });
+    const q = ap(T, M.q - .1, .35) * uk, a = ap(T, M.ans - .1, .35) * uk;
+    if (q > 0) { card(W / 2, 600, 900, 240, q); txt(L.qL, W / 2, 530, { size: 30, weight: 800, ls: 6, color: C.acc, alpha: q, shadow: 0 });
+      L.q.forEach((s, i) => txt(s, W / 2, 595 + i * 62, { size: 50, weight: 700, fam: 'IT', alpha: q, shadow: 0 })); }
+    if (a > 0) { card(W / 2, 840, 900, 170, a, rgba('#3ddc84', .8)); txt(L.aL, W / 2, 810, { size: 30, weight: 800, ls: 6, color: '#3ddc84', alpha: a, shadow: 0 });
+      txt(L.a, W / 2, 878, { size: 54, weight: 900, fam: 'IT', color: C.acc, alpha: a, shadow: 0 }); }
+  }
+}
+// 12: an arrow up to the profile header
+function finale(T) {
+  const TA = M.link - .3, ar = ap(T, TA, .4); if (ar <= 0) return;
+  const ay = 760 + 14 * Math.sin(T * 6.5), hh = 170; ctx.save(); ctx.globalAlpha = ar; ctx.strokeStyle = C.acc; ctx.lineWidth = 18; ctx.lineCap = ctx.lineJoin = 'round'; ctx.shadowColor = C.acc; ctx.shadowBlur = 26;
+  ctx.beginPath(); ctx.moveTo(W / 2, ay + hh * .6); ctx.lineTo(W / 2, ay - hh * .6); ctx.moveTo(W / 2 - 70, ay - hh * .1); ctx.lineTo(W / 2, ay - hh * .65); ctx.lineTo(W / 2 + 70, ay - hh * .1); ctx.stroke(); ctx.restore();
+  plate(L.link, W / 2, 1000, 54, ar, { pop: 1, ls: 2 });
+}
+
+
+// ---------------------------------------------------------------- the brand in the frame
+const END0 = M.last + .55;
+function logo() { ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(LOGO, W - 48 - LOGO.width, 48); ctx.restore(); }
+function credit(T) { if (T < END0) txt(L.credit, W / 2, 1880, { size: 19, weight: 500, color: 'rgba(255,255,255,.42)', shadow: 0 }); }
+function endCard(T) {
+  const k = ease(seg(T, END0, END0 + .5)); if (k <= 0) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = BR.navy; ctx.fillRect(0, 0, W, H);
+  const s = lerp(.9, 1, easeOut(seg(T, END0, END0 + .8))), w = LOGO_BIG.width * s, h = LOGO_BIG.height * s, cy = 800;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(LOGO_BIG, W / 2 - w / 2, cy - h / 2, w, h); ctx.restore();
+  const c = ap(T, END0 + .3, .4), d = ap(T, END0 + .5, .4);
+  if (c > 0) txt(L.endA, W / 2, cy + 322 + (1 - c) * 12, { size: 66, weight: 800, fam: 'IT', color: C.acc, alpha: c, shadow: 0 });
+  if (d > 0) txt(L.endB, W / 2, cy + 396 + (1 - d) * 12, { size: 40, weight: 600, color: 'rgba(255,255,255,.85)', alpha: d, shadow: 0 });
+}
+
+// ---------------------------------------------------------------- captions: the chunk being spoken, word by word
+const CAPCOL = { w: '#ffffff', t: C.acc, n: C.acc, r: C.warn, b: '#8fb6ff' };
+const CHUNKS = []; B.words.forEach(w => { if (!/[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(w.w)) return; (CHUNKS[w.k] ||= { ws: [], t0: w.t }).ws.push(w); CHUNKS[w.k].t1 = w.e; });
+const CH = CHUNKS.filter(Boolean);
+function captions(T, y) {
+  let i = -1; for (let k = 0; k < CH.length; k++) if (T >= CH[k].t0 - .07) i = k;
+  if (i < 0) return; const c = CH[i], tEnd = Math.min(i + 1 < CH.length ? CH[i + 1].t0 - .07 : 1e9, c.t1 + .5);
+  if (T > tEnd || T > END0) return;
+  ctx.letterSpacing = '0px'; const its = c.ws.map(w => { const key = w.c !== 'w', size = key ? 60 : 54, weight = key ? 800 : 700, s = w.w.replace(/[.,:;!?]+$/, ''); font(ctx, size, weight); return { w, s, size, weight, wd: ctx.measureText(s).width }; });
+  let tot = 0; its.forEach((it, k) => { tot += it.wd + (k < its.length - 1 && !it.w.g ? 17 : 0); });
+  const sc = Math.min(1, 960 / tot), a = seg(T, c.t0 - .07, c.t0 + .03) * (1 - seg(T, tEnd - .06, tEnd));
+  ctx.save(); ctx.translate(W / 2, y + (1 - seg(T, c.t0 - .07, c.t0 + .05)) * 10); ctx.scale(sc, sc); let x = -tot / 2;
+  for (const it of its) {
+    const on = seg(T, it.w.t - .04, it.w.t + .05), pop = 1 + .07 * Math.sin(Math.PI * seg(T, it.w.t - .02, it.w.t + .2));
+    ctx.save(); ctx.translate(x + it.wd / 2, 0); ctx.scale(pop, pop); font(ctx, it.size, it.weight); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 3; ctx.globalAlpha = a * lerp(.4, 1, on); ctx.fillStyle = CAPCOL[it.w.c] || '#fff';
+    ctx.fillText(it.s, 0, 0); ctx.shadowBlur = 5; ctx.fillText(it.s, 0, 0); ctx.restore();
+    x += it.wd + (it.w.g ? 0 : 17);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- frame
+const FLASH = [M.S3 + .9, M.S5 + 1.2, M.S7 + .9, M.S11];
+async function render(T) {
+  T = clamp(T, 0, END); T_NOW = T;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const cam = window.CAMQ || camAt(T); setCam(cam);
+  globeMat.uniforms.expo.value = lerp(.55, .72, seg(T, 0, 3)) * (1 - .3 * win2(T, M.S2 + .1, M.S3, .4, .4) - .3 * win2(T, M.cliff - .2, M.S5, .4, .4) - .3 * win2(T, M.S7 + .2, M.S8, .4, .4) - .25 * win2(T, M.ubt, M.S12 + .4, .5, .5));
+  globeMat.uniforms.sat.value = .88; globeMat.uniforms.haze.value = .7; atmo.material.uniforms.k.value = .5;
+  stars(clamp((cam.range - .3) / 1.2) * .8);
+  renderer.render(scene, camera); ctx.drawImage(glc, 0, 0);
+  borders(.18 * clamp(1.4 - cam.range));
+  mapLayer(T);
+  vignette(1);
+  hud(T); finale(T);
+  captions(T, 1450);
+  credit(T); logo(); endCard(T);
+  for (const tc of FLASH) if (T >= tc && T < tc + .16) { ctx.fillStyle = `rgba(255,255,255,${.2 * (1 - (T - tc) / .16) ** 2})`; ctx.fillRect(0, 0, W, H); }
+}
+window.render = render; window.setCamQ = c => { window.CAMQ = c; }; window.END = END; window.M = M;
+window.ready = true;
+</script>
+</body></html>
