@@ -1,0 +1,5 @@
+data/
+*.log
+video_silent_*.mp4
+rift_*.mp4
+*.wav
