@@ -1,0 +1,143 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Все карты врут: проекция Меркатора» — RU remake, voice «Арнур». This reel uses a Mercator camera instead of the engine's plate carrée.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 60;
+const V = k => B[k] + OFF;
+const MY = lat => Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85, 85) * Math.PI / 360)) * 180 / Math.PI;
+function P(lon, lat) { return [W / 2 + (lon - CAM.lon) * CAM.ppd, H / 2 - (MY(lat) - MY(CAM.lat)) * CAM.ppd]; }
+const OSLO = [10.7, 59.9], YAK = [129.7, 62.0], DAK = [-17.4, 14.7], GUA = [51.3, 11.8];
+const GRN = '#7fe0a8', RED = '#E8502F';
+</script>
+<script src="helpers.js"></script>
+<script src="ctalink.js"></script>
+<script>
+function drawMerc() {
+  panel(1); const im = IM.merc, M = SH.meta;
+  for (const off of [-360, 0, 360]) {
+    const x0 = W / 2 + (-180 + off - CAM.lon) * CAM.ppd, y0 = H / 2 - (M.y1 - MY(CAM.lat)) * CAM.ppd, w = 360 * CAM.ppd, h = (M.y1 - M.y0) * CAM.ppd;
+    if (x0 > W || x0 + w < 0) continue;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 40; ctx.drawImage(im, x0, y0, w, h); ctx.restore();
+    if (off === 0) { ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-10, y0); ctx.lineTo(W + 10, y0); ctx.moveTo(-10, y0 + h); ctx.lineTo(W + 10, y0 + h); ctx.stroke(); ctx.restore(); }
+  }
+}
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .6, lw: 4, blur: 18 }, o || {}));
+// true-size ring: local km offsets from the shape's centroid c, drawn around (lonN, latN) at scale k (1 = equator scale)
+function trueRings(rings, c, lonN, latN, k) {
+  return rings.map(r => r.map(([lon, lat]) => { const dx = (lon - c[0]) * Math.cos(lat * Math.PI / 180), dy = lat - c[1]; return [dx * k, dy * k]; }))
+    .map(r => r.map(([dx, dy]) => [lonN + dx, latN, dy]));
+}
+function ringsPx(rings) { return rings.map(r => r.map(([lon, lat]) => P(lon, lat))); }
+function trueRingsPx(rings, c, lonN, latN, k) {   // pixel rings of the shape at true size around (lonN, latN); k=1/cos(latN) keeps it true on the map there
+  const [X, Y] = P(lonN, latN);
+  return rings.map(r => r.map(([lon, lat]) => [X + (lon - c[0]) * Math.cos(lat * Math.PI / 180) * CAM.ppd * k, Y - (lat - c[1]) * CAM.ppd * k]));
+}
+function mix(ra, rb, p) { return ra.map((r, i) => r.map((q, j) => [lerp(q[0], rb[i][j][0], p), lerp(q[1], rb[i][j][1], p)])); }
+function fillPx(px, col, a, o = {}) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); for (const r of px) { r.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); }
+  ctx.fillStyle = col; ctx.globalAlpha = a * (o.fill ?? .65); ctx.fill('evenodd'); ctx.globalAlpha = a; ctx.shadowColor = col; ctx.shadowBlur = o.blur ?? 18; ctx.strokeStyle = o.line || col; ctx.lineWidth = o.lw ?? 4; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+}
+function ghostPx(px, a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.setLineDash([12, 9]); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3; ctx.beginPath();
+  for (const r of px) { r.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); } ctx.stroke(); ctx.restore(); }
+function measure(a, b, p, al, lab, la) {   // glowing yellow line with end rings + km label
+  if (al <= 0) return; const [x0, y0] = P(...a), [x1, y1] = P(...b);
+  ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = '#FFE14D'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.shadowColor = '#FFE14D'; ctx.shadowBlur = 26;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(lerp(x0, x1, p), lerp(y0, y1, p)); ctx.stroke();
+  ctx.lineWidth = 5; for (const [x, y, s] of [[x0, y0, 1], [x1, y1, p >= 1]]) if (s) { ctx.beginPath(); ctx.arc(x, y, 16, 0, 7); ctx.stroke(); } ctx.restore();
+  if (lab && la > 0) { const an = Math.atan2(y1 - y0, x1 - x0); ctx.save(); ctx.globalAlpha = la; ctx.translate((x0 + x1) / 2, (y0 + y1) / 2); ctx.rotate(an);
+    txt(lab, 0, -46, 64, '#fff', 'MB', { stroke: 9, sc: 'rgba(0,0,0,.7)', shadow: '#FFE14D', blur: 20 }); ctx.restore(); }
+}
+function tissot(a, t) {   // equal 1000-km circles across latitudes: on Mercator they swell towards the poles
+  if (a <= 0) return;
+  for (const lat of [-60, -40, -20, 0, 20, 40, 60, 75]) for (let lon = -165; lon <= 195; lon += 30) {
+    const [x, y] = P(lon, lat); if (x < -200 || x > W + 200) continue; const r = 4.5 * CAM.ppd / Math.cos(lat * Math.PI / 180);
+    const s = eout(ap(t, V('sizes') + (Math.abs(lat) / 75) * .6, .5));
+    ctx.save(); ctx.globalAlpha = a * .9; ctx.beginPath(); ctx.arc(x, y, r * s, 0, 7); ctx.fillStyle = 'rgba(232,80,47,.45)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  }
+}
+function graticule(a) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a * .6; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  for (let lat = -75; lat <= 75; lat += 15) { const [, y] = P(0, lat); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  for (let lon = -180; lon <= 360; lon += 15) { const [x] = P(lon, 0); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  ctx.restore(); }
+const G14 = [[-8, 21], [4, 23], [16, 22], [28, 22], [-6, 9], [9, 7], [21, 6], [33, 6], [43, 7], [16, -9], [27, -10], [36, -13], [20, -25], [28, -27]];
+let CAMK = [];
+function buildCam() {
+  const WORLD = [15, 25, 5.2], EUAF = [55, 32, 6.6];
+  CAMK = [
+    [0, 10, 30, 6.2], [V('seems') - .2, 14, 28, 5.6, 'l'],
+    [V('seems') + .9, ...EUAF], [V('smaller') - .1, 56, 32, 6.9, 'l'],
+    [V('smaller') + .9, -5, 30, 4.7], [V('fit') - .1, -5, 30, 4.9, 'l'],
+    [V('fit') + .9, 16, 2, 8.6], [V('lie') - .1, 17, 2, 9.0, 'l'],
+    [V('lie') + .9, ...WORLD], [V('merc') - .1, 15, 25, 5.4, 'l'],
+    [V('merc') + .9, 15, 25, 3.2], [V('north') - .1, 15, 25, 3.3, 'l'],
+    [V('north') + .9, 15, 30, 3.0], [V('kz') - .1, 15, 30, 3.1, 'l'],
+    [V('kz') + .9, 67, 48, 10], [V('real') - .1, 67, 48, 10.5, 'l'],
+    [V('real') + .9, 40, 28, 4.0], [V('vend') + 4, 40, 28, 4.1, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMerc(); vignette(.4);
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .85 + .15 * Math.sin(t * 5);
+  // 1. hook
+  { const a = A('0', 'seems', .3);
+    head('Все карты', a * ap(t, .2, .3), '#ffffff', H * .3, 120); head('тебе ВРУТ', a * ap(t, .9, .3), RED, H * .3 + 140, 130);
+    pill('Почему?', W / 2, H * .72, 64, A('why', 'seems', .25), { col: BR.acc }); }
+  // 2. two distances
+  { const a = A('seems', 'smaller', .3);
+    measure(OSLO, YAK, eout(ap(t, V('oslo'), .9)), a, '5 500 км', A('km1', 'smaller', .3));
+    measure(DAK, GUA, eout(ap(t, V('afr1'), .8)), a * ap(t, V('afr1') - .1, .2), '7 400 км', A('second', 'smaller', .3));
+    cp(t, 'Осло', OSLO[0], OSLO[1] - 4, 'oslo', 'smaller', BR.acc, 36); cp(t, 'Якутск', YAK[0], YAK[1] - 4, 'oslo', 'smaller', BR.acc, 36);
+    head('Что длиннее?', A('seems', 'no', .25), '#ffffff', H * .14, 96);
+    head('А вот и нет!', A('no', 'first', .25), RED, H * .14, 100);
+    head('Африка длиннее', A('second', 'smaller', .25), BR.acc, H * .14, 90); }
+  // 3. Africa vs Greenland, 14 Greenlands
+  { const a = A('smaller', 'lie', .3);
+    fill(SH.AFR, RED, a * (1 - A('fit', 'lie', .3) * .5));
+    fill(SH.GRL, '#4FD1C5', A('smaller', 'fit', .3) * pulse, { fill: .6 });
+    label2(['АФРИКА'], 18, 4, A('smaller', 'fit', .3), RED, 70); label2(['ГРЕНЛАНДИЯ'], -42, 73, A('grl1', 'fit', .3), '#9fd8ff', 50);
+    head('Почти одинаковые?', A('grl1', 'fit', .25), '#ffffff', H * .14, 90);
+    const af = A('fit', 'lie', .3); const n = Math.floor(clamp((t - V('fit') - .3) / 2.3) * 14 + .001);
+    ctx.save(); pathRings(SH.AFR); ctx.clip();
+    for (let i = 0; i < 14; i++) { const pi = ap(t, V('fit') + .3 + i * 2.3 / 14, .25); if (pi <= 0) continue; const [lon, lat] = G14[i];
+      const px = trueRingsPx(SH.GRL, SH.meta.GRL, lon, lat, 1 / Math.cos(lat * Math.PI / 180) * back(pi)); fillPx(px, '#FFE14D', af * clamp(pi * 2), { fill: .55, lw: 2.5, blur: 8 }); }
+    ctx.restore();
+    bigNum(`${Math.min(14, n + 1)} Гренландий`, H * .14, 110, af * ap(t, V('fit') + .3, .3), BR.acc, n >= 13 ? 'помещаются в Африку' : ''); }
+  // 4. Mercator projection: shapes kept, sizes distorted
+  { head('Карты врут и про размеры', A('lie', 'merc', .25), RED, H * .14, 74);
+    const a = A('merc', 'kz', .3); graticule(a);
+    head('Проекция Меркатора', a, BR.acc, H * .14, 90);
+    pill('формы — верно ✓', W / 2, H * .14 + 110, 50, A('shapes', 'kz', .25) * (1 - A('sizes', 'kz', .1) * 0), { line: GRN });
+    pill('размеры — искажены ✗', W / 2, H * .14 + 200, 50, A('sizes', 'kz', .25), { line: RED, col: '#ffd0c4' });
+    tissot(A('sizes', 'kz', .4), t);
+    pill('все круги одинаковые: 1 000 км', W / 2, H * .8, 40, A('eq', 'kz', .3), { line: RED });
+    const an = A('north', 'kz', .3); for (const k of ['GRL', 'CAN', 'RUS']) fill(SH[k], RED, an * pulse, { fill: .5 }); }
+  // 5. Kazakhstan: more than twice as big
+  { const a = A('kz', 'real', .3); const c = SH.meta.KAZ;
+    fill(SH.KAZ, BR.acc, a * pulse, { fill: .45 });
+    fillPx(trueRingsPx(SH.KAZ, c, c[0], c[1], lerp(1 / Math.cos(c[1] * Math.PI / 180), 1, eout(ap(t, V('x2') - .2, .8)))), '#ffffff', a * ap(t, V('x2') - .2, .3), { fill: .35, line: '#fff' });
+    head('Казахстан', a, BR.acc, H * .14, 110); pill('на карте ×2,2 больше, чем есть', W / 2, H * .14 + 115, 46, A('x2', 'real', .25), { line: BR.acc });
+    pill('белым — настоящий размер', W / 2, H * .78, 40, A('x2', 'real', .25)); }
+  // 6. real sizes
+  { const a = A('real', 'vend', .3) + A('cta', 'vend', .1) * 0; const p = eout(ap(t, V('real') + .4, 1.6));
+    for (const k of ['GRL', 'CAN', 'RUS', 'USA', 'KAZ', 'CHN', 'AFR', 'BRA', 'AUS', 'IND']) {
+      const c = SH.meta[k], src = ringsPx(SH[k]), dst = trueRingsPx(SH[k], c, c[0], c[1], 1); ghostPx(src, a * p * .8);
+      fillPx(mix(src, dst, p), k === 'AFR' ? RED : (k === 'KAZ' ? BR.acc : GRN), a, { fill: .6, lw: 3, blur: 10 }); }
+    head('На самом деле', a, GRN, H * .14, 100); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all([loadImg('merc', 'tex/merc.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
