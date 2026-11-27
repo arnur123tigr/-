@@ -1,0 +1,7 @@
+data/
+video_silent_*.mp4
+*.wav
+snap*/
+*.log
+__pycache__/
+kypshaq_*.mp4
