@@ -1,0 +1,6 @@
+data/
+video_silent_*.mp4
+*.wav
+ussr_*.mp4
+*.log
+__pycache__/
