@@ -1,0 +1,14 @@
+*.wav
+*.mp4
+*.log
+old_voice/
+clips/
+wh_*.txt
+data/
+__pycache__/
+hf/s4.png
+hf/video/
+video_silent_*
+mix_*
+sfx_*
+music_*
