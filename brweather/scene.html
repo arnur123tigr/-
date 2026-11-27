@@ -1,0 +1,137 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему погода в Британии такая непредсказуемая» — RU remake, voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 80;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'atl', l0: -90, l1: 30, b0: 10, b1: 75, minppd: 10 });
+TEX.push({ k: 'col', l0: -84, l1: -64, b0: 0, b1: 14, minppd: 25 });
+TEX.push({ k: 'uk', l0: -14, l1: 6, b0: 48, b1: 62, minppd: 14 });
+const BLUE = '#4FA8FF', WARM = '#F08A4B', ARC = '#7FD6FF';
+</script>
+<script src="helpers.js"></script>
+<script src="ctalink.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .45, lw: 4, blur: 22 }, o || {}));
+function R(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+function rainFX(t, a, n = 160) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a * .7; ctx.strokeStyle = '#cfe6ff'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath();
+  for (let i = 0; i < n; i++) { const sp = 1600 + R(i) * 900, x = (R(i + 9) * (W + 400) + t * 260) % (W + 400) - 200, y = (R(i + 3) * H + t * sp) % (H + 100) - 50; ctx.moveTo(x, y); ctx.lineTo(x - 14, y - 56); } ctx.stroke();
+  ctx.globalAlpha = a * .25; ctx.fillStyle = '#26364a'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+function fogFX(t, a) { if (a <= 0) return; ctx.save(); for (let k = 0; k < 6; k++) { const y = H * (.15 + k * .15), x = ((t * (30 + k * 12) + k * 300) % (W * 2)) - W * .5;
+    const g = ctx.createRadialGradient(x, y, 10, x, y, 620); g.addColorStop(0, `rgba(230,236,240,${.55 * a})`); g.addColorStop(1, 'rgba(230,236,240,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = a * .35; ctx.fillStyle = '#c8d0d6'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+function sunFX(t, a) { if (a <= 0) return; ctx.save(); const x = W * .78, y = H * .16; const g = ctx.createRadialGradient(x, y, 20, x, y, 900); g.addColorStop(0, `rgba(255,236,170,${.9 * a})`); g.addColorStop(.3, `rgba(255,200,90,${.35 * a})`); g.addColorStop(1, 'rgba(255,200,90,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = a * .25; ctx.translate(x, y); ctx.rotate(t * .15); ctx.fillStyle = '#fff6d0';
+  for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(1400, -60); ctx.lineTo(1400, 60); ctx.fill(); } ctx.restore(); }
+function hailFX(t, a, n = 110) { if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = '#f4f8ff'; ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 6;
+  for (let i = 0; i < n; i++) { const sp = 1300 + R(i) * 700, x = (R(i + 7) * W + t * 120) % W, y = (R(i + 2) * H + t * sp) % (H + 60) - 30; ctx.beginPath(); ctx.arc(x, y, 5 + R(i + 5) * 7, 0, 7); ctx.fill(); }
+  ctx.shadowBlur = 0; ctx.globalAlpha = a * .25; ctx.fillStyle = '#1d2733'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+function windFX(t, a, n = 26) { if (a <= 0) return; ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) { const y0 = R(i + 1) * H, L = 260 + R(i + 4) * 280, x = ((R(i + 8) * (W + L * 2) + t * (900 + R(i) * 500)) % (W + L * 2)) - L;
+    ctx.globalAlpha = a * (.35 + .4 * R(i + 6)); ctx.lineWidth = 3 + R(i + 2) * 4; ctx.beginPath();
+    for (let k = 0; k <= 20; k++) { const xx = x - L + L * k / 20, yy = y0 + Math.sin(k / 20 * Math.PI * 2 + t * 3 + i) * 18; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+    ctx.stroke(); if (i % 4 === 0) { ctx.beginPath(); ctx.arc(x + 10, y0 - 20, 22, Math.PI * .5, Math.PI * 2.1); ctx.stroke(); } }
+  ctx.restore(); }
+function weatherWord(s, a, col) { if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(W / 2, H * .42); ctx.scale(p, p);
+  txt(s, 0, 0, 130, '#fff', 'MB', { shadow: col, blur: 40, dy: 0, stroke: 12, sc: 'rgba(0,0,0,.45)' }); ctx.restore(); }
+function massArrow(x0, y0, x1, y1, p, a, col, label, lx, ly) {   // fat glowing arrow + label plate
+  if (a <= 0 || p <= 0) return; const ex = lerp(x0, x1, p), ey = lerp(y0, y1, p), an = Math.atan2(y1 - y0, x1 - x0);
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 34; ctx.lineCap = 'butt'; ctx.shadowColor = col; ctx.shadowBlur = 26; ctx.setLineDash([46, 22]);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(ex - Math.cos(an) * 30, ey - Math.sin(an) * 30); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(ex + Math.cos(an) * 40, ey + Math.sin(an) * 40); ctx.lineTo(ex + Math.cos(an + 2.5) * 64, ey + Math.sin(an + 2.5) * 64); ctx.lineTo(ex + Math.cos(an - 2.5) * 64, ey + Math.sin(an - 2.5) * 64); ctx.fill(); ctx.restore();
+  if (label) label.split('\n').forEach((l, i, arr) => pill(l, lx, ly + (i - (arr.length - 1) / 2) * 70, 40, a * clamp(p * 1.5), { bg: col, col: BR.navy, line: '#ffffff' }));
+}
+let CAMK = [];
+function buildCam() {
+  const UK = [-4.5, 54.3, 88];
+  CAMK = [
+    [0, -3.8, 54.6, 76], [V('parts') - .1, -4.2, 54.4, 84, 'l'],
+    [V('parts') + .9, ...UK], [V('no') - .1, -4.5, 54.3, 94, 'l'],
+    [V('c70') + .2, -10, 12, 5.2], [V('col') - .1, -12, 12, 5.4, 'l'],
+    [V('col') + 1.1, -73.5, 5, 62], [V('sec') - .1, -73.5, 5, 68, 'l'],
+    [V('sec') + 1.0, -20, 50, 13], [V('field') - .1, -18, 51, 14, 'l'],
+    [V('field') + .9, -5, 54.5, 40], [V('west') - .1, -5, 54.5, 43, 'l'],
+    [V('west') + 1.0, -40, 44, 12.5], [V('winds') - .1, -36, 46, 13.5, 'l'],
+    [V('winds') + .9, -10, 53, 22], [V('north') - .1, -8, 54, 26, 'l'],
+    [V('north') + .9, -3.5, 54, 34], [V('who') - .1, -3.5, 54, 38, 'l'],
+    [V('who') + .8, -4.2, 54.3, 52], [V('vend') + 4, -4.2, 54.3, 46, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.5);
+  ctx.save(); ctx.globalAlpha = .3; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .82 + .18 * Math.sin(t * 5);
+  // 1. unpredictable: rain, fog, sun, hail, wind
+  { const a = A('0', 'parts', .3);
+    fill(SH.GBR, '#ffffff', a * .7, { fill: .12 }); fill(SH.IRL, '#ffffff', a * .7, { fill: .12 });
+    rainFX(t, A('rain', 'fog', .2)); fogFX(t, A('fog', 'sun', .2)); sunFX(t, A('sun', 'hail', .2)); hailFX(t, A('hail', 'wind', .2)); windFX(t, A('wind', 'parts', .2));
+    head('Непредсказуемая погода', A('0', 'rain', .25) * ap(t, .2, .3), '#E8502F', H * .17, 82);
+    weatherWord('Дождь', A('rain', 'fog', .15), BLUE); weatherWord('Туман', A('fog', 'sun', .15), '#9aa7b0'); weatherWord('Солнце', A('sun', 'hail', .15), BR.acc);
+    weatherWord('Град', A('hail', 'wind', .15), '#dfe8ff'); weatherWord('Ветер', A('wind', 'parts', .15), '#ffffff'); }
+  // 2. up to 250 rainy days
+  { const a = A('parts', 'c70', .3); fill(SH.GBR, BLUE, a * pulse); fill(SH.IRL, BLUE, a * pulse); rainFX(t, A('d250', 'seems', .3) * .6, 90);
+    bigNum('до 250', H * .7, 170, A('d250', 'seems', .3), BR.acc, 'дождливых дней в году');
+    head('Самое дождливое', A('seems', 'c70', .25), BLUE, H * .15, 90); head('место на Земле?', A('seems', 'c70', .25), BLUE, H * .15 + 105, 80);
+    const an = A('no', 'c70', .2); if (an > 0) { ctx.save(); ctx.globalAlpha = an; ctx.strokeStyle = BR.red; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+      const p = eout(ap(t, V('no'), .35)); ctx.beginPath(); ctx.moveTo(W * .1, H * .15 + 10); ctx.lineTo(W * (.1 + .8 * p), H * .15 + 10); ctx.moveTo(W * .14, H * .15 + 115); ctx.lineTo(W * (.14 + .72 * p), H * .15 + 115); ctx.stroke(); ctx.restore();
+      bigNum('НЕТ!', H * .7, 200, an * (1 - A('d250', 'no', .1) * 0), BR.red); } }
+  // 3. 70+ countries get more rain; Colombia first
+  { const a = A('c70', 'sec', .3);
+    fill(SH.WET, '#4FD1C5', A('c70', 'col', .4) * ap(t, V('c70') + .3, .6), { fill: .55, lw: 2, blur: 10 }); fill(SH.GBR, BLUE, A('c70', 'col', .3), { fill: .6 });
+    pill('70+ стран', W / 2, H * .17, 80, A('c70', 'col', .25), { col: BR.acc }); pill('дождливее Британии', W / 2, H * .17 + 115, 46, A('c70', 'col', .25) * ap(t, V('c70') + .8, .3));
+    const ac = A('col', 'sec', .3); fill(SH.COL, WARM, ac * pulse); label2(['КОЛУМБИЯ'], -73.5, 4.3, ac, WARM, 76);
+    head('1 место', ac * (1 - ap(t, V('trop') - .2, .2)), BR.acc, H * .15, 110);
+    pill('тропики', W / 2, H * .13, 50, A('trop', 'sec', .25) * (1 - ap(t, V('pac') - .1, .2)), { line: WARM });
+    cp(t, 'Тихий океан', -78.3, 2.2, 'pac', 'sec', '#4FD1C5', 40); cp(t, 'Анды', -75.5, 6.5, 'mtn', 'sec', '#ffffff', 40);
+    bigNum('3 240 мм', H * .72, 150, A('mm', 'sec', .3), BR.acc, 'осадков в год (в Британии ≈1 200)'); }
+  // 4. so what's the secret: battlefield
+  { head('В чём секрет?', A('sec', 'field', .25), '#ffffff', H * .17, 96);
+    const a = A('field', 'west', .3); const [x, y] = P(-5, 54.6);
+    if (a > 0) { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.ellipse(x, y, 11 * CAM.ppd * KX(), 7.5 * CAM.ppd, 0, 0, 7 * eout(ap(t, V('field') + .2, .8)));
+      ctx.fillStyle = 'rgba(79,168,255,.18)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.setLineDash([22, 14]); ctx.stroke(); ctx.restore(); }
+    fill(SH.GBR, BLUE, a * pulse * .8); fill(SH.IRL, BLUE, a * pulse * .8);
+    head('Поле битвы', a, BLUE, H * .15, 110); head('воздушных масс', a * ap(t, V('field') + .6, .3), BLUE, H * .15 + 115, 80); }
+  // 5. Gulf Stream + westerlies
+  { const a = A('west', 'north', .3);
+    const gs = [[-81, 25], [-79.5, 30], [-75, 35.5], [-68, 39.5], [-58, 42], [-45, 45], [-32, 49], [-20, 52], [-11, 53.8]];
+    polyPartial(gs, eout(ap(t, V('west') + .1, 1.6)), { col: '#ff5a5a', lw: 22, glow: '#ff3b3b', blur: 30, a: a * .8 });
+    polyPartial(gs, eout(ap(t, V('west') + .1, 1.6)), { col: '#ffd0c0', lw: 5, glow: '#ff3b3b', blur: 0, a });
+    fill(SH.GBR, BLUE, a * .7); fill(SH.IRL, BLUE, a * .7);
+    label2(['Гольфстрим'], -62, 36.5, A('gulf', 'north', .3), '#ff5a5a', 70);
+    pill('главный спонсор дождя', W / 2, H * .15, 50, A('west', 'north', .25), { line: '#ff5a5a' });
+    pill('тёплая вода → влажный воздух', W / 2, H * .15 + 100, 40, A('warm', 'winds', .25), { line: '#ff5a5a' });
+    // moisture clouds drifting to the isles
+    const am = A('warm', 'north', .3); for (let i = 0; i < 26; i++) { const k = ((t * .18 + R(i)) % 1); const lon = lerp(-48, -8, k), lat = lerp(44, 54, k) + (R(i + 3) - .5) * 6; const [x, y] = P(lon, lat);
+      ctx.save(); ctx.globalAlpha = am * Math.sin(k * Math.PI) * .8; ctx.fillStyle = '#e6f2ff'; ctx.shadowColor = '#bfe0ff'; ctx.shadowBlur = 20; ctx.beginPath(); ctx.arc(x, y, 10 + R(i + 5) * 14, 0, 7); ctx.fill(); ctx.restore(); }
+    const aw = A('winds', 'north', .25); for (let k = 0; k < 3; k++) { const [x0, y0] = P(-40, 50 + (k - 1) * 4), [x1, y1] = P(-14, 53 + (k - 1) * 2.5); straightArrow(x0, y0, x1, y1, eout(ap(t, V('winds') + k * .15, .7)), aw, '#ffffff', 10); }
+    pill('западные ветры', W / 2, H * .15 + 100, 44, aw, { line: '#ffffff' }); }
+  // 6. four air masses
+  { const a = A('north', 'cta', .3); fill(SH.GBR, BLUE, a * .75); fill(SH.IRL, BLUE, a * .75);
+    const [cx, cy] = P(-3.5, 54);
+    massArrow(cx - 520, cy - 40, cx - 210, cy - 10, A('north', 'cta', .3) * 1, a, '#4FD1C5', 'Морской\nвоздух', W * .2, cy - 190);
+    massArrow(cx + 40, cy - 720, cx + 10, cy - 300, eout(ap(t, V('arc') - .2, .6)), a * ap(t, V('arc') - .3, .2), ARC, 'Арктический\nхолодный', W * .7, cy - 640);
+    massArrow(cx - 60, cy + 600, cx - 40, cy + 300, eout(ap(t, V('south2') - .2, .6)), a * ap(t, V('south') - .1, .2), WARM, 'Тропический\nтёплый', W * .3, cy + 470);
+    massArrow(cx + 640, cy + 60, cx + 270, cy + 30, eout(ap(t, V('dry') - .4, .6)), a * ap(t, V('east') - .1, .2), BR.acc, 'Континентальный\nсухой', W * .72, cy + 170);
+    head('Север: холод', A('north', 'south', .25) * ap(t, V('arc') - .3, .3), ARC, H * .11, 80);
+    head('Юг: тепло', A('south', 'east', .25), WARM, H * .11, 80); head('Восток: сухо', A('east', 'who', .25), BR.acc, H * .11, 80);
+    const aw = A('who', 'cta', .3); const ph = Math.floor((t - V('who')) / .55) % 5;
+    rainFX(t, aw * (ph === 0) * .8, 90); fogFX(t, aw * (ph === 1) * .7); sunFX(t, aw * (ph === 2) * .8); hailFX(t, aw * (ph === 3) * .8, 70); windFX(t, aw * (ph === 4) * .9, 18);
+    head('Кто побеждает —', aw, '#ffffff', H * .11, 84); head('такая и погода', aw * ap(t, V('who') + 1.4, .3), BR.acc, H * .11 + 100, 84); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('atl', 'tex/atl.jpg'), loadImg('col', 'tex/col.jpg'), loadImg('uk', 'tex/uk.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
