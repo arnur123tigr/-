@@ -1,0 +1,176 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Почему Чили такое длинное» — RU remake, voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 95;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'sam', l0: -90, l1: -30, b0: -58, b1: 16, minppd: 14 });
+TEX.push({ k: 'andes', l0: -78, l1: -64, b0: -45, b1: -17, minppd: 40 });
+const C = { chl: '#E8502F', spa: '#c4161f', por: '#2f5fd0', nat: '#FEB300', per: '#F08A4B', bol: '#4f8cff', gran: '#4FD1C5', bra: '#7fe08a', plata: '#9F8CF0', andes: '#F08A4B' };
+</script>
+<script src="helpers.js"></script>
+<script src="dolls.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .72, lw: 3.5, blur: 18 }, o || {}));
+function clipLat(latTop, latBot, fn) { const y0 = P(0, latTop)[1], y1 = P(0, latBot)[1]; ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, y1 - y0); ctx.clip(); fn(); ctx.restore(); }
+function pepper(x, y, s, a, rot = 0, wig = 0) {   // red chili pepper, long axis vertical, stem at top
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(rot + wig); ctx.scale(s, s);
+  const g = ctx.createLinearGradient(-40, 0, 40, 0); g.addColorStop(0, '#ff6a4a'); g.addColorStop(.45, '#d8141a'); g.addColorStop(1, '#7a0a0a');
+  ctx.fillStyle = g; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 24; ctx.beginPath();
+  ctx.moveTo(-26, -300); ctx.bezierCurveTo(-60, -200, -50, 50, -10, 300); ctx.quadraticCurveTo(0, 330, 6, 300); ctx.bezierCurveTo(40, 80, 50, -200, 26, -300); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(-18, -150, 6, 90, .05, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2f8a2a'; ctx.beginPath(); ctx.ellipse(0, -300, 38, 16, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#2f8a2a'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, -305); ctx.quadraticCurveTo(10, -350, 40, -365); ctx.stroke();
+  ctx.restore();
+}
+function flagChar(x, y, s, a, face = 'happy', kind = 'chl', t = 0) {   // waving flag with cartoon face
+  if (a <= 0) return; const p = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha *= clamp(a * 2); ctx.translate(x, y); ctx.scale(s * p, s * p);
+  const w = 200, h = 132; ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20;
+  const wave = (yy) => Math.sin(t * 5 + yy * .03) * 4;
+  ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.clip();
+  if (kind === 'chl') { ctx.fillStyle = '#fff'; ctx.fillRect(-w / 2, -h / 2, w, h / 2); ctx.fillStyle = '#d52b1e'; ctx.fillRect(-w / 2, 0, w, h / 2); ctx.fillStyle = '#0039a6'; ctx.fillRect(-w / 2, -h / 2, h / 2, h / 2); star(-w / 2 + h / 4, -h / 4, 18, 1, '#fff'); }
+  else { ['#d52b1e', '#f9e300', '#007934'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(-w / 2, -h / 2 + i * h / 3, w, h / 3 + 1); }); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 3; ctx.strokeRect(-w / 2, -h / 2, w, h);
+  // face
+  const ex = 20, ey = -8; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 4;
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(ex * sx + 20, ey, 17, face === 'shock' ? 22 : 19, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ex * sx + 24, ey + (face === 'sad' ? 6 : 2), 7, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; }
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath();
+  if (face === 'happy') ctx.arc(22, 24, 18, .2, Math.PI - .2); else if (face === 'shock') { ctx.ellipse(22, 34, 9, 12, 0, 0, 7); } else if (face === 'sad') ctx.arc(22, 44, 16, Math.PI + .35, -.35); else { ctx.moveTo(10, 32); ctx.lineTo(34, 30); }
+  ctx.stroke();
+  if (face === 'sad') { ctx.beginPath(); ctx.moveTo(-6, -36); ctx.lineTo(12, -30); ctx.moveTo(50, -30); ctx.lineTo(66, -36); ctx.stroke(); }
+  // arms
+  ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(w / 2, 10); ctx.quadraticCurveTo(w / 2 + 40, face === 'happy' ? -40 : 30, w / 2 + 60, face === 'happy' ? -70 : 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-w / 2, 10); ctx.quadraticCurveTo(-w / 2 - 40, face === 'sad' ? 40 : -30, -w / 2 - 60, face === 'sad' ? 50 : -60); ctx.stroke();
+  ctx.restore();
+}
+function bubbleT(s, x, y, a, tail = 1, w0, size = 46) {
+  if (a <= 0) return; const p = back(clamp(a * 1.3)); const lines = s.split('\n'); const w = w0 || Math.max(...lines.map(l => tw(l, size, 'MB'))) + 70, h = lines.length * size * 1.2 + 50;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 20; rr(-w / 2, -h / 2, w, h, 36); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-30 * tail, h / 2 - 4); ctx.lineTo(-60 * tail, h / 2 + 50); ctx.lineTo(10 * tail, h / 2 - 4); ctx.fill(); ctx.shadowBlur = 0;
+  lines.forEach((l, i) => txt(l, 0, (i - (lines.length - 1) / 2) * size * 1.2 + 3, size, BR.navy, 'MB', { blur: 0, dy: 0 })); ctx.restore();
+}
+function arrowG(x0, y0, x1, y1, a, col = '#7fe08a') {   // straight glowing arrow
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 24;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); const an = Math.atan2(y1 - y0, x1 - x0);
+  ctx.beginPath(); ctx.moveTo(x1 + Math.cos(an) * 30, y1 + Math.sin(an) * 30); ctx.lineTo(x1 + Math.cos(an + 2.3) * 36, y1 + Math.sin(an + 2.3) * 36); ctx.lineTo(x1 + Math.cos(an - 2.3) * 36, y1 + Math.sin(an - 2.3) * 36); ctx.fill(); ctx.restore();
+}
+let CAMK = [];
+function buildCam() {
+  const SAV = [-62, -22, 26];
+  CAMK = [
+    [0, -66, -30, 22], [V('long') - .1, -67, -32, 24, 'l'],
+    [V('long') + .6, -70, -37, 30], [V('cmp') - .1, -70, -37, 31, 'l'],
+    [V('cmp') + 1.1, 22, 42.5, 21], [V('narrow') - .1, 22, 42.5, 22, 'l'],
+    [V('narrow') + .5, -71, -31.5, 90], [V('how') - .1, -71, -31.5, 96, 'l'],
+    [V('how') + .8, ...SAV], [V('look1') - .1, -61, -21, 27, 'l'],
+    [V('mid'), ...SAV], [V('like') - .2, -61, -21, 27, 'l'],
+    [V('like') + .5, -70.5, -31, 48], [V('east') - .1, -70.5, -31, 50, 'l'],
+    [V('east') + .6, -69.5, -32, 92], [V('oy') + .6, -69.5, -32.5, 96, 'l'],
+    [V('geo') + .2, -66, -38, 30], [V('andes') - .1, -66, -38, 31, 'l'],
+    [V('wide') + .3, -70, -37, 33], [V('north') - .1, -70, -37, 34, 'l'],
+    [V('north') + .7, -68, -20, 50], [V('hey') - .1, -67, -19.5, 52, 'l'],
+    [V('hey') + .5, -66, -18, 56], [V('vend') + 4, -66, -18, 52, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  const beach = win(t, V('look1') - .15, V('mid') + .1, .3);
+  drawMap(); vignette(.45);
+  if (CAM.ppd > 14) { ctx.save(); ctx.globalAlpha = .3; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore(); }
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .86 + .14 * Math.sin(t * 5);
+  // 1. not this chili, this Chile
+  { const pa = A('0', 'this2', .2); const [x, y] = P(-71, -36); pepper(x, y + 40, CAM.ppd / 30 * 1.7, pa * (1 - ap(t, V('this2') - .3, .3)), .05, Math.sin(t * 9) * .04 * ap(t, V('no'), .2));
+    label2(['чили'], -84, -28, A('0', 'no', .2), '#ff6a4a', 70); cross(-71, -36, A('no', 'this2', .15) * ap(t, V('no') + .3, .4), 90);
+    fill(SH.CHL, C.chl, A('this2', 'cmp', .25) * pulse); label2(['Чили'], -82, -34, A('this2', 'long', .25), C.chl, 80); }
+  // 2. ridiculously long
+  { const a = A('long', 'cmp', .25); if (a > 0) { ctx.save(); ctx.globalAlpha = a; const [x, y] = P(-77.5, -38); ctx.translate(x, y); ctx.rotate(-Math.PI / 2 + .04); const s = 'ДЛИИИИИИННАЯ'; const k = eout(ap(t, V('long') + .4, 1.2)); txt(s.slice(0, Math.max(1, Math.round(s.length * k))), 0, 0, 92, '#fff', 'MB', { stroke: 10, sc: 'rgba(0,0,0,.55)', shadow: C.chl, blur: 24 }); ctx.restore(); }
+    head('Почему такая длинная?', a, C.chl, H * .15, 84); }
+  // 3. London to Baghdad
+  { const a = A('cmp', 'narrow', .3); fill(SH.CHL_EU, C.chl, a * ap(t, V('cmp') + .5, .5) * pulse);
+    pin(t, 'Лондон', -0.13, 51.51, -40, -140, 'lon', 'narrow', '#fff'); pin(t, 'Багдад', 44.37, 33.31, -40, 150, 'bag', 'narrow', '#fff');
+    bigNum('≈ 4 300 км', H * .15, 120, A('lon', 'narrow', .3), BR.acc, 'длина Чили'); }
+  // 4. narrow: less than 100 km
+  { const a = A('narrow', 'how', .25); fill(SH.CHL, C.chl, a * pulse, { fill: .55 });
+    if (a > 0) { const [x0, y0] = P(-71.7, -31.6), [x1] = P(-70.55, -31.6); ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+      const k = eout(ap(t, V('narrow') + .3, .5)); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * k, y0); ctx.moveTo(x0, y0 - 24); ctx.lineTo(x0, y0 + 24); ctx.moveTo(x0 + (x1 - x0) * k, y0 - 24); ctx.lineTo(x0 + (x1 - x0) * k, y0 + 24); ctx.stroke(); ctx.restore(); }
+    pill('местами меньше 100 км', W / 2, H * .62, 52, a * ap(t, V('narrow') + .4, .3), { col: BR.acc }); }
+  // 5. how did it get this shape? indigenous peoples
+  { const a = A('how', 'look1', .3); fill(SH.SA, '#ffffff', A('how', 'xv', .3) * .5, { fill: .1, lw: 3, blur: 10 }); head('Откуда такая форма?', A('how', 'xv', .25), BR.acc, H * .14, 88);
+    head('До XV века', A('xv', 'look1', .25), '#ffffff', H * .14, 96);
+    [['Инки', -74, -11], ['Аймара', -67.5, -17.5], ['Мапуче', -71.5, -38], ['Тупи', -46, -10], ['Гуарани', -56, -24], ['Кечуа', -76, -4], ['Техуэльче', -68, -46], ['Араваки', -64, 4]]
+      .forEach(([n, lon, lat], i) => { const q = A('peop', 'look1', .25) * ap(t, V('xv') + .5 + i * .12, .25); const [x, y] = P(lon, lat); dot(lon, lat, q, C.nat); pill(n, x, y - 50, 38, q, { line: C.nat }); });
+    // ships arrive
+    const sa = A('euro', 'look1', .3); if (sa > 0) { const k = ease(ap(t, V('euro') - .2, 2.2));
+      [[-20, -8, -36, -10, 'pt'], [-25, 2, -48, 6, 'es'], [-28, -20, -42, -24, 'pt'], [-90, -12, -80, -12, 'es']].forEach(([l0, b0, l1, b1, f], i) => { const [x, y] = P(lerp(l0, l1, k), lerp(b0, b1, k)); ctx.save(); ctx.globalAlpha = sa; ctx.translate(x, y); ship(.8, f, 2, t + i); ctx.restore(); }); }
+    head('«Дипломатия»', A('dipl', 'look1', .2), BR.red, H * .14, 100); }
+  // 6. the beach dialogue
+  if (beach > 0) { ctx.save(); ctx.globalAlpha = beach; ctx.drawImage(BG_BEACH, 0, 0);
+    ctx.save(); ctx.translate(170, 1020 + Math.sin(t * 1.5) * 4); ship(2.4, 'es', 0, t); ctx.restore();
+    const stand = (x, y, s, o, ex) => doll(x, y, s, o, ex);
+    stand(300, 1480, 330, DP.conq2, { flip: false }); stand(160, 1560, 330, DP.monk, {}); stand(470, 1540, 360, DP.conq, { face: ap(t, V('live'), .1) > 0 && t < V('look2') ? 'n' : 'smile', arm: 'point' });
+    const shock = t > V('look2') + .4; stand(760, 1500, 320, DP.nat, { flip: true, face: shock ? 'shock' : (t > V('live') ? 'angry' : 'n') }); stand(920, 1560, 300, DP.nat2, { flip: true, face: shock ? 'shock' : 'n' }); stand(870, 1400, 260, DP.nat, { flip: true, face: shock ? 'shock' : 'n', feather: '#c4161f' });
+    bubbleT('Посмотрите на эти\nпрекрасные пустые земли!', W * .44, H * .4, win(t, V('look1'), V('live') - .1, .2), 1, null, 48);
+    bubbleT('Вообще-то\nмы здесь живём.', W * .66, H * .45, win(t, V('live'), V('look2') + 1.5, .2), -1, null, 50);
+    bubbleT('Так вот, как я и говорил…\nпрекрасные пустые земли!', W * .44, H * .33, win(t, V('look2'), V('mid'), .2), 1, null, 46);
+    ctx.restore(); }
+  // 7. Spain and Portugal; independence
+  { const a = A('mid', 'war', .35); fill(SH.SPA, C.spa, a * pulse); fill(SH.POR, C.por, a * ap(t, V('por') - .2, .3) * pulse); fill(SH.SOUTH, C.nat, a * .9, { fill: .55 });
+    head('Середина XVI века', A('mid', 'war', .25), '#ffffff', H * .14, 92);
+    cp(t, 'Испания', -64, -12, 'spa', 'war', C.spa, 50); cp(t, 'Португалия', -44, -10, 'por', 'war', C.por, 44); cp(t, 'Мапуче', -68.5, -43, 'mid', 'war', C.nat, 38);
+    const b = A('war', 'exp', .35); fill(SH.GRAN, C.gran, b * pulse); fill(SH.PER_OLD, C.per, b * pulse); fill(SH.BOL_OLD, C.bol, b * pulse); fill(SH.BRA, C.bra, b * pulse); fill(SH.PLATA, C.plata, b * pulse);
+    fill(SH.SOUTH, C.nat, b * .8, { fill: .45 }); fill(SH.CHL_EARLY, C.chl, b * ap(t, V('chl') - .2, .3) * pulse, { fill: .85 });
+    head('Новые страны', A('new', 'like', .25), '#ffffff', H * .14, 96);
+    cp(t, 'Гран-Колумбия', -70, 4, 'new', 'exp', C.gran, 36); cp(t, 'Перу', -75, -9, 'new', 'exp', C.per, 40); cp(t, 'Боливия', -64.5, -17, 'new', 'exp', C.bol, 38); cp(t, 'Бразилия', -50, -10, 'new', 'exp', C.bra, 44); cp(t, 'Аргентина', -62, -30, 'new', 'exp', C.plata, 38);
+    cp(t, 'Чили', -76.5, -31, 'chl', 'exp', C.chl, 44); }
+  // 8. "time to expand!" — east into the Andes, then south
+  { const a = A('like', 'geo', .3); fill(SH.CHL_EARLY, C.chl, a * pulse, { fill: .8 }); fill(SH.ARAUC, C.nat, a * .8, { fill: .5 });
+    const [fx, fy] = P(-71, -30.5); const bump = t > V('oy') ? Math.max(0, 1 - (t - V('oy')) * 2) * Math.sin((t - V('oy')) * 40) * 10 : 0;
+    flagChar(fx - 120 + bump, fy - 40, 1.2, A('like', 'geo', .25), t > V('oy') ? 'shock' : 'happy', 'chl', t);
+    for (let i = 0; i < 5; i++) { const q = A('exp', 'geo', .2) * ap(t, V('exp') + i * .1, .2); const [x, y] = P(-71.2 + (i % 2) * .4, -33.5 - i * .9); ctx.save(); ctx.globalAlpha = q; ctx.translate(x, y); ctx.scale(.5, .5); flagChar(0, 0, 1, 1, 'happy', 'chl', t + i); ctx.restore(); }
+    const [ax, ay] = P(-70, -31.5); arrowG(ax, ay, ax + 300 * eout(ap(t, V('east'), .6)), ay, A('east', 'oy', .2)); cross(-68.3, -31.5, A('oy', 'south', .2), 70);
+    mountain(-68.6, -32.6, 'Анды', A('east', 'geo', .25));
+    const [sx, sy] = P(-71.5, -36); arrowG(sx, sy, sx, sy + 360 * eout(ap(t, V('south') - .2, .6)), A('south', 'geo', .2)); }
+  // 9. squeezed between the ocean and the Andes
+  { const a = A('geo', 'north', .35); clipLat(-24, -37.6 - 18.6 * ease(ap(t, V('along'), 3.5)), () => fill(SH.CHL, C.chl, a * pulse));
+    head('География решила всё', A('geo', 'squeeze', .25), BR.acc, H * .14, 84);
+    label2(['Тихий', 'океан'], -82, -36, A('ocean', 'north', .3), '#5ad1ff', 64); fill(SH.ANDES, C.andes, A('andes', 'north', .3) * pulse, { fill: .45 }); label2(['Анды'], -64.5, -30, A('andes', 'north', .3), C.andes, 72);
+    pill('самые длинные горы на суше', W / 2, H * .14, 46, A('andes', 'wide', .25), { line: C.andes });
+    const [x, y] = P(-71.5, -36); const g = A('wide', 'along', .2); arrowG(x - 30, y, x + 30 * (1 - eout(ap(t, V('wide'), .4))) - 25, y, g * (1 - ap(t, V('long2') - .2, .2)), BR.red);
+    arrowG(x, y - 40, x, y - 200, A('long2', 'north', .2) * ap(t, V('long2') - .1, .3)); arrowG(x, y + 40, x, y + 200, A('long2', 'north', .2) * ap(t, V('long2') - .1, .3));
+    head('Не вширь, так в длину!', A('long2', 'north', .25), '#7fe08a', H * .14, 84); }
+  // 10. war in the north: Bolivia and Peru lose the coast
+  { const a = A('north', 'cta', .35); const took = ap(t, V('coast') - .2, .6);
+    fill(SH.PER_OLD, C.per, a * pulse * (1 - took), { fill: .6 }); fill(SH.PER, C.per, a * pulse * took, { fill: .6 }); fill(SH.BOL_OLD, C.bol, a * pulse * (1 - took), { fill: .6 }); fill(SH.BOL, C.bol, a * pulse * took, { fill: .6 });
+    clipLat(-24, -60, () => fill(SH.CHL, C.chl, a * pulse)); fill(SH.COAST, C.chl, a * took * pulse);
+    cp(t, 'Перу', -74.5, -10, 'per', 'cta', C.per, 46); cp(t, 'Боливия', -64.5, -16.5, 'bol', 'hey', C.bol, 44); cp(t, 'Чили', -71.5, -27, 'north', 'cta', C.chl, 44);
+    head('Война на севере', A('north', 'coast', .25), BR.red, H * .14, 92); head('Чили забрало побережье', A('coast', 'hey', .25), C.chl, H * .14, 80);
+    const [bx, by] = P(-65, -17); flagChar(bx, by + 60, .9, A('hey', 'cta', .25), 'sad', 'bol', t); bubbleT('Эй, а где\nмой океан?', bx - 60, by - 140, A('hey', 'cta', .2), 1, null, 48); }
+  captions(t);
+  ctaEnt(t);
+  logo(.9);
+  endCardEnt(t, V('vend') + .5);
+}
+function mountain(lon, lat, name, a) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const s = back(clamp(a * 1.3)) * 1.4;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = '#e9eef5'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.moveTo(-60, 26); ctx.lineTo(-18, -40); ctx.lineTo(4, -8); ctx.lineTo(22, -28); ctx.lineTo(60, 26); ctx.closePath(); ctx.fill();
+  ctx.restore(); pill(name, x, y + 90, 44, a, { line: '#ffffff' });
+}
+function cross(lon, lat, a, r = 46) {
+  if (a <= 0) return; const [x, y] = P(lon, lat); const p = eout(clamp(a));
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.strokeStyle = BR.red; ctx.lineWidth = 16; ctx.lineCap = 'round'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x - r + 2 * r * p, y - r + 2 * r * p); ctx.moveTo(x + r, y - r); ctx.lineTo(x + r - 2 * r * clamp(p * 1.4 - .4), y - r + 2 * r * clamp(p * 1.4 - .4)); ctx.stroke(); ctx.restore();
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam(); makeBGs();
+  await Promise.all([loadImg('world', 'tex/world.jpg'), loadImg('sam', 'tex/sam.jpg'), loadImg('andes', 'tex/andes.jpg'), loadImg('logo', 'brand/logo_white_transparent.png')]);
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

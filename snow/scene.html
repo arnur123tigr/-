@@ -1,0 +1,186 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Самая снежная страна в мире — Япония» — RU remake, voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 80;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'asia', l0: 100, l1: 160, b0: 20, b1: 62, minppd: 10 });
+TEX.push({ k: 'nordic', l0: -26, l1: 34, b0: 52, b1: 72, minppd: 12 });
+TEX.push({ k: 'grl', l0: -75, l1: -10, b0: 58, b1: 84, minppd: 10 });
+TEX.push({ k: 'japan', l0: 124, l1: 150, b0: 28, b1: 47, minppd: 28 });
+const ICE = '#BFE6FF', COLD = '#5FB8FF', WARM = '#FF5A4E', SNOW = '#FFFFFF';
+</script>
+<script src="helpers.js"></script>
+<script src="ctalink.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .45, lw: 4, blur: 22 }, o || {}));
+function R(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+function snowFX(t, a, n = 120, big = 1) { if (a <= 0) return; ctx.save(); ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < n; i++) { const sp = 90 + R(i) * 160, r = (1.5 + R(i + 5) * 4.5) * big, sway = Math.sin(t * (1 + R(i + 2)) + i) * 30;
+    const x = (R(i + 9) * (W + 100) + sway + t * 25) % (W + 100) - 50, y = (R(i + 3) * (H + 60) + t * sp * big) % (H + 60) - 30;
+    ctx.globalAlpha = a * (.45 + .55 * R(i + 7)); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); } ctx.restore(); }
+function qBubble(x, y, r, a, ph) { if (a <= 0) return; const s = back(clamp(a)); ctx.save(); ctx.globalAlpha = clamp(a * 1.5) * .9; ctx.translate(x, y + Math.sin(ph) * 14); ctx.scale(s, s);
+  const g = ctx.createRadialGradient(0, -r * .3, r * .1, 0, 0, r); g.addColorStop(0, '#9fe3ff'); g.addColorStop(1, '#1f8fd6'); ctx.fillStyle = g; ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = 30;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; txt('?', 0, 4, r * 1.2, '#fff', 'MB', { blur: 6, dy: 2 }); ctx.restore(); }
+function thermo(x, y, a, lvl) { if (a <= 0) return; const s = back(clamp(a * 1.3)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; rr(-34, -200, 68, 260, 34); ctx.fill(); ctx.beginPath(); ctx.arc(0, 80, 60, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.fillStyle = COLD; ctx.beginPath(); ctx.arc(0, 80, 44, 0, 7); ctx.fill(); const top = lerp(40, -60, lvl); rr(-16, top, 32, 90 - top, 16); ctx.fill();
+  ctx.strokeStyle = '#8aa'; ctx.lineWidth = 4; for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(18, -170 + k * 34); ctx.lineTo(30, -170 + k * 34); ctx.stroke(); } ctx.restore(); }
+function mtnPin(lon, lat, a) { if (a <= 0) return; const [x, y] = P(lon, lat); const s = back(clamp(a * 1.4)); ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-34, 16); ctx.lineTo(0, -40); ctx.lineTo(34, 16); ctx.closePath(); ctx.fillStyle = '#2bb5a0'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.moveTo(-12, -20); ctx.lineTo(0, -40); ctx.lineTo(12, -20); ctx.lineTo(4, -16); ctx.lineTo(-4, -22); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(-34, 16); ctx.lineTo(0, -40); ctx.lineTo(34, 16); ctx.closePath(); ctx.stroke(); ctx.restore(); }
+function ruler(x, yb, h, p, a) { if (a <= 0 || p <= 0) return; const hh = h * eout(p); ctx.save(); ctx.globalAlpha = a; ctx.translate(x, yb); ctx.rotate(-.12);
+  rr(-38, -hh, 76, hh, 8); ctx.fillStyle = '#FFC93C'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = 3; ctx.stroke();
+  for (let k = 0; k <= 24; k++) { const yy = -k * h / 24; if (-yy > hh) break; ctx.beginPath(); ctx.moveTo(-38, yy); ctx.lineTo(-38 + (k % 2 ? 18 : 34), yy); ctx.stroke(); } ctx.restore(); }
+// snow wall vs a four-storey building (12 m = 4 x 3 m)
+function wallScene(t, a) {
+  if (a <= 0) return; ctx.save(); ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#9fb7d6'); g.addColorStop(.7, '#dfe8f3'); g.addColorStop(1, '#f4f8fc'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#c7d4e6'; ctx.beginPath(); ctx.moveTo(0, 1100); for (let k = 0; k <= 12; k++) ctx.lineTo(k * 90, 1000 + Math.sin(k * 1.7) * 80 + (k % 3) * 40); ctx.lineTo(W, 1500); ctx.lineTo(0, 1500); ctx.fill();
+  const yb = 1560, pm = 88, top = yb - 12 * pm;   // 88 px per metre
+  // building: 4 floors, navy brand facade
+  const bx = 120, bw = 360; ctx.fillStyle = '#2a2a6e'; ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 20; ctx.fillRect(bx, top, bw, yb - top); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(bx - 10, top - 18, bw + 20, 22);
+  for (let f = 0; f < 4; f++) { const fy = yb - (f + 1) * 3 * pm; ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(bx, fy + 3 * pm - 4, bw, 4);
+    for (let w = 0; w < 3; w++) { ctx.fillStyle = (f + w) % 2 ? '#FEB300' : '#ffd86b'; ctx.fillRect(bx + 36 + w * 110, fy + 70, 70, 110); }
+    numDisc(f + 1, bx - 50, fy + 3 * pm / 2, ap(t, V('floors') - .2 + f * .15, .3), BR.acc); }
+  // snow wall rising
+  const p = eout(ap(t, V('wall') + .1, 1.6)), wx = 560, ww = 400, wt = yb - 12 * pm * p;
+  if (p > 0) { const sg = ctx.createLinearGradient(wx, 0, wx + ww, 0); sg.addColorStop(0, '#ffffff'); sg.addColorStop(.85, '#eaf3fb'); sg.addColorStop(1, '#c9dcef'); ctx.fillStyle = sg; ctx.shadowColor = 'rgba(40,70,110,.35)'; ctx.shadowBlur = 24;
+    ctx.beginPath(); ctx.moveTo(wx, yb); ctx.lineTo(wx, wt + 10); for (let k = 0; k <= 10; k++) ctx.lineTo(wx + k * ww / 10, wt + Math.sin(k * 2.3) * 8); ctx.lineTo(wx + ww, yb); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(150,180,215,.5)'; ctx.lineWidth = 3; for (let k = 1; k < 24; k++) { const yy = yb - k * pm / 2; if (yy < wt + 12) break; ctx.beginPath(); ctx.moveTo(wx + 8, yy + Math.sin(k) * 4); ctx.lineTo(wx + ww - 8, yy - Math.sin(k) * 4); ctx.stroke(); } }
+  // dimension line
+  const ad = ap(t, V('wall') + 1.2, .4); if (ad > 0) { ctx.save(); ctx.globalAlpha = a * ad; ctx.strokeStyle = BR.navy; ctx.fillStyle = BR.navy; ctx.lineWidth = 5; const dx = wx + ww + 50;
+    ctx.beginPath(); ctx.moveTo(dx, yb); ctx.lineTo(dx, top); ctx.moveTo(dx - 18, yb); ctx.lineTo(dx + 18, yb); ctx.moveTo(dx - 18, top); ctx.lineTo(dx + 18, top); ctx.stroke();
+    ctx.translate(dx, (yb + top) / 2); ctx.rotate(-Math.PI / 2); txt('≈ 12 м', 0, -36, 64, BR.navy, 'MB', { blur: 0, dy: 0, shadow: 'transparent' }); ctx.restore(); }
+  // ground + person for scale
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, yb, W, H - yb); person(wx - 40, yb, 1.75 * pm / 72, 1, '#1d1d4a');
+  ctx.restore();
+  head('Снежная стена', a * ap(t, V('wall') + .2, .3), COLD, H * .12, 92);
+  pill('= 4-этажный дом', W / 2, H * .12 + 110, 50, a * ap(t, V('floors'), .3), { col: BR.acc });
+}
+const SEA = [[129.5, 35], [131, 34.3], [133, 35.6], [136, 36.3], [136.8, 37.3], [138.5, 37.9], [139.7, 39], [140, 40.5], [140, 41.5], [141.3, 43.5], [141.6, 45.5], [140.5, 48.5], [138.5, 47], [135.5, 43.8], [133, 42.8], [131, 42.5], [129.7, 41], [129.4, 37.5]];
+const SPINE = [[131, 33], [133, 34.6], [135.6, 35.3], [137.3, 36.2], [138.6, 37.2], [139.6, 38.4], [140.4, 39.8], [140.8, 41.2]];
+let CAMK = [];
+function buildCam() {
+  CAMK = [
+    [0, 22, 32, 10], [V('nordic') - .1, 24, 36, 10.6, 'l'],
+    [V('nordic') + 1.0, 17, 63.5, 30], [V('grl') - .1, 17, 63.5, 33, 'l'],
+    [V('grl') + 1.0, -42, 68, 21], [V('can') - .2, -42, 68, 22.5, 'l'],
+    [V('can') + .9, -98, 56, 12], [V('but') - .1, -98, 56, 12.6, 'l'],
+    [V('but') + 1.4, 112, 38, 10], [V('jap') - .4, 118, 38, 10.6, 'l'],
+    [V('jap') + .6, 138, 37.5, 31], [V('pref') - .1, 138, 37.8, 34, 'l'],
+    [V('pref') + .9, 139.6, 38.4, 105], [V('aom') - .1, 139.8, 38.6, 112, 'l'],
+    [V('aom') + .9, 140.8, 40.7, 140], [V('rec') - .1, 140.8, 40.7, 150, 'l'],
+    [V('rec') + 1.0, 136.6, 35.6, 100], [V('wall') + .4, 136.4, 35.6, 112, 'l'],
+    [V('wall') + .45, 100, 37, 8, 'l'], [V('lat2') - .3, 95, 37, 8.3, 'l'],
+    [V('lat2') + .9, 74, 37, 8], [V('geo') - .1, 73, 37, 8.4, 'l'],
+    [V('geo') + 1.1, 134, 44, 24], [V('mtn') - .1, 135, 43, 25, 'l'],
+    [V('mtn') + .8, 138, 37.8, 33], [V('snowfall') - .1, 138.2, 37.8, 36, 'l'],
+    [V('snowfall') + .9, 137.5, 38, 27], [V('vend') + 4, 137.5, 38, 25, 'l'],
+  ];
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.45);
+  ctx.save(); ctx.globalAlpha = .28; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+  if (CAM.ppd > 60) { ctx.save(); ctx.globalAlpha = .45; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; for (const r of SH.jpref) { pathRings([r]); ctx.stroke(); } ctx.restore(); }
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .82 + .18 * Math.sin(t * 5);
+  snowFX(t, .55 * (1 - A('wall', 'lat', .3)) * (1 - ap(t, V('snowfall'), .5)), 110, 1);
+  // 1. which country is the snowiest?
+  { const a = A('0', 'nordic', .3);
+    [[-120, 55, 70], [-42, 72, 56], [60, 62, 80], [140, 45, 60], [100, 25, 50]].forEach(([lo, la, r], i) => { const [x, y] = P(lo, la); qBubble(x, y, r, a * ap(t, .3 + i * .25, .4), t * 2 + i); });
+    head('Самая снежная', A('0', 'nordic', .25) * ap(t, .8, .3), COLD, H * .15, 100); head('страна мира?', A('0', 'nordic', .25) * ap(t, 1.4, .3), COLD, H * .15 + 110, 92); }
+  // 2. Nordic countries 1-3 m
+  { const a = A('nordic', 'grl', .3);
+    fill(SH.NOR, '#E8502F', a * ap(t, V('norw') - .1, .3) * pulse); fill(SH.SWE, '#4F7BFF', a * ap(t, V('norw') + .9, .3) * pulse); fill(SH.FIN, '#4FD18B', a * ap(t, V('norw') + 1.7, .3) * pulse);
+    fill(SH.ISL, ICE, a * ap(t, V('norw') + 2.2, .3) * .8); fill(SH.DNK, ICE, a * ap(t, V('norw') + 2.2, .3) * .8);
+    label2(['Норвегия'], 9, 61.5, a * ap(t, V('norw') - .1, .3), '#E8502F', 50); label2(['Швеция'], 16, 64.5, a * ap(t, V('norw') + .9, .3), '#4F7BFF', 50); label2(['Финляндия'], 26.5, 63, a * ap(t, V('norw') + 1.7, .3), '#4FD18B', 46);
+    head('Северные страны', A('nordic', 'm13', .25), ICE, H * .15, 90);
+    bigNum('1–3 м', H * .72, 190, A('m13', 'grl', .3), BR.acc, 'снега за год'); }
+  // 3. Greenland below zero
+  { const a = A('grl', 'can', .3); fill(SH.GRL, '#ffffff', a * pulse, { fill: .35 }); label2(['ГРЕНЛАНДИЯ'], -41, 74, a, ICE, 64);
+    const at = A('temp', 'can', .25); thermo(W * .82, H * .47, at, 1 - eout(ap(t, V('temp'), 1.2)) * .8);
+    bigNum('ниже 0°C', H * .69, 120, at, COLD, 'средняя температура года'); }
+  // 4. Canada northern territories
+  { const a = A('can', 'but', .3); fill(SH.CAN, '#ffffff', a * .5, { fill: .12, lw: 2, blur: 8 }); fill(SH.CANN, '#4F9BFF', A('north', 'but', .3) * pulse);
+    label2(['КАНАДА'], -100, 52, a, '#4F9BFF', 70); pill('северные территории', W / 2, H * .17, 50, A('north', 'but', .25), { line: '#4F9BFF' }); }
+  // 5. surprise: Japan
+  { head('Но самая снежная…', A('but', 'jap', .25), '#ffffff', H * .15, 84);
+    const a = A('jap', 'pref', .3); const aj = Math.max(a, A('but', 'jap', .3) * ap(t, V('but') + 1.2, .4));
+    fill(SH.JPN, BR.acc, aj * pulse); label2(['ЯПОНИЯ'], 135.5, 34.2, a, BR.acc, 90, 90);
+    head('№1 по снегу', a * ap(t, V('jap') + .5, .3), BR.acc, H * .15, 100); }
+  // 6. Niigata + Yamagata 5-8 m
+  { const a = A('pref', 'aom', .3); fill(SH.JPN, '#ffffff', a * .4, { fill: .06, lw: 2, blur: 6 });
+    fill(SH.Niigata, '#9BE15D', a * ap(t, V('pref') + .5, .3) * pulse); fill(SH.Yamagata, '#4FD1C5', a * ap(t, V('yam') - .1, .3) * pulse);
+    label2(['Ниигата'], 138.9, 37.5, a * ap(t, V('pref') + .5, .3), '#9BE15D', 58); label2(['Ямагата'], 140.1, 38.45, a * ap(t, V('yam') - .1, .3), '#4FD1C5', 58);
+    bigNum('5–8 м', H * .74, 190, A('m58', 'aom', .3), BR.acc, 'снега за сезон'); }
+  // 7. Aomori ~8 m
+  { const a = A('aom', 'rec', .3); fill(SH.Aomori, BR.acc, a * pulse); dot(140.74, 40.82, a * ap(t, V('aom') + .6, .3), '#fff');
+    label2(['Аомори'], 140.7, 40.5, a, BR.acc, 70, 30);
+    head('Самый снежный', A('aom2', 'rec', .25), BR.acc, H * .14, 92); head('город планеты', A('aom2', 'rec', .25) * ap(t, V('aom2') + .4, .3), BR.acc, H * .14 + 105, 84);
+    bigNum('≈ 8 м', H * .74, 190, A('m8', 'rec', .3), '#ffffff', 'снега за зиму'); }
+  // 8. Mount Ibuki record
+  { const a = A('rec', 'wall', .3); fill(SH.Shiga, '#ffffff', a * .5, { fill: .1, lw: 2, blur: 6 }); fill(SH.Gifu, '#ffffff', a * .5, { fill: .1, lw: 2, blur: 6 });
+    mtnPin(136.41, 35.42, A('ibuki', 'wall', .3)); label2(['гора Ибуки'], 136.41, 35.42, A('ibuki', 'wall', .3), '#2bb5a0', 54, 70);
+    head('Рекорд', a, BR.acc, H * .14, 110);
+    const [x, y] = P(136.41, 35.42); ruler(x - 170, y - 40, 560, ap(t, V('m12') - .3, 1), A('m12', 'wall', .25));
+    bigNum('≈ 12 м', H * .74, 190, A('m12', 'wall', .3), BR.acc, 'снега (1927 год)'); }
+  // 9. snow wall (own picture)
+  wallScene(t, A('wall', 'lat', .25));
+  // 10. same latitude, no snow
+  { const a = A('lat', 'geo', .3);
+    if (a > 0) { const [, y0] = P(0, 41), [, y1] = P(0, 37.5); ctx.save(); ctx.globalAlpha = a * .9 * ap(t, V('lat2') - .3, .5); const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, 'rgba(254,179,0,0)'); g.addColorStop(.5, 'rgba(254,179,0,.35)'); g.addColorStop(1, 'rgba(254,179,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, y0 - 30, W, y1 - y0 + 60); ctx.strokeStyle = BR.acc; ctx.lineWidth = 4; ctx.shadowColor = BR.acc; ctx.shadowBlur = 16; ctx.setLineDash([26, 16]); ctx.beginPath(); ctx.moveTo(0, (y0 + y1) / 2); ctx.lineTo(W * eout(ap(t, V('lat2') - .3, 1.2)), (y0 + y1) / 2); ctx.stroke(); ctx.restore(); }
+    fill(SH.JPN, '#ffffff', a * pulse);
+    snowFX(t, a * .9, 40, 1.1);
+    pill('≈ 35–41° с. ш.', W / 2, H * .17, 56, A('lat2', 'geo', .25), { col: BR.acc });
+    head('Та же широта', A('lat', 'lat2', .25), BR.acc, H * .15, 96);
+    [['Сицилия', 14, 37.5, -50], ['Кипр', 33, 35.1, 60], ['Сирия', 40, 35, -55], ['Афганистан', 66, 34, 60]].forEach(([n, lo, la, dy], i) => {
+      const ap_ = A('nosnow', 'geo', .25) * ap(t, V('nosnow') + i * .3, .3); const [x, y] = P(lo, la); dot(lo, la, ap_, BR.acc); pill(n, x, y + dy, 38, ap_, { scale: back(clamp(ap_)), line: BR.acc }); });
+    pill('снега почти нет', W / 2, H * .72, 54, A('nosnow', 'geo', .25) * ap(t, V('nosnow') + 1.2, .3), { bg: 'rgba(232,80,47,.9)', line: '#fff' }); }
+  // 11. why: Siberia + warm sea + mountains
+  { head('Уникальная', A('geo', 'sib', .25), '#ffffff', H * .14, 96); head('география', A('geo', 'sib', .25) * ap(t, V('geo') + .4, .3), BR.acc, H * .14 + 105, 96);
+    const a = A('sib', 'snowfall', .3);
+    fill([SEA], WARM, A('sea', 'snowfall', .3) * (.75 + .25 * Math.sin(t * 4)), { fill: .5, lw: 3, blur: 30 });
+    label2(['Японское', 'море'], 134.5, 40.6, A('sea', 'mtn', .3), WARM, 52);
+    fill(SH.JPN, '#ffffff', a * .55, { fill: .15 });
+    // cold air from Siberia: blue haze + arrows
+    if (a > 0) { const [sx, sy] = P(120, 55); const g = ctx.createRadialGradient(sx, sy, 20, sx, sy, 700); g.addColorStop(0, `rgba(120,220,255,${.6 * a})`); g.addColorStop(1, 'rgba(120,220,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+    label2(['Сибирь'], 118, 57, A('sib', 'mtn', .3), COLD, 64);
+    [[[118, 54], [131, 42.5]], [[126, 56], [135.5, 44]], [[134, 57], [139, 46]]].forEach(([s, e], k) => { const [x0, y0] = P(...s), [x1, y1] = P(...e); straightArrow(x0, y0, x1, y1, eout(ap(t, V('sib') + .4 + k * .2, .9)), A('sib', 'mtn', .3), ICE, 14); });
+    pill('холодный воздух', W / 2, H * .17, 50, A('sib', 'sea', .25), { line: COLD });
+    pill('тёплое море → влага', W / 2, H * .17, 50, A('sea', 'mtn', .25), { line: WARM });
+    // moisture clouds drifting from the sea to Japan
+    const am = A('moist', 'snowfall', .3); for (let i = 0; i < 28; i++) { const k = ((t * .22 + R(i)) % 1); const lon = lerp(132 + R(i + 1) * 4, 137 + R(i + 2) * 3.5, k), lat = lerp(40.5 + R(i + 3) * 3, 37 + R(i + 4) * 3, k);
+      const [x, y] = P(lon, lat); ctx.save(); ctx.globalAlpha = am * Math.sin(k * Math.PI) * .85; ctx.fillStyle = '#eef6ff'; ctx.shadowColor = '#bfe0ff'; ctx.shadowBlur = 20; ctx.beginPath(); ctx.arc(x, y, 14 + R(i + 5) * 18, 0, 7); ctx.fill(); ctx.restore(); }
+    // mountains force the air up: rising chevrons along the spine
+    const ar = A('mtn', 'snowfall', .3); pill('горы', W / 2, H * .15, 60, A('mtn', 'rise', .25), { line: '#2bb5a0' });
+    pill('воздух поднимается', W / 2, H * .15, 48, A('rise', 'cool', .25), { line: '#ffffff' }); pill('и остывает → снег', W / 2, H * .15, 48, A('cool', 'snowfall', .25), { line: ICE });
+    SPINE.forEach(([lo, la], i) => { mtnPin(lo, la, ar * ap(t, V('mtn') + i * .08, .3) * .9); const [x, y] = P(lo, la);
+      for (let k = 0; k < 2; k++) { const u = ((t * .9 + i * .3 + k * .5) % 1); ctx.save(); ctx.globalAlpha = ar * ap(t, V('rise') - .3, .4) * Math.sin(u * Math.PI); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x - 20, y - 50 - u * 110); ctx.lineTo(x, y - 70 - u * 110); ctx.lineTo(x + 20, y - 50 - u * 110); ctx.stroke(); ctx.restore(); } });
+    snowFX(t, A('cool', 'snowfall', .3) * .8, 70, 1); }
+  // 12. massive snowfall across the country
+  { const a = win(t, V('snowfall'), V('cta') + .4, .3);
+    fill(SH.JPN, '#ffffff', a * pulse, { fill: .75, blur: 40 });
+    head('Гигантские', a, ICE, H * .15, 100); head('снегопады', a * ap(t, V('snowfall') + .4, .3), ICE, H * .15 + 110, 100);
+    snowFX(t, ap(t, V('snowfall'), .5), 220, 1.6); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  SH.SEA = SEA; END = V('vend') + 3.2; buildCam();
+  await Promise.all(['world', 'asia', 'nordic', 'grl', 'japan'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>

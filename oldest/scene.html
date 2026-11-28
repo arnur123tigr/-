@@ -1,0 +1,88 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{width:540px;height:960px;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// «Сколько лет твоей стране» — RU remake (facts checked, numbers as of 2026), voice «Арнур». Times = voice beats (beats.json) + OFF.
+const OFF = .3;
+let B = {}, SH = null, CAPS = [], END = 60;
+const V = k => B[k] + OFF;
+TEX.push({ k: 'world', l0: -180, l1: 180, b0: -90, b1: 90 });
+TEX.push({ k: 'me', l0: 20, l1: 66, b0: 0, b1: 42, minppd: 14 });
+TEX.push({ k: 'aus', l0: 110, l1: 156, b0: -45, b1: -8, minppd: 12 });
+TEX.push({ k: 'usa', l0: -128, l1: -64, b0: 22, b1: 52, minppd: 12 });
+TEX.push({ k: 'kz', l0: 44, l1: 90, b0: 38, b1: 58, minppd: 14 });
+TEX.push({ k: 'eu', l0: -12, l1: 30, b0: 34, b1: 60, minppd: 14 });
+TEX.push({ k: 'kor', l0: 122, l1: 132, b0: 32, b1: 44, minppd: 30 });
+// key, shape, colour, label lon/lat, name, years, founded, beats: start, number, end, camera [lon, lat, ppd]
+const STOPS = [
+  ['ssd', 'SDS', '#4FD1C5', 30.3, 7.4, 'ЮЖНЫЙ СУДАН', 15, 'с 2011 года', 'ssd', 'y15', 'sau', [30.3, 7.6, 68]],
+  ['sau', 'SAU', '#7fe08a', 45, 23.5, 'САУДОВСКАЯ АРАВИЯ', 94, 'с 1932 года', 'sau', 'y94', 'aus', [45, 24, 34]],
+  ['aus', 'AUS', '#FEB300', 134, -25, 'АВСТРАЛИЯ', 125, 'с 1901 года', 'aus', 'y125', 'usa', [134, -27, 22]],
+  ['usa', 'USA', '#4FA8FF', -98, 39, 'США', 250, 'с 1776 года', 'usa', 'y250', 'kaz', [-97, 38, 18]],
+  ['kaz', 'KAZ', '#FEB300', 67, 48, 'КАЗАХСТАН', 561, 'Казахское ханство, 1465 год', 'kaz', 'y561', 'eng', [67, 47.5, 26]],
+  ['eng', 'ENG', '#E8502F', -1.6, 52.6, 'АНГЛИЯ', 1100, 'единое королевство с 927 года', 'eng', 'y1100', 'old', [-1.8, 52.8, 92]],
+  ['ita', 'ITA', '#7fe08a', 12.5, 42.6, 'ИТАЛИЯ', 2780, 'Рим, 753 г. до н. э. (легенда)', 'rome', 'y2800', 'kor', [12.6, 42.4, 52]],
+  ['kor', 'KOR', '#E8502F', 127.3, 38.3, 'КОРЕЯ', 4360, 'Кочосон, 2333 г. до н. э. (предание)', 'kor', 'y4300', 'egy', [127.4, 38, 74]],
+  ['egy', 'EGY', '#E8502F', 30, 26.5, 'ЕГИПЕТ', 5100, 'объединение ≈ 3100 г. до н. э.', 'egy', 'y5100', 'iran', [30, 26.5, 52]],
+  ['irn', 'IRN', '#7fe08a', 54, 32.5, 'ИРАН', 5200, 'Элам ≈ 3200 г. до н. э.', 'iran', 'y5200', 'cta', [54, 32.2, 40]],
+];
+</script>
+<script src="helpers.js"></script>
+<script src="ctalink.js"></script>
+<script>
+const fill = (rings, col, a, o) => glowFill(rings, col, a, Object.assign({ fill: .62, lw: 4, blur: 22 }, o || {}));
+const plural = n => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? 'год' : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? 'года' : 'лет'); };
+const fmt = n => n >= 1000 ? String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : String(n);
+function yearsPill(n, x, y, a, col) {
+  if (a <= 0) return; const p = back(clamp(a * 1.3)); const s = `${n >= 1000 ? '≈ ' : ''}${fmt(n)} ${plural(n)}`;
+  ctx.save(); ctx.globalAlpha = clamp(a * 2); ctx.translate(x, y); ctx.scale(p, p);
+  const size = 66, w = tw(s, size, 'MB') + 70; rr(-w / 2, -size * .85, w, size * 1.7, 30); ctx.fillStyle = 'rgba(19,11,84,.9)'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke(); txt(s, 0, 3, size, '#fff', 'MB', { blur: 0, dy: 0 }); ctx.restore();
+}
+let CAMK = [];
+function buildCam() {
+  CAMK = [[0, 40, 20, 4.6], [V('ssd') - .9, 40, 20, 4.9, 'l']];
+  for (const s of STOPS) { const [lon, lat, ppd] = s[11]; CAMK.push([V(s[8]) + .5, lon, lat, ppd]); CAMK.push([V(s[10]) - .45, lon, lat, ppd * 1.07, 'l']); }
+  CAMK.push([V('cta') + 1.2, 54, 32.2, 30], [V('vend') + 4, 54, 32.2, 28, 'l']);
+  // the "old" beat sits inside the England -> Italy leg: no extra key needed
+}
+function render(t) {
+  CAM = camAt(CAMK, t);
+  drawMap(); vignette(.5);
+  ctx.save(); ctx.globalAlpha = .28; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4; for (const r of SH.borders) { pathRings([r]); ctx.stroke(); } ctx.restore();
+  const A = (a, b, f = .3) => win(t, V(a), V(b), f);
+  const pulse = .82 + .18 * Math.sin(t * 5);
+  // 1. intro: the ten countries on the world map
+  { const a = A('0', 'ssd', .4); for (const s of STOPS) fill(SH[s[1]], BR.red, a * pulse * ap(t, .3 + STOPS.indexOf(s) * .12, .3), { fill: .7, lw: 3, blur: 12 });
+    head('Сколько лет', a * ap(t, .2, .3), '#ffffff', H * .15, 110); head('твоей стране?', a * ap(t, .7, .3), BR.acc, H * .15 + 120, 100);
+    pill('начнём с самой молодой', W / 2, H * .77, 50, A('start', 'ssd', .25), { line: BR.acc }); }
+  // 2. the stops
+  for (const s of STOPS) {
+    const [key, sh, col, llon, llat, name, n, founded, b0, bn, b1] = s; const a = win(t, V(b0) - .1, V(b1) + .1, .3); if (a <= 0) continue;
+    fill(SH[sh], col, a * pulse);
+    label2([name], llon, llat, a, col, name.length > 12 ? 58 : 72, -20);
+    const pn = ap(t, V(bn) - .25, .7), cnt = Math.round(n * eout(pn));
+    if (pn > 0) { const [x, y] = P(llon, llat); yearsPill(cnt, x, y + 90, a * clamp(pn * 3), col); }
+    pill(founded, W / 2, H * .15, 42, a * ap(t, V(bn) + .2, .3), { line: col });
+  }
+  { head('А теперь', A('old', 'rome', .2), BR.acc, H * .3, 110); head('самые древние', A('old', 'rome', .2) * ap(t, V('old') + .2, .2), BR.acc, H * .3 + 120, 100);
+    const ao = A('old', 'rome', .2); if (ao > 0) { ctx.save(); ctx.globalAlpha = ao * .5; ctx.fillStyle = '#030814'; ctx.fillRect(0, 0, W, H); ctx.restore(); head('А теперь', ao, BR.acc, H * .3, 110); head('самые древние', ao, BR.acc, H * .3 + 120, 100); } }
+  // 3. Iran: crown
+  { const a = A('iran', 'cta', .3); const [x, y] = P(54, 32.5); const c = back(clamp(ap(t, V('iran2') - .2, .5)));
+    if (c > 0) { ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y - 190); ctx.scale(c * 2.2, c * 2.2);
+      ctx.beginPath(); ctx.moveTo(-34, 14); ctx.lineTo(-38, -16); ctx.lineTo(-17, 0); ctx.lineTo(0, -24); ctx.lineTo(17, 0); ctx.lineTo(38, -16); ctx.lineTo(34, 14); ctx.closePath();
+      ctx.fillStyle = BR.acc; ctx.shadowColor = BR.acc; ctx.shadowBlur = 24; ctx.fill(); ctx.restore(); }
+    head('Самая древняя страна?', a * (1 - ap(t, V('elam') - .2, .2)), BR.acc, H * .15 + 100, 76); }
+  captions(t);
+  ctaLink(t);
+  logo(.9);
+  endCardLink(t, V('vend') + .5);
+}
+window.ready = (async () => {
+  await Promise.all([loadFont('MB', 'fonts/Montserrat-Black.ttf'), loadFont('MX', 'fonts/Montserrat-ExtraBold.ttf'), loadFont('MS', 'fonts/Montserrat-SemiBold.ttf')]);
+  SH = await (await fetch('shapes.json')).json(); CAPS = await (await fetch('caps_ru.json')).json(); B = (await (await fetch('beats.json')).json()).ru; B['0'] = -OFF;
+  END = V('vend') + 3.2; buildCam();
+  await Promise.all(['world', 'me', 'aus', 'usa', 'kz', 'eu', 'kor'].map(k => loadImg(k, `tex/${k}.jpg`)).concat([loadImg('logo', 'brand/logo_white_transparent.png')]));
+  window.END = END; render(0); return true;
+})();
+</script></body></html>
