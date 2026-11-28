@@ -1,0 +1,13 @@
+sfx + music ok 76.68
+mix_ru.wav: -14.0 LUFS, peak -1.5 dBFS, master +4.6 dB | voice gain +4.7 dB, music gain -14.6 dB | while the narrator speaks the voice leads by: median 18.9 dB, 5% worst 5.2 dB, least -2.5 dB (12.6 s, 53.4 s, 69.8 s, 71.4 s); in the speech band: median 21.5 dB, 5% worst 3.7 dB, least -6.6 dB
+mix_ru_no_music.wav: -14.1 LUFS, peak -1.5 dBFS, master +4.5 dB | voice gain +4.7 dB | while the narrator speaks the voice leads by: median 125.1 dB, 5% worst 7.0 dB, least -0.7 dB (12.6 s, 25.0 s, 53.4 s, 71.4 s); in the speech band: median 58.8 dB, 5% worst 4.4 dB, least -5.4 dB
+frame 0/2300
+frame 300/2300
+frame 600/2300
+frame 900/2300
+frame 1200/2300
+frame 1500/2300
+frame 1800/2300
+frame 2100/2300
+done out/ru/video_silent.mp4 76.68s
+built out/snow_ru.mp4
